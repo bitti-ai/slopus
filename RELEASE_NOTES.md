@@ -4,6 +4,8 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## What's new
 
+- **Image generation count.** Open the arrow beside Generate to queue up to 100 images with different seeds. Count applies to one click, resets afterward and is not saved in the project.
+
 - **Generation effects.** Add LCS color steering, tone, sharpness and color stabilization from the video Scene or image root inspector. Effects run during generation, with bypass, reset, step ranges and optional regions. VAE calibration is automatic, cached and cancellable. MOSS disables these controls through the shared model capabilities.
 
 - **MOSS CFG control.** Set CFG before Seed in the image inspector, with a default of 3. Values are remembered per model in each image draft and carried into local and LAN generation. H3 hides the control.

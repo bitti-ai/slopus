@@ -103,6 +103,38 @@ it.each(["Create Scene", "Create Reference"])("opens and saves the item created 
   expect(save.mock.calls[1][0].config.generationJobs).toEqual(project.config.generationJobs);
 });
 
+it("queues the count chosen beside Generate once without persisting it", async () => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  vi.spyOn(runtime, "resolveSlopfabPlan").mockResolvedValue({ alignedFrames: 1, canvasWidth: 768, canvasHeight: 768 } as Awaited<ReturnType<typeof runtime.resolveSlopfabPlan>>);
+  const enqueue = vi.spyOn(runtime, "enqueueSlopfabGeneration").mockResolvedValue(undefined);
+  saveGeneratorTemplateSettings({ defaultTemplateId: "test", templates: [{ id: "test", name: "Test", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "D:/h3.safetensors" } }] });
+  const project = record();
+  project.config.imageScene!.seed = 25;
+  project.config.assets = [{ id: "original", name: "Original", kind: "image", relativePath: "media/original.jpg", mimeType: "image/jpeg",
+    createdAt: project.config.createdAt, imageGeneration: imageGenerationSnapshot(project.config, "", "test") }];
+  project.config.imageScene!.outputAssetId = "original";
+  const queue = new WorkQueue(vi.fn(async (record) => record));
+  render(<ProjectWorkspace project={project} workQueue={queue} onBack={vi.fn()} onSave={vi.fn()} />);
+  const session = queue.project(project);
+  const before = session.getSnapshot().config;
+  fireEvent.click(screen.getByRole("button", { name: "Generation options" }));
+  fireEvent.change(screen.getByRole("spinbutton", { name: "Count" }), { target: { value: "3" } });
+  expect(session.getSnapshot().config).toBe(before);
+  fireEvent.click(screen.getByRole("button", { name: "Generate (3)" }));
+  await waitFor(() => expect(enqueue).toHaveBeenCalledOnce());
+  expect(queue.getSnapshot().map((item) => item.settings.seed)).toEqual([25, 26, 27]);
+  expect(session.getSnapshot().config.assets).toHaveLength(4);
+  expect(session.getSnapshot().config.assets[0]).toEqual(before.assets[0]);
+  expect(screen.queryByRole("dialog", { name: "Generation options" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "View Original" }));
+  fireEvent.click(screen.getByRole("button", { name: "Generation options" }));
+  expect(screen.getByRole("spinbutton", { name: "Count" })).toHaveValue(1);
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  expect(queue.getSnapshot()).toHaveLength(4);
+  expect(enqueue).toHaveBeenCalledOnce();
+});
+
 it.each([false, true])("scopes generation controls to each image and queues others (draft: %s)", async (imageDraft) => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);

@@ -1109,3 +1109,48 @@ it("shows CFG before Seed for MOSS and preserves its value when switching models
   cleanup(); setup(saved);
   expect(screen.getByRole("spinbutton", { name: "CFG" })).toHaveValue(4.5);
 });
+
+
+it("sets a temporary generation count, dismisses its panel and resets after one Generate click", () => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  const template = { ...defaultGeneratorTemplate(), sources: {}, paths: { transformer: "model", textEncoder: "encoder", videoVae: "vae", tokenizer: "tokenizer.json", audioVae: "audio" } };
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id });
+  const config = parseProjectConfig(fixture);
+  const onGenerate = vi.fn();
+  const onChange = vi.fn();
+  const props = { config, folderPath: "D:/Images", onChange, onGenerate, onCancel: vi.fn() };
+  const { unmount } = render(<ImageEditor {...props} />);
+  const options = screen.getByRole("button", { name: "Generation options" });
+  expect(options.closest(".inspector-actions")).not.toBeNull();
+  fireEvent.click(options);
+  expect(screen.getByRole("dialog", { name: "Generation options" })).toBeInTheDocument();
+  const count = screen.getByRole("spinbutton", { name: "Count" });
+  expect(count).toHaveFocus();
+  expect(count).toHaveValue(1);
+  for (const value of ["0", "101", "2.5", ""]) {
+    fireEvent.change(count, { target: { value } });
+    expect(count).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
+  }
+  fireEvent.change(count, { target: { value: "3" } });
+  fireEvent.keyDown(count, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Generation options" })).not.toBeInTheDocument();
+  expect(options).toHaveFocus();
+  fireEvent.click(options);
+  expect(screen.getByRole("spinbutton", { name: "Count" })).toHaveValue(3);
+  fireEvent.click(screen.getByRole("button", { name: "Generate (3)" }));
+  expect(onGenerate).toHaveBeenLastCalledWith(template, 3);
+  expect(screen.queryByRole("dialog", { name: "Generation options" })).not.toBeInTheDocument();
+  fireEvent.click(options);
+  expect(screen.getByRole("spinbutton", { name: "Count" })).toHaveValue(1);
+  fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Count" }), { key: "Escape" });
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  expect(onGenerate).toHaveBeenLastCalledWith(template, 1);
+  expect(onChange).not.toHaveBeenCalled();
+  fireEvent.click(options);
+  fireEvent.change(screen.getByRole("spinbutton", { name: "Count" }), { target: { value: "4" } });
+  unmount();
+  render(<ImageEditor {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "Generation options" }));
+  expect(screen.getByRole("spinbutton", { name: "Count" })).toHaveValue(1);
+});

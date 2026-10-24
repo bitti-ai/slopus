@@ -354,6 +354,86 @@ describe("agent scene generation", () => {
 describe("image generation work", () => {
   const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
   const imageProject = (): ProjectRecord => ({ folderPath: "C:/Image", config: createProjectConfig({ name: "Poster", prompt: "An ocean poster", generationType: "image", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 }) });
+  it.each([-1, 42, Number.MAX_SAFE_INTEGER])("queues a batch of independent images with unique seeds starting at %s", async (seed) => {
+    const { queue } = setup();
+    const record = imageProject();
+    record.config.imageScene!.seed = seed;
+    const session = queue.project(record);
+    vi.mocked(invoke).mockImplementation(async (_command, args) => ({ relativePath: `media/${(args as { jobId: string }).jobId}.jpg`, width: 768, height: 768 }));
+    const id = queue.enqueueImage(session, template, 3);
+    const items = queue.getSnapshot();
+    expect(items).toHaveLength(3);
+    expect(id).toBe(items[0].id);
+    const seeds = items.map((item) => item.settings.seed);
+    expect(new Set(seeds).size).toBe(3);
+    expect(seeds.every((value) => Number.isSafeInteger(value) && value >= 0)).toBe(true);
+    if (seed >= 0) expect(seeds[0]).toBe(seed);
+    if (seed === Number.MAX_SAFE_INTEGER) expect(seeds).toEqual([seed, 0, 1]);
+    const pending = session.getSnapshot().config;
+    expect(pending.assets).toHaveLength(3);
+    expect(pending.assets.every((asset) => asset.imageDraft && !asset.relativePath)).toBe(true);
+    expect(new Set(items.map((item) => item.imageDraftId)).size).toBe(3);
+    expect(pending.imageScene!.outputAssetId).toBe(items[0].imageDraftId);
+    expect(pending.assets.slice(1).map((asset) => asset.parentAssetId)).toEqual([items[0].imageDraftId, items[0].imageDraftId]);
+    // Duplicate clicks cannot queue the same selected draft again.
+    expect(queue.enqueueImage(session, template, 3)).toBeUndefined();
+    expect(queue.getSnapshot()).toHaveLength(3);
+    for (const [index, item] of items.entries()) {
+      await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(index + 1));
+      const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[index][0];
+      expect(request).toMatchObject({ seed: seeds[index], jobId: item.id, stillImage: true });
+      expect(request.prompt).toBe(vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0].prompt);
+      await finish(queue, item.id);
+    }
+    const result = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
+    expect(result.assets).toHaveLength(3);
+    expect(result.assets.every((asset) => !asset.imageDraft)).toBe(true);
+    expect(result.assets.map((asset) => asset.imageGeneration!.usedSeed)).toEqual(seeds);
+    expect(result.imageScene!.outputAssetId).toBe(items[0].imageDraftId);
+    expect(result.imageScene!.seed).toBe(seed);
+    // Count is an argument for one submission, never a project preference.
+    queue.enqueueImage(session, template);
+    expect(queue.getSnapshot()).toHaveLength(4);
+    await queue.cancel(queue.getSnapshot()[3].id);
+  });
+
+  it("keeps batched edits on the same source with frozen settings and independent cancellation", async () => {
+    const { queue } = setup();
+    const record = imageProject();
+    record.config.imageScene = createImageEditScene({ name: "Original", relativePath: "media/source.png", width: 640, height: 480 });
+    record.config.imageScene.nodes[0].description = "Add snow";
+    record.config.imageScene.seed = 10;
+    const session = queue.project(record);
+    queue.enqueueImage(session, template, 3);
+    const items = queue.getSnapshot();
+    const original = structuredClone(session.getSnapshot().config.assets[0]);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    session.update((config) => ({ ...config, imageScene: { ...config.imageScene!, nodes: config.imageScene!.nodes.map((node) => ({ ...node, description: "Make it sunny" })) } }));
+    await queue.cancel(items[1].id);
+    vi.mocked(invoke).mockResolvedValue({ relativePath: "media/edited.png", width: 640, height: 480 });
+    await finish(queue, items[0].id);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2));
+    const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[1][0];
+    expect(request).toMatchObject({ jobId: items[2].id, seed: 12, imageEdit: { sourceRelativePath: "media/source.png" } });
+    expect(request.prompt).toContain("Add snow");
+    expect(request.prompt).not.toContain("Make it sunny");
+    await finish(queue, items[2].id);
+    const config = session.getSnapshot().config;
+    expect(config.assets[0]).toEqual(original);
+    expect(config.assets.find((asset) => asset.id === items[1].imageDraftId)?.imageDraft).toBe(true);
+    expect(config.imageScene!.nodes[0].description).toBe("Make it sunny");
+    expect(queue.getSnapshot().map((item) => item.status)).toEqual(["completed", "cancelled", "completed"]);
+  });
+
+  it.each([0, -1, 1.5, 101, NaN, Infinity])("rejects invalid batch count %s without changing the project", (count) => {
+    const { queue } = setup();
+    const session = queue.project(imageProject());
+    const before = session.getSnapshot().config;
+    expect(() => queue.enqueueImage(session, template, count)).toThrow("Count must be a whole number");
+    expect(session.getSnapshot().config).toBe(before);
+    expect(queue.getSnapshot()).toHaveLength(0);
+  });
+
   it("routes MOSS text-to-image requests and refuses video and editing work", async () => {
     const { queue, first } = setup();
     const moss = { ...mossImageTemplate(), sources: {}, paths: { transformer: "moss", textEncoder: "qwen", videoVae: "flux", tokenizer: "tokenizer.json", audioVae: "" } };

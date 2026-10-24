@@ -12,7 +12,7 @@ import { createEmptyImage, imageFamily, imageFamilyRoot, makeImagePrimary, remov
 import { isTauri } from "../../lib/persistence";
 import { createDraftGenerationJob, isVideoReference, PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig, type ProjectReference } from "../../lib/project";
 import { defaultGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, generatorModel, templateSupportsImages, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
-import { isWorkActive, type WorkItem } from "../../lib/workQueue";
+import { isWorkActive, MAX_IMAGE_BATCH_COUNT, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
 import { ReferenceImage } from "./ReferenceImage";
 import { PromptTextField } from "./PromptTextField";
@@ -31,7 +31,7 @@ import { applyImageCommand } from "../../lib/imageCommands";
 import { copyImageNode, getImageNodeClipboard, pasteImageNode, subscribeImageNodeClipboard } from "../../lib/imageNodeClipboard";
 import { HierarchyContextMenu } from "./HierarchyContextMenu";
 import { useShortcut } from "../../lib/commands";
-import { ComboBox, InfoBar, ItemHeader, PaneHeader, ProgressBar, PropRow, PropSection, Splitter, tooltipProps, useContextMenu, usePaneSize } from "../ui";
+import { ComboBox, Flyout, InfoBar, ItemHeader, PaneHeader, ProgressBar, PropRow, PropSection, Splitter, tooltipProps, useContextMenu, usePaneSize } from "../ui";
 import "../../styles/image-editor.css";
 
 const MIN_IMAGE_ZOOM = 0.1;
@@ -49,7 +49,7 @@ function UsedImageSeed({ id, seed, onError }: { id: string; seed: number | undef
 
 export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onGenerateCharacterSheet, onGenerateExtend, onCancel, onOpenGenerator, onOpenReferences, workItems = [], openImage, onImageOpened }: {
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate) => void;
-  onGenerate: (template: GeneratorTemplate) => void; onCancel: (id: string) => Promise<void>; workItems?: readonly WorkItem[];
+  onGenerate: (template: GeneratorTemplate, count: number) => void; onCancel: (id: string) => Promise<void>; workItems?: readonly WorkItem[];
   onGenerateCharacterSheet?: (template: GeneratorTemplate, sourceId: string, options: CharacterSheetOptions) => void;
   onGenerateExtend?: (template: GeneratorTemplate, sourceId: string, options: ExtendOptions) => void;
   onOpenGenerator?: (jobId: string) => void;
@@ -113,6 +113,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     return saveImageDraft(next, selecting ? undefined : template?.id);
   });
   const [error, setError] = useState<string | null>(null);
+  const [generationCount, setGenerationCount] = useState("1");
+  const [generationOptionsOpen, setGenerationOptionsOpen] = useState(false);
+  const generationOptionsButton = useRef<HTMLButtonElement>(null);
+  const count = Number(generationCount);
+  const validCount = Number.isInteger(count) && count >= 1 && count <= MAX_IMAGE_BATCH_COUNT;
   const debugEnabled = useSyncExternalStore(subscribeDebugOptions, loadDebugOptionsEnabled);
   const [debugPrompt, setDebugPrompt] = useState<string | null>(null);
   useEffect(() => { if (!debugEnabled) setDebugPrompt(null); }, [debugEnabled]);
@@ -539,7 +544,25 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   // A chip for a video or audio reference names it; one deleted says so.
   const missingReference = (id: string) => config.references.find((reference) => reference.id === id)?.name ?? "Deleted reference";
   const templateInspector = Boolean((extendMode && output && extendOptions) || (output && templateSourceId === output.id) || (runningTemplate && templateSource));
-  const generateButton = <button type="button" className="primary-button image-generate-button" data-tooltip={effectsBlocked ?? (imageRoot ? editingBlocked : null) ?? editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : Boolean(effectsBlocked) || Boolean(templateSnapshot && output?.imageDraft) || !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editingBlocked || editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>;
+  const generateDisabled = active ? work.cancelling || work.status === "encoding" : Boolean(effectsBlocked) || Boolean(templateSnapshot && output?.imageDraft) || !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editingBlocked || editPlan?.error) : !imageScenePrompt(scene));
+  const generateButton = <div className={`image-generation-controls${active ? "" : " image-generation-controls--split"}`}>
+    <button type="button" className="primary-button image-generate-button" data-tooltip={effectsBlocked ?? (imageRoot ? editingBlocked : null) ?? editPlan?.error ?? undefined}
+      disabled={generateDisabled || (!active && !validCount)} onClick={() => {
+        if (active) { attempt(() => onCancel(work.id)); return; }
+        setGenerationCount("1"); setGenerationOptionsOpen(false);
+        attempt(() => onGenerate(template!, count));
+      }}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling?" : "Cancel" : count > 1 && validCount ? `Generate (${count})` : "Generate"}</button>
+    {!active && <button ref={generationOptionsButton} type="button" className="primary-button image-generation-options" aria-label="Generation options"
+      aria-haspopup="dialog" aria-expanded={generationOptionsOpen} data-tooltip="Generation options" disabled={generateDisabled}
+      onClick={() => setGenerationOptionsOpen(!generationOptionsOpen)}><ChevronDown14 aria-hidden="true" /></button>}
+    <Flyout open={generationOptionsOpen && !active} anchor={generationOptionsButton} onClose={() => setGenerationOptionsOpen(false)} placement="top" width={240} aria-label="Generation options" className="image-generation-options-panel">
+      <PropRow label="Count" htmlFor={rootField("generation-count")}>
+        <input id={rootField("generation-count")} className="text-field" type="number" min={1} max={MAX_IMAGE_BATCH_COUNT} step={1}
+          value={generationCount} aria-invalid={!validCount} aria-describedby={rootField("generation-count-help")} onChange={(event) => setGenerationCount(event.target.value)} />
+      </PropRow>
+      <p id={rootField("generation-count-help")}>{validCount ? "Different seeds for each image. Resets after generating." : `Enter a whole number from 1 to ${MAX_IMAGE_BATCH_COUNT}.`}</p>
+    </Flyout>
+  </div>;
 
   return <div ref={editorRoot} className="image-editor" style={{ ...treePane.style, ...inspectorPane.style }}>
     <div className="image-canvas-tools" role="toolbar" aria-label="Image tools">

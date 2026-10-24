@@ -33,6 +33,7 @@ import { exportReferenceRefmod, refmodExportBlocker, refmodExportRequest, type R
 
 export type WorkStatus = "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed" | "cancelled";
 export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string }
+export const MAX_IMAGE_BATCH_COUNT = 100;
 
 function imageGenerationSeed(seed: number): number {
   if (seed !== -1) return seed;
@@ -268,7 +269,8 @@ export class WorkQueue {
     });
   }
 
-  enqueueImage(session: ProjectSession, template: GeneratorTemplate) {
+  enqueueImage(session: ProjectSession, template: GeneratorTemplate, count = 1) {
+    if (!Number.isInteger(count) || count < 1 || count > MAX_IMAGE_BATCH_COUNT) throw new Error(`Count must be a whole number from 1 to ${MAX_IMAGE_BATCH_COUNT}.`);
     if (!isTauri()) throw new Error("Image generation requires the desktop app and downloaded model weights.");
     if (!templateSupportsImages(template)) throw new Error("Choose a prompt generator for images.");
     let current = session.getSnapshot().config;
@@ -290,27 +292,44 @@ export class WorkQueue {
       ...(guidanceScale !== undefined ? { cfgScales: { ...(config.imageScene ?? scene).cfgScales, [template.modelType]: guidanceScale } } : {}),
     } }, template.id, true, id));
     current = session.getSnapshot().config;
-    const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
-      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
+    const firstDraft = current.assets.find((asset) => asset.id === current.imageScene!.outputAssetId)!;
+    const entries = [{ id, draft: firstDraft }, ...Array.from({ length: count - 1 }, () => {
+      const nextId = `image-${crypto.randomUUID()}`;
+      return { id: nextId, draft: { ...structuredClone(firstDraft), id: nextId, parentAssetId: firstDraft.parentAssetId ?? firstDraft.id } };
+    })];
+    const siblings = entries.slice(1).map((entry) => entry.draft);
+    if (siblings.length) {
+      session.update((config) => ({ ...config, assets: [...config.assets, ...siblings.filter((draft) => !config.assets.some((asset) => asset.id === draft.id))] }));
+      current = session.getSnapshot().config;
+    }
     const referencePaths = (selected: typeof references) => [
       ...(edit ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
       ...selected.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
     ];
-    const imageDraftId = current.imageScene!.outputAssetId!;
-    let finish!: () => void;
-    const done = new Promise<void>((resolve) => { finish = resolve; });
-    const request: SlopfabGenerationRequest = { ...(guidanceScale !== undefined ? { guidanceScale } : {}), generationEffects: activeGenerationEffects(scene.generationEffects), jobId: id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
-      ...(edit ? { imageEdit: { sourceRelativePath: edit.source.relativePath, edits: edit.edits.map(({ references, ...step }) => ({
-        ...step, referencePaths: referencePaths(references), refmods: referenceRefmodInputs(session.record.folderPath, references),
-      })) } } : {}),
-      canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(scene.steps, config), seed: imageGenerationSeed(scene.seed),
-      referencePaths: referencePaths(references),
-      refmods: referenceRefmodInputs(session.record.folderPath, references),
-    };
-    this.work.set(id, { id, image: true, imageDraftId, imageGeneration: { ...imageGenerationSnapshot(config, edit ? imageEditDebugPrompt(edit.edits) : prompt, template.id), usedSeed: request.seed }, session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(config.imageScene), request, submitted: false, cancelled: false, done, finish });
-    this.items = [...this.items, { id, kind: "image", imageAssetId: imageDraftId, imageDraftId, projectKey, folderPath: session.record.folderPath, projectName: config.name, sceneId: scene.nodes.find((node) => node.kind === "root")!.id,
-      title: "Image · " + config.name, submittedAt: new Date().toISOString(), status: "queued", progress: 0, detail: "Waiting to generate image", error: null, completionAt: null, cancelling: false, needsSave: false,
-      settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
+    let seed = imageGenerationSeed(scene.seed);
+    const items: WorkItem[] = [];
+    for (const entry of entries) {
+      const imageDraftId = entry.draft.id;
+      const config = structuredClone({ ...current, imageScene: { ...current.imageScene!, outputAssetId: imageDraftId }, providerSettings: { ...current.providerSettings,
+        slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
+      let finish!: () => void;
+      const done = new Promise<void>((resolve) => { finish = resolve; });
+      const request: SlopfabGenerationRequest = { ...(guidanceScale !== undefined ? { guidanceScale } : {}), generationEffects: activeGenerationEffects(scene.generationEffects), jobId: entry.id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
+        ...(edit ? { imageEdit: { sourceRelativePath: edit.source.relativePath, edits: edit.edits.map(({ references, ...step }) => ({
+          ...step, referencePaths: referencePaths(references), refmods: referenceRefmodInputs(session.record.folderPath, references),
+        })) } } : {}),
+        canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(scene.steps, config), seed,
+        referencePaths: referencePaths(references),
+        refmods: referenceRefmodInputs(session.record.folderPath, references),
+      };
+      this.work.set(entry.id, { id: entry.id, image: true, imageDraftId, imageGeneration: { ...imageGenerationSnapshot(config, edit ? imageEditDebugPrompt(edit.edits) : prompt, template.id), usedSeed: request.seed }, session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(config.imageScene), request, submitted: false, cancelled: false, done, finish });
+      items.push({ id: entry.id, kind: "image", imageAssetId: imageDraftId, imageDraftId, projectKey, folderPath: session.record.folderPath, projectName: config.name, sceneId: scene.nodes.find((node) => node.kind === "root")!.id,
+        title: "Image · " + config.name, submittedAt: new Date().toISOString(), status: "queued", progress: 0, detail: "Waiting to generate image", error: null, completionAt: null, cancelling: false, needsSave: false,
+        settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } });
+      // Wrap without exceeding JSON's exactly representable integer range.
+      seed = seed === Number.MAX_SAFE_INTEGER ? 0 : seed + 1;
+    }
+    this.items = [...this.items, ...items];
     this.publish(); this.icons.yieldToVideo(); void this.pump();
     return id;
   }
