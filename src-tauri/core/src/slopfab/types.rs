@@ -54,6 +54,8 @@ pub struct LatentBridgeRequest {
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerationRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation_effects: Option<crate::generation_effects::GenerationEffects>,
     pub job_id: String,
     #[serde(default)]
     pub video_transition: Option<String>,

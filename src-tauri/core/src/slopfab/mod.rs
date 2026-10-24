@@ -15,6 +15,7 @@ mod continuation;
 mod events;
 mod ffi;
 mod generation;
+mod lcs;
 mod h3;
 mod icons;
 mod planning;

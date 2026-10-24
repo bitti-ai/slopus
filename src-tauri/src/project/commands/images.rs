@@ -23,6 +23,7 @@ pub struct ImageStylePatch {
 
 pub(super) fn new_scene(prompt: &str) -> ImageScene {
     ImageScene {
+        generation_effects: None,
         root_type: None,
         source_image: None,
         output_size: None,
@@ -151,6 +152,7 @@ pub(super) fn apply(
             reference_ids,
         } => {
             scene = ImageScene {
+        generation_effects: scene.generation_effects,
                 root_type: scene.root_type,
                 source_image: scene.source_image,
                 output_size: scene.output_size,

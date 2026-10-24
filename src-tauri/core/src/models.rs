@@ -11,6 +11,7 @@ pub struct GeneratorFeatures {
     pub image_references: bool,
     pub loras: bool,
     pub motion_cache: bool,
+    pub generation_effects: bool,
 }
 
 pub fn generator_features(model_type: &str) -> &'static GeneratorFeatures {

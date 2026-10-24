@@ -1,3 +1,4 @@
+import { generationEffectsSchema, activeGenerationEffects, type GenerationEffects } from "./generationEffects";
 import { MIN_SIGMA_SHIFT, MAX_SIGMA_SHIFT } from "./sampling";
 import { z } from "zod";
 import { backdropDirection, backdropShotDirection, backdropSummary, type BackdropColor } from "./backdrop";
@@ -604,6 +605,7 @@ export const generationJobSchema = z.object({
   steps: z.number().int().min(2).max(MAX_GENERATION_STEPS).nullish(),
   latentUpscale: z.boolean().nullish(),
   audioSteps: z.number().int().min(2).max(MAX_AUDIO_GENERATION_STEPS).nullish(),
+  generationEffects: generationEffectsSchema.nullish(),
   videoSigmaShift: z.number().min(MIN_SIGMA_SHIFT).max(MAX_SIGMA_SHIFT).nullish(),
   audioSigmaShift: z.number().min(MIN_SIGMA_SHIFT).max(MAX_SIGMA_SHIFT).nullish(),
   seed: z.number().int().min(RANDOM_GENERATION_SEED).max(Number.MAX_SAFE_INTEGER).nullish(),
@@ -1176,6 +1178,7 @@ export function sceneGenerationSeed(job: GenerationJob): number {
 }
 
 export interface SceneGenerationInput {
+  generationEffects?: GenerationEffects;
   prompt: string;
   latentBridge?: {
     leftSceneId: string; rightSceneId: string;
@@ -1222,6 +1225,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     frames: input.frames,
     steps: input.steps,
     ...(input.audioSteps !== undefined ? { audioSteps: input.audioSteps } : {}),
+    ...(activeGenerationEffects(input.generationEffects) ? { generationEffects: activeGenerationEffects(input.generationEffects) } : {}),
     ...(input.videoSigmaShift !== undefined ? { videoSigmaShift: input.videoSigmaShift } : {}),
     ...(input.audioSigmaShift !== undefined ? { audioSigmaShift: input.audioSigmaShift } : {}),
     ...(input.latentUpscale ? { latentUpscale: true } : {}),

@@ -1026,3 +1026,20 @@ it("shows the image bar's scrollbar while it scrolls, then hides it again", () =
     expect(bar).not.toHaveClass("image-results--scrolling");
   } finally { vi.useRealTimers(); }
 });
+
+it("saves generation effects from the image root inspector and blocks them on MOSS", () => {
+  const initial = parseProjectConfig(fixture);
+  initial.imageScene = createImageScene("A red apple");
+  const latest = setup(initial);
+  fireEvent.click(screen.getByRole("button", { name: "Add effect" }));
+  fireEvent.click(screen.getByRole("button", { name: "Tone" }));
+  fireEvent.change(screen.getByRole("slider", { name: "Contrast" }), { target: { value: "1.5" } });
+  expect(latest().imageScene?.generationEffects?.tone?.contrast).toBe(1.5);
+  const saved = parseProjectConfig(JSON.parse(JSON.stringify(latest())));
+  cleanup();
+  saveGeneratorTemplateSettings({ templates: [mossImageTemplate()], defaultTemplateId: "moss-image", catalogVersion: 10 });
+  setup(saved);
+  expect(screen.getByRole("button", { name: "Add effect" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "Enable Tone" })).toBeEnabled();
+});

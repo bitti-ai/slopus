@@ -1,3 +1,5 @@
+import { GenerationEffects } from "./GenerationEffects";
+import { generatorModel } from "../../lib/generatorModels";
 import { DEFAULT_VIDEO_SIGMA_SHIFT, DEFAULT_AUDIO_SIGMA_SHIFT, MIN_SIGMA_SHIFT, MAX_SIGMA_SHIFT } from "../../lib/sampling";
 import { sigmaShiftOverridesForTemplate, type GeneratorTemplate } from "../../lib/settings";
 import { Audio16, Dismiss12, Image16, ImageAdd16, Text16, Video16 } from "../ui/icons";
@@ -556,6 +558,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
         </>}
       </PropSection>
     </div>
+    <GenerationEffects key={job.id} value={job.generationEffects} supported={generatorModel(template?.modelType).generationEffects} disabled={disabled} onChange={(generationEffects) => onChange({ generationEffects })} />
   </section>;
 }
 

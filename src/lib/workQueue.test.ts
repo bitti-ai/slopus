@@ -372,6 +372,21 @@ describe("image generation work", () => {
     expect(() => queue.enqueueImage(session, moss)).toThrow(/does not support image editing/);
     expect(() => queue.enqueueExtendImage(session, moss, "source", { bounds: { x: 0, y: 0, width: 512, height: 512 }, prompt: "", steps: 50, seed: 1 })).toThrow(/supports image editing/);
   });
+  it("captures image effects, shows calibration progress and refuses active effects on MOSS", async () => {
+    const { queue } = setup();
+    const session = queue.project(imageProject());
+    session.update((config) => ({ ...config, imageScene: { ...config.imageScene!, generationEffects: { sharpness: { strength: 0.5 } } } }));
+    expect(() => queue.enqueueImage(session, mossImageTemplate())).toThrow(/generation effects/);
+    queue.enqueueImage(session, template);
+    session.update((config) => ({ ...config, imageScene: { ...config.imageScene!, generationEffects: { sharpness: { strength: 1.5 } } } }));
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+    expect(request.generationEffects).toEqual({ sharpness: { strength: 0.5 } });
+    emit("slopfab-progress", { jobId: request.jobId, stage: "calibrating", step: 3, totalSteps: 80, plannedSteps: 0, elapsedSeconds: 2 });
+    expect(queue.getSnapshot()[0]).toMatchObject({ detail: "Preparing generation effects (3/80)", completionAt: null });
+    await queue.cancel(request.jobId);
+    expect(cancelSlopfabGeneration).toHaveBeenCalled();
+  });
   it("generates an image at its own resolution and preserves the video generation canvas after reopening", async () => {
     const { queue, first } = setup();
     const original = first.getSnapshot().config;

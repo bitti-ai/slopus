@@ -1752,3 +1752,5 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
 .grading-wheel[aria-disabled="true"] { opacity: .4; cursor: default; }
 .grading-wheel__center { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; border-radius: 50%; background: var(--text-secondary); transform: translate(-50%, -50%); }
 .grading-wheel__handle { position: absolute; width: 10px; height: 10px; border: 2px solid var(--focus-outer); border-radius: 50%; box-shadow: 0 0 0 1px var(--focus-inner); transform: translate(-50%, -50%); pointer-events: none; }
+
+.generation-effects > .clip-effect__note { padding-left: 0; }

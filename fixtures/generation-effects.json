@@ -1,0 +1,9 @@
+{
+  "color": { "color": "#804020", "strength": 0.5, "mode": "interpolated" },
+  "tone": { "contrast": 1.25, "brightness": -0.1, "saturation": 0.9, "temperature": 0.2 },
+  "sharpness": { "strength": 0.1, "enabled": false },
+  "anchor": { "mode": "self", "strength": 0.3 },
+  "startStep": 2,
+  "endStep": 12,
+  "region": { "x": 25, "y": 0, "width": 50, "height": 100, "invert": false }
+}

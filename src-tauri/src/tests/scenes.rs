@@ -558,3 +558,15 @@ fn scene_sigma_shifts_round_trip_and_validate() {
         assert!(validate_and_normalize_config(invalid_config).is_err());
     }
 }
+
+#[test]
+fn scene_generation_effects_survive_project_storage_and_reject_invalid_controls() {
+    let mut config = scene_fixture();
+    let effects: slopus_core::generation_effects::GenerationEffects = serde_json::from_str(include_str!("../../../fixtures/generation-effects.json")).unwrap();
+    config.generation_jobs[0].generation_effects = Some(effects.clone());
+    let folder = tempfile::tempdir().unwrap();
+    write_project(folder.path(), &config).unwrap();
+    assert_eq!(read_project(folder.path()).unwrap().config.generation_jobs[0].generation_effects, Some(effects));
+    config.generation_jobs[0].generation_effects.as_mut().unwrap().end_step = Some(-1);
+    assert!(validate_and_normalize_config(config).is_err());
+}

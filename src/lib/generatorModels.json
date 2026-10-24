@@ -7,7 +7,8 @@
     "imageEditing": true,
     "imageReferences": true,
     "loras": true,
-    "motionCache": true
+    "motionCache": true,
+    "generationEffects": true
   },
   "moss": {
     "label": "MOSS Image",
@@ -17,6 +18,7 @@
     "imageEditing": false,
     "imageReferences": false,
     "loras": false,
-    "motionCache": false
+    "motionCache": false,
+    "generationEffects": false
   }
 }

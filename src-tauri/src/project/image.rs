@@ -66,6 +66,8 @@ impl ImageTemplateSnapshot {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageScene {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation_effects: Option<slopus_core::generation_effects::GenerationEffects>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_image: Option<ImageSource>,
@@ -141,6 +143,7 @@ impl ImageScene {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if let Some(effects) = &self.generation_effects { effects.validate()?; }
         if self.output_size.as_ref().is_some_and(|size| [size.width, size.height].iter().any(|value|
             !(32..=8192).contains(value) || value % 32 != 0)) {
             return Err("Image output dimensions must be multiples of 32 between 32 and 8192 pixels.".into());

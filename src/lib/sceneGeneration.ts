@@ -1,3 +1,4 @@
+import { activeGenerationEffects } from "./generationEffects";
 import { generationDimensions } from "./export";
 import { longShotContinuationInputs, longShotInputs } from "./longShot";
 import {
@@ -37,6 +38,7 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
     frames: Math.round(sceneDurationSeconds(job) * GENERATION_FRAME_RATE),
     steps: sceneGenerationSteps(job, defaultGenerationSteps),
     ...generationSigmaShifts(job, template),
+    generationEffects: activeGenerationEffects(job.generationEffects),
     ...(job.audioSteps != null ? { audioSteps: job.audioSteps } : {}),
     ...(job.latentUpscale ? { latentUpscale: true } : {}),
     seed: sceneGenerationSeed(job),

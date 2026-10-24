@@ -2,6 +2,8 @@ mod handles;
 mod raw;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod lcs_tests;
 pub use handles::{FinishedGeneration, GenerationHandle, ProgressSink, Output};
 pub use raw::{cuda_device_names, gpu_devices, has_cuda_device, Plan, Progress};
 pub use raw::VideoDecodeTimings;
@@ -24,6 +26,16 @@ impl Api {
             inner: Arc::new(inner),
             path: path.to_owned(),
         })
+    }
+    pub fn require_lcs(&self) -> Result<(), String> { self.inner.require_lcs() }
+    pub fn set_lcs(&self, r: &RequestHandle, path: &Path, settings: &str) -> Result<(), String> {
+        self.check(r)?; self.inner.set_lcs(r.pointer.as_ptr(), path, settings)
+    }
+    pub fn set_lcs_mask(&self, r: &RequestHandle, mask: &[f32]) -> Result<(), String> {
+        self.check(r)?; self.inner.set_lcs_mask(r.pointer.as_ptr(), mask)
+    }
+    pub fn calibrate_lcs(&self, r: &RequestHandle, path: &Path, progress: &mut dyn FnMut(i32, i32) -> bool) -> Result<(), String> {
+        self.check(r)?; self.inner.calibrate_lcs(r.pointer.as_ptr(), path, progress)
     }
     pub fn version(&self) -> Result<String, String> {
         self.inner.version()

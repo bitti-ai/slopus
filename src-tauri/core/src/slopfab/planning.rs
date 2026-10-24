@@ -57,6 +57,7 @@ pub fn resolve_plan(
 }
 
 pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Result<(), String> {
+    if let Some(effects) = &request.generation_effects { effects.validate()?; }
     super::continuation::validate(request)?;
     if let Some(bridge) = &request.latent_bridge {
         if request.bridge_left_path.is_none() || request.bridge_right_path.is_none()

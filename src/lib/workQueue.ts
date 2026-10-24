@@ -1,3 +1,4 @@
+import { activeGenerationEffects } from "./generationEffects";
 import { imageSettings } from "./imageSettings";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -273,6 +274,7 @@ export class WorkQueue {
     const current = session.getSnapshot().config;
     const scene = current.imageScene ?? createImageScene(current.brief.prompt);
     if (!generatorModel(template.modelType).imageEditing && scene.rootType === "image") throw new Error(`${generatorModel(template.modelType).label} does not support image editing. Choose an editing generator.`);
+    if (activeGenerationEffects(scene.generationEffects) && !generatorModel(template.modelType).generationEffects) throw new Error("This model does not support generation effects. Bypass or remove the effects, or choose another generator.");
     const edit = scene.rootType === "image" ? compileImageEdits(current) : null;
     if (!imageScenePrompt(scene)) throw new Error("Describe the image or add an object before generating.");
     const projectKey = projectQueueKey(session.record);
@@ -291,7 +293,7 @@ export class WorkQueue {
     const imageParentId = imageDraftId ? undefined : imageFamilyRoot(current.assets, scene.outputAssetId);
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
-    const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
+    const request: SlopfabGenerationRequest = { generationEffects: activeGenerationEffects(scene.generationEffects), jobId: id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
       ...(edit ? { imageEdit: { sourceRelativePath: edit.source.relativePath, edits: edit.edits.map(({ references, ...step }) => ({
         ...step, referencePaths: referencePaths(references), refmods: referenceRefmodInputs(session.record.folderPath, references),
       })) } } : {}),
@@ -596,6 +598,10 @@ export class WorkQueue {
       if (!item.cancelling) this.patch(work.id, { detail: workerTransferDetail(event) });
       return;
     }
+    if (event.stage === "calibrating") {
+      this.patch(work.id, { status: "generating", completionAt: null, detail: item.cancelling ? "Cancelling generation" : event.totalSteps > 0 ? `Preparing generation effects (${event.step}/${event.totalSteps})` : "Checking generation effects calibration" });
+      return;
+    }
     if (work.characterSheet) {
       const sheet = work.characterSheet;
       const fraction = event.totalSteps > 0 ? Math.max(0, Math.min(1, event.step / event.totalSteps)) : 0;
@@ -674,6 +680,7 @@ export class WorkQueue {
       const saved = await invoke<{ relativePath: string; width: number; height: number }>("combine_character_sheet", { folderPath, sheetId: work.id, indices: [...sheet.order].sort((a, b) => a - b) });
       const scene = createImageEditScene({ ...saved, name: sheet.name }, work.config.imageScene ?? undefined);
       scene.referenceIds = [];
+      scene.generationEffects = work.request.generationEffects;
       const generation = { ...work.imageGeneration!, scene };
       work.session.update(derivedImageUpdate(work.id, sheet.sourceId, { id: work.id, kind: "image", name: sheet.name,
         ...saved, mimeType: "image/png", imageGeneration: generation, createdAt: new Date().toISOString() }));
@@ -737,7 +744,7 @@ export class WorkQueue {
     try {
       const saved = await invoke<{ relativePath: string; width: number; height: number }>(work.extend ? "save_extended_image" : "save_generated_image", { folderPath: work.session.record.folderPath, jobId: work.id, ...(!work.extend && work.request.imageEdit ? { format: "png" } : {}) });
       if (work.extend) {
-        const scene = createImageEditScene({ ...saved, name: work.extend.name }, { ...work.config.imageScene!, steps: work.request.steps, seed: work.request.seed });
+        const scene = createImageEditScene({ ...saved, name: work.extend.name }, { ...work.config.imageScene!, steps: work.request.steps, seed: work.request.seed, generationEffects: work.request.generationEffects });
         work.imageGeneration = { ...work.imageGeneration!, scene };
         work.session.update(derivedImageUpdate(work.id, work.extend.sourceId, { id: work.id, kind: "image", name: work.extend.name,
           ...saved, mimeType: "image/png", imageGeneration: work.imageGeneration, createdAt: new Date().toISOString() }));

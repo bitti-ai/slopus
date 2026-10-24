@@ -7,6 +7,7 @@ use std::{
 
 pub enum Request {}
 mod device;
+mod lcs;
 mod reference_video;
 pub use device::{cuda_device_names, gpu_devices, has_cuda_device};
 pub use reference_video::ReferenceVideoHandle;

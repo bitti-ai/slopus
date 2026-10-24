@@ -122,6 +122,9 @@ impl Configuration {
 
     pub(super) fn validate_inputs(&self, request: &GenerationRequest) -> Result<(), String> {
         let features = crate::models::generator_features(&self.model_type);
+        if let Some(effects) = &request.generation_effects {
+            if effects.native_settings()?.is_some() && !features.generation_effects { return Err(format!("{} does not support generation effects.", features.label)); }
+        }
         if request.still_image && !features.image_generation || !request.still_image && !features.video_generation {
             return Err(format!("{} does not support {} generation.", features.label, if request.still_image { "image" } else { "video" }));
         }

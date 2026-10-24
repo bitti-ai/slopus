@@ -11,6 +11,11 @@ fn moss_capabilities_reject_video_edits_and_references() {
     configuration.model_type = "moss".into();
     let mut request = GenerationRequest { still_image: true, frames: 1, steps: 50, prompt: "A red apple".into(), canvas_width: 512, canvas_height: 512, ..Default::default() };
     configuration.validate_inputs(&request).unwrap();
+    request.generation_effects = Some(serde_json::from_value(serde_json::json!({"sharpness":{"strength":1}})).unwrap());
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("generation effects"));
+    request.generation_effects.as_mut().unwrap().sharpness.as_mut().unwrap().enabled = Some(false);
+    configuration.validate_inputs(&request).unwrap();
+    request.generation_effects = None;
     request.still_image = false;
     assert!(configuration.validate_inputs(&request).unwrap_err().contains("video generation"));
     request.still_image = true;

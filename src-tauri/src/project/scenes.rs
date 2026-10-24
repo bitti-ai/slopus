@@ -125,6 +125,8 @@ pub(crate) struct GenerationJob {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) audio_steps: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) generation_effects: Option<slopus_core::generation_effects::GenerationEffects>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) video_sigma_shift: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) audio_sigma_shift: Option<f64>,
@@ -193,6 +195,7 @@ impl GenerationJob {
             duration_seconds: Some(defaults.duration_seconds),
             steps: None,
             audio_steps: None,
+            generation_effects: None,
             video_sigma_shift: None,
             audio_sigma_shift: None,
             latent_upscale: None,

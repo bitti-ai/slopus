@@ -9,13 +9,14 @@ use std::collections::BTreeMap;
 
 pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 /// Bumped on any incompatible change to the routes or bodies below.
+// v10 carries generation effects; older workers would silently discard them.
 // v8 carries latent upscaling and its model weights.
 // v9 carries retained latent bridges and both anchor archives.
 // v7 carries separate audio steps; older workers would silently ignore them.
 // v6 added custom upscale weights.
 // v5 added overlap locking.
 // v4 added SeedVR2 export streams. v3 added inverted image masks.
-pub const PROTOCOL_VERSION: u32 = 9;
+pub const PROTOCOL_VERSION: u32 = 10;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -309,6 +310,16 @@ mod tests {
                 assert_eq!(settings["slopfab"].options["latentUpscaler"], ProviderOption::String("/worker/upscaler.safetensors".into()));
             }
         }
+    }
+
+    #[test]
+    fn generation_effects_roundtrip_without_machine_specific_paths() {
+        let effects = serde_json::from_str(include_str!("../../../../fixtures/generation-effects.json")).unwrap();
+        let mut request = GenerationRequest { generation_effects: Some(effects), ..Default::default() };
+        let mut settings = settings(&[]);
+        visit_paths(&mut request, &mut settings, |_, _| panic!("Effects must not transfer calibration files")).unwrap();
+        let restored: GenerationRequest = serde_json::from_slice(&serde_json::to_vec(&request).unwrap()).unwrap();
+        assert_eq!(restored.generation_effects, request.generation_effects);
     }
 
     #[test]

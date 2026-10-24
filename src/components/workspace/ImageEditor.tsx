@@ -1,3 +1,5 @@
+import { activeGenerationEffects } from "../../lib/generationEffects";
+import { GenerationEffects } from "./GenerationEffects";
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from "react";
 import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Copy16, Cube16, Cube16Filled, Cursor16, Cursor16Filled, Delete14, Delete16, Edit16, Film16, FolderAdd16, FolderOpen16, Group16, Group16Filled, Image16, Image32, Paste16, References16, Rename16, Sparkle16, Stop14, Text16, Text16Filled } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
@@ -101,6 +103,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const imageTemplates = templates.templates.filter(templateSupportsImages);
   const template = imageTemplates.find((candidate) => candidate.id === templateId) ?? imageTemplates.find(templateUsable) ?? imageTemplates[0];
   const model = generatorModel(template?.modelType);
+  const effectsBlocked = activeGenerationEffects(scene.generationEffects) && !model.generationEffects ? "This model does not support generation effects. Bypass or remove the effects, or choose another generator." : null;
   const editingBlocked = !model.imageEditing ? `${model.label} does not support image editing. Choose an editing generator.` : null;
   const referencesBlocked = !model.imageReferences ? `${model.label} does not support reference images. Choose a reference generator.` : null;
   const isMiniMaxH3 = !template || template.modelType === MINIMAX_H3_MODEL_TYPE;
@@ -537,7 +540,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   // A chip for a video or audio reference names it; one deleted says so.
   const missingReference = (id: string) => config.references.find((reference) => reference.id === id)?.name ?? "Deleted reference";
   const templateInspector = Boolean((extendMode && output && extendOptions) || (output && templateSourceId === output.id) || (runningTemplate && templateSource));
-  const generateButton = <button type="button" className="primary-button image-generate-button" data-tooltip={(imageRoot ? editingBlocked : null) ?? editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : Boolean(templateSnapshot && output?.imageDraft) || !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editingBlocked || editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>;
+  const generateButton = <button type="button" className="primary-button image-generate-button" data-tooltip={effectsBlocked ?? (imageRoot ? editingBlocked : null) ?? editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : Boolean(effectsBlocked) || Boolean(templateSnapshot && output?.imageDraft) || !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editingBlocked || editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>;
 
   return <div ref={editorRoot} className="image-editor" style={{ ...treePane.style, ...inspectorPane.style }}>
     <div className="image-canvas-tools" role="toolbar" aria-label="Image tools">
@@ -747,6 +750,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             {!imageRoot && <PropRow label="Aspect ratio" htmlFor={rootField("ratio")}><ComboBox id={rootField("ratio")} aria-label="Aspect ratio" value={settings.aspectRatio} options={["16:9", "9:16", "1:1", "4:5"].map((ratio) => ({ value: ratio, label: ratio }))} onChange={(value) => { const aspectRatio = value as ProjectConfig["settings"]["aspectRatio"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), aspectRatio } })); }} /></PropRow>}
             {imageRoot ? editSize && <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={sizeValue(editSize)} options={editSizes.map((size) => ({ value: sizeValue(size), label: `${size.width} × ${size.height}` }))} onChange={(value) => { const size = editSizes.find((size) => sizeValue(size) === value); if (size) commit({ ...scene, outputSize: size }); }} /></PropRow> : <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={settings.resolution} options={[...new Set([...PROJECT_RESOLUTIONS, settings.resolution])].map((resolution) => { const size = outputDimensions(resolution, settings.aspectRatio); return { value: resolution, label: `${size.width} × ${size.height}` }; })} onChange={(value) => { const resolution = value as ProjectConfig["settings"]["resolution"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), resolution } })); }} /></PropRow>}
           </PropSection>
+          <GenerationEffects key={selected.id} value={scene.generationEffects} supported={model.generationEffects} disabled={active} onChange={(generationEffects) => commit({ ...scene, generationEffects })} />
           {!imageRoot && <PropSection title="Style" persistKey="image.style">
             <PropRow label="Mode" htmlFor={rootField("mode")}><ComboBox id={rootField("mode")} aria-label="Mode" value={scene.style.mode} options={[{ value: "none", label: "None" }, { value: "photo", label: "Photo" }, { value: "art", label: "Art" }]} onChange={(value) => commit({ ...scene, style: { ...scene.style, mode: value as "none" | "photo" | "art" } })} /></PropRow>
             {scene.style.mode !== "none" && <>

@@ -1144,6 +1144,7 @@ mod tests {
             audio_steps: Some(17),
             video_sigma_shift: Some(8.5),
             audio_sigma_shift: Some(2.5),
+            generation_effects: Some(serde_json::from_str(include_str!("../../../fixtures/generation-effects.json")).unwrap()),
             ..Default::default()
         };
         let (job, sources) = build_job(&request, &settings, &[]).unwrap();
@@ -1162,6 +1163,7 @@ mod tests {
         assert_eq!(wire["request"]["audioSteps"], 17);
         assert_eq!(wire["request"]["videoSigmaShift"], 8.5);
         assert_eq!(wire["request"]["audioSigmaShift"], 2.5);
+        assert_eq!(wire["request"]["generationEffects"]["color"]["strength"], 0.5);
         assert_eq!(sources.len(), 2);
         assert!(build_job(&GenerationRequest { reference_paths: vec![folder.path().join("missing.png").to_string_lossy().into_owned()], ..Default::default() }, &BTreeMap::new(), &[]).is_err());
     }

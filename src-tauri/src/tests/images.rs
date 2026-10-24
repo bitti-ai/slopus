@@ -77,6 +77,7 @@ fn image_root_survives_save_and_agent_hierarchy_replacement() {
     let mut config = image_fixture();
     let scene = config.image_scene.as_mut().unwrap();
     scene.style.mode = "none".into();
+    scene.generation_effects = Some(serde_json::from_str(include_str!("../../../fixtures/generation-effects.json")).unwrap());
     scene.root_type = Some("image".into());
     scene.source_image = Some(crate::project::image::ImageSource { relative_path: "media/imported/source.png".into(), name: "Source".into(), width: 65, height: 41 });
     scene.output_size = Some(crate::project::image::ImageOutputSize { width: 128, height: 64 });
@@ -85,7 +86,7 @@ fn image_root_survives_save_and_agent_hierarchy_replacement() {
     let reopened = read_project(Path::new(&created.folder_path)).unwrap();
     assert_eq!(reopened.config.image_scene, config.image_scene);
     let mut command = serde_json::to_value(config.image_scene.as_ref().unwrap()).unwrap();
-    for field in ["rootType", "sourceImage", "outputAssetId", "outputSize"] { command.as_object_mut().unwrap().remove(field); }
+    for field in ["rootType", "sourceImage", "outputAssetId", "outputSize", "generationEffects"] { command.as_object_mut().unwrap().remove(field); }
     command["op"] = serde_json::json!("image.set");
     let parsed: ProjectCommand = serde_json::from_value(command).unwrap();
     let changed = execute_commands_at(&config, &[parsed], &config.updated_at).unwrap();

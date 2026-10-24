@@ -53,7 +53,7 @@ fn run_edit_sequence(
             request, configuration: item.configuration.clone(), references: item.references.clone(), cancel: item.cancel.clone(),
             events: std::sync::Arc::new(move |event| {
                 let event = match event {
-                    super::events::NativeEvent::Progress(mut progress) => {
+                    super::events::NativeEvent::Progress(mut progress) if progress.stage != "calibrating" => {
                         let per_edit = progress.planned_steps.max(1);
                         progress.step = index as i32 * per_edit + progress.step.clamp(0, per_edit);
                         progress.total_steps = per_edit * count as i32;
@@ -118,7 +118,14 @@ fn run_single_generation(
         RequestPurpose::Generate,
         &item.references,
     )?;
+    let effects_active = super::lcs::prepare(&api, &request, item, platform)?;
     let plan = api.resolve(&request)?;
+    if effects_active {
+        if let Some(mask) = item.request.generation_effects.as_ref().unwrap().mask(plan.latent_width / 2, plan.latent_height / 2)? {
+            api.set_lcs_mask(&request, &mask)?;
+        }
+    }
+    if item.cancel.load(Ordering::Acquire) { return Err("Generation cancelled.".into()); }
     diagnostics::debug(
         "slopfab",
         "generation.request_resolved",

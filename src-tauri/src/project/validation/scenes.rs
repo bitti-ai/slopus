@@ -114,6 +114,7 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
         if job.audio_steps.is_some_and(|steps| !(2..=1_000_000).contains(&steps)) {
             return Err(format!("Scene '{}' must use 2 to 1000000 audio steps.", job.id));
         }
+        if let Some(effects) = &job.generation_effects { effects.validate()?; }
         for shift in [job.video_sigma_shift, job.audio_sigma_shift].into_iter().flatten() {
             if !shift.is_finite() || shift < f32::from_bits(1) as f64 || shift > f32::MAX as f64 {
                 return Err(format!("Scene '{}' sigma shifts must be finite, positive float32 values.", job.id));
