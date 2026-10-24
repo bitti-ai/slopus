@@ -127,6 +127,8 @@ pub struct ImageEditRequest {
 pub struct ImageEditStep {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mask_polygon: Option<Vec<crate::image_mask::MaskPoint>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask_contours: Option<Vec<Vec<crate::image_mask::MaskPoint>>>,
     pub prompt: String,
     pub x: i32,
     pub y: i32,

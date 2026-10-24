@@ -76,7 +76,7 @@ it("offers MOSS for new images and disables editing and reference templates", ()
   initial.imageScene = { ...createImageEditScene(source, initial.imageScene), outputAssetId: source.id };
   setup(initial);
   expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
-  expect(screen.getByRole("radio", { name: "Draw edit" })).toBeDisabled();
+  expect(screen.getByRole("radio", { name: "Edit Box" })).toBeDisabled();
   expect(screen.getByRole("status")).toHaveTextContent("MOSS Image does not support image editing");
   fireEvent.click(screen.getByRole("button", { name: "Template" }));
   expect(screen.getByRole("menuitem", { name: "Zoom" })).toBeDisabled();
@@ -455,7 +455,7 @@ it("adds image files in edit mode and saves whole-image and drawn edits with sep
   for (const key of ["o", "t", "g"]) fireEvent.keyDown(canvas, { key });
   expect(screen.getByRole("radio", { name: "Select" })).toHaveAttribute("aria-checked", "true");
   fireEvent.keyDown(canvas, { key: "e" });
-  expect(screen.getByRole("radio", { name: "Draw edit" })).toHaveAttribute("aria-checked", "true");
+  expect(screen.getByRole("radio", { name: "Edit Box" })).toHaveAttribute("aria-checked", "true");
   pointer("pointerDown", 100, 80); pointer("pointerMove", 400, 320); pointer("pointerUp", 400, 320);
   expect(current().imageScene!.nodes[1]).toMatchObject({ name: "Edit", box: { x: 100, y: 100, width: 300, height: 300 } });
   expect(screen.queryByText("Placement (0–1000)")).not.toBeInTheDocument();
@@ -492,7 +492,7 @@ it("starts an image root from the thumbnail Edit menu with edit tools and no typ
   expect(screen.queryByLabelText("Prompt (high-level description)")).not.toBeInTheDocument();
   expect(screen.queryByRole("combobox", { name: "Type" })).not.toBeInTheDocument();
   expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
-  expect(within(screen.getByRole("radiogroup", { name: "Canvas tool" })).getAllByRole("radio").map((tool) => tool.getAttribute("aria-label"))).toEqual(["Select", "Draw edit", "Lasso"]);
+  expect(within(screen.getByRole("radiogroup", { name: "Canvas tool" })).getAllByRole("radio").map((tool) => tool.getAttribute("aria-label"))).toEqual(["Select", "Edit Box", "Lasso"]);
   const draft = screen.getByRole("button", { name: "View Editing Saved" });
   expect(draft).toHaveAttribute("aria-pressed", "true");
   fireEvent.contextMenu(screen.getByRole("button", { name: "Image" }));
@@ -1173,7 +1173,7 @@ it("draws a lasso, edits its prompt, moves its outline, and saves it independent
   expect(lasso).toMatchObject({ name: "Lasso", box: { x: 100, y: 100, width: 300, height: 300 }, lasso: [{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 0, y: 1000 }] });
   typePrompt(screen.getByLabelText("Edit prompt"), "Add a red flower");
   fireEvent.click(screen.getByRole("button", { name: "Image" }));
-  const outline = canvas.querySelector("polygon[data-node]")!;
+  const outline = canvas.querySelector("path[data-node]")!;
   pointer("pointerDown", 150, 120, outline); pointer("pointerMove", 250, 200); pointer("pointerUp", 250, 200);
   expect(current().imageScene!.nodes[1]).toMatchObject({ box: { x: 200, y: 200, width: 300, height: 300 }, lasso: lasso.lasso, description: "Add a red flower" });
   expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Add a red flower");
@@ -1210,4 +1210,51 @@ it.each(["queued", "generating", "encoding"] as const)("keeps the edit source vi
   await waitFor(() => expect(document.querySelector(".image-frame img")).toHaveAttribute("src", "blob:media/result.png"));
   expect(screen.queryByRole("progressbar", { name: "Image generation progress" })).not.toBeInTheDocument();
   expect(completed.assets[0]).toEqual(source);
+});
+
+it("combines and subtracts lassos using release-time modifiers and shows matching cursors", () => {
+  const initial = parseProjectConfig(fixture);
+  initial.imageScene = createImageEditScene({ name: "Source", relativePath: "media/source.png", width: 1000, height: 1000 });
+  const current = setup(initial);
+  const canvas = screen.getByLabelText("Image placement canvas");
+  Object.defineProperty(canvas, "setPointerCapture", { value: vi.fn() });
+  Object.defineProperty(canvas, "getBoundingClientRect", { value: () => ({ left: 0, top: 0, width: 1000, height: 1000 }) });
+  const pointer = (type: "pointerDown" | "pointerMove" | "pointerUp", x: number, y: number, ctrlKey = false, altKey = false) => {
+    const event = createEvent[type](canvas);
+    Object.defineProperties(event, { button: { value: 0 }, pointerId: { value: 1 }, clientX: { value: x }, clientY: { value: y }, ctrlKey: { value: ctrlKey }, altKey: { value: altKey } });
+    fireEvent(canvas, event);
+  };
+  const rectangle = (x: number, y: number, width: number, height: number, modifier?: "Control" | "Alt") => {
+    fireEvent.click(screen.getByRole("radio", { name: "Lasso" }));
+    pointer("pointerDown", x, y); pointer("pointerMove", x + width, y); pointer("pointerMove", x + width, y + height);
+    if (modifier) fireEvent.keyDown(window, { key: modifier, ctrlKey: modifier === "Control", altKey: modifier === "Alt" });
+    pointer("pointerUp", x, y + height, modifier === "Control", modifier === "Alt");
+  };
+  rectangle(100, 100, 300, 300);
+  const originalId = current().imageScene!.nodes[1].id;
+  typePrompt(screen.getByLabelText("Edit prompt"), "Red flower");
+  rectangle(300, 100, 300, 300, "Control");
+  expect(current().imageScene!.nodes).toHaveLength(2);
+  expect(current().imageScene!.nodes[1]).toMatchObject({ id: originalId, description: "Red flower", box: { x: 100, y: 100, width: 500, height: 300 } });
+  expect(canvas).toHaveClass("lasso-add");
+  fireEvent.keyUp(window, { key: "Control", ctrlKey: false });
+  expect(canvas).not.toHaveClass("lasso-add");
+  rectangle(200, 200, 100, 100, "Alt");
+  expect(canvas).toHaveClass("lasso-subtract");
+  expect(current().imageScene!.nodes[1].lassoContours).toHaveLength(1);
+  expect(canvas.querySelector("path[data-node]")!.getAttribute("d")!.match(/M/g)).toHaveLength(2);
+  const withHole = current().imageScene;
+  fireEvent.keyUp(window, { key: "Alt", altKey: false });
+  rectangle(800, 800, 100, 100, "Alt");
+  expect(current().imageScene).toEqual(withHole);
+  fireEvent.keyUp(window, { key: "Alt", altKey: false });
+  undoImageEdit();
+  expect(current().imageScene!.nodes[1].lassoContours).toBeUndefined();
+  fireEvent.keyDown(screen.getByRole("tree", { name: "Image nodes" }), { key: "y", code: "KeyY", ctrlKey: true });
+  expect(current().imageScene!.nodes[1].lassoContours).toHaveLength(1);
+  rectangle(800, 800, 100, 100, "Control");
+  expect(current().imageScene!.nodes).toHaveLength(3);
+  fireEvent.blur(window);
+  expect(canvas).not.toHaveClass("lasso-add");
+  expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).imageScene).toEqual(current().imageScene);
 });

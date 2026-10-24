@@ -15,6 +15,8 @@ export const imageNodeSchema = z.object({
   name: z.string().min(1).max(120), description: z.string(), text: z.string(),
   referenceIds: z.array(z.string().min(1)).max(100).optional(),
   lasso: imageLassoSchema.optional(),
+  /** Additional contours, including holes and disconnected pieces; filled even-odd. */
+  lassoContours: z.array(imageLassoSchema).min(1).max(255).optional(),
   box: boxSchema.nullable(), colors: z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/)).max(16),
 });
 export const imageSourceSchema = z.object({
@@ -38,7 +40,8 @@ export const imageSceneSchema = z.object({
   const ids = new Map(scene.nodes.map((node) => [node.id, node]));
   const roots = scene.nodes.filter((node) => node.kind === "root");
   const invalid = ids.size !== scene.nodes.length || roots.length !== 1 || roots[0]?.parentId !== null || scene.nodes.some((node) => {
-    if (node.lasso && (!node.box || node.kind !== "object")) return true;
+    if (node.lassoContours && !node.lasso) return true;
+    if (node.lasso && (!node.box || node.kind !== "object" || node.lasso.length + (node.lassoContours ?? []).reduce((sum, contour) => sum + contour.length, 0) > 8192)) return true;
     if (node.kind === "root") return false;
     const seen = new Set([node.id]);
     let parent = node.parentId;
@@ -87,6 +90,13 @@ export function addImageNode(scene: ImageScene, parentId: string, kind: Exclude<
 export function imageLassoPoints(node: Pick<ImageNode, "box" | "lasso">, box = node.box): ImagePoint[] {
   return box && node.lasso ? node.lasso.map((point) => ({ x: box.x + point.x * box.width / 1000, y: box.y + point.y * box.height / 1000 })) : [];
 }
+
+/** Contours share the same placement box so holes move with their outline. */
+export function imageLassoContours(node: Pick<ImageNode, "box" | "lasso" | "lassoContours">, box = node.box): ImagePoint[][] {
+  return node.lasso ? [node.lasso, ...(node.lassoContours ?? [])].map((lasso) => imageLassoPoints({ box, lasso })) : [];
+}
+export const imageLassoPath = (node: ImageNode, box = node.box) => imageLassoContours(node, box)
+  .map((points) => `M${points.map(({ x, y }) => `${x},${y}`).join("L")}Z`).join(" ");
 
 /** Keep the sampled outline bounded without changing corners of short strokes. */
 export function simplifyImageLasso(points: ImagePoint[], tolerance = 1): ImagePoint[] {

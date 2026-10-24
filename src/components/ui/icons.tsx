@@ -78,6 +78,7 @@ export { Save16Regular as Save16 } from "@fluentui/react-icons/headless/svg/save
 export { ScanDash16Regular as SafeArea16, ScanDash16Filled as SafeArea16Filled } from "@fluentui/react-icons/headless/svg/scan-dash";
 export { Search16Regular as Search16, Search32Regular as Search32 } from "@fluentui/react-icons/headless/svg/search";
 export { SelectObject16Regular as Boxes16, SelectObject16Filled as Boxes16Filled } from "@fluentui/react-icons/headless/svg/select-object";
+export { Square16Regular as EditBox16 } from "@fluentui/react-icons/headless/svg/square";
 export { Send16Regular as Send16 } from "@fluentui/react-icons/headless/svg/send";
 export { Server16Regular as Worker16, Server16Filled as Worker16Filled, Server20Regular as Worker20 } from "@fluentui/react-icons/headless/svg/server";
 export { Settings16Regular as Settings16 } from "@fluentui/react-icons/headless/svg/settings";

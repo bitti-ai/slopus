@@ -1,9 +1,11 @@
 import { activeGenerationEffects } from "../../lib/generationEffects";
 import { GenerationEffects } from "./GenerationEffects";
+import { applyLassoStroke } from "../../lib/imageLasso";
+import { EditBox16 } from "../ui/icons";
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from "react";
 import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Copy16, Cube16, Cube16Filled, Cursor16, Cursor16Filled, Delete14, Delete16, Edit16, Film16, FolderAdd16, FolderOpen16, Group16, Group16Filled, Image16, Image32, Lasso16, Paste16, References16, Rename16, Sparkle16, Stop14, Text16, Text16Filled } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
-import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, imageLassoPoints, imageLassoSchema, simplifyImageLasso, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource, type ImagePoint } from "../../lib/imageScene";
+import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, imageLassoPath, imageLassoSchema, simplifyImageLasso, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource, type ImagePoint } from "../../lib/imageScene";
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt, imageEditOutputSize, imageEditSize } from "../../lib/imageEditing";
 import { imageSettings } from "../../lib/imageSettings";
 import { outputDimensions } from "../../lib/export";
@@ -129,6 +131,14 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const [panning, setPanning] = useState(false);
   const [draftBox, setDraftBox] = useState<ImageBox | null>(null);
   const [draftLasso, setDraftLasso] = useState<ImagePoint[] | null>(null);
+  const [lassoModifier, setLassoModifier] = useState<"" | "add" | "subtract">("");
+  const updateLassoModifier = (event: { altKey: boolean; ctrlKey: boolean }) => setLassoModifier(event.altKey ? "subtract" : event.ctrlKey ? "add" : "");
+  useEffect(() => {
+    if (drawKind !== "lasso") { setLassoModifier(""); return; }
+    const reset = () => setLassoModifier("");
+    window.addEventListener("keydown", updateLassoModifier); window.addEventListener("keyup", updateLassoModifier); window.addEventListener("blur", reset);
+    return () => { window.removeEventListener("keydown", updateLassoModifier); window.removeEventListener("keyup", updateLassoModifier); window.removeEventListener("blur", reset); };
+  }, [drawKind]);
   const undo = useRef<ImageScene[]>([]);
   const redo = useRef<ImageScene[]>([]);
   const [, historyChanged] = useState(0);
@@ -208,11 +218,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   };
   const patchNode = (patch: Partial<ImageNode>) => commit({ ...scene, nodes: scene.nodes.map((node) => node.id === selected.id ? { ...node, ...patch } : node) });
   const insertParent = selected.kind === "object" || selected.kind === "text" ? selected.parentId ?? root.id : selected.id;
-  const add = (kind: Exclude<ImageNode["kind"], "root">, box?: ImageBox, lasso?: ImagePoint[]) => {
+  const add = (kind: Exclude<ImageNode["kind"], "root">, box?: ImageBox) => {
     if (imageRoot && editingBlocked) return;
     const parent = imageRoot ? root.id : insertParent;
     const next = addImageNode(scene, parent, imageRoot ? "object" : kind, box);
-    if (imageRoot) Object.assign(next.nodes.at(-1)!, { name: lasso ? "Lasso" : "Edit", ...(lasso ? { lasso } : {}) });
+    if (imageRoot) Object.assign(next.nodes.at(-1)!, { name: "Edit" });
     commit(next); setSelection(next.nodes.at(-1)!.id);
     setCollapsed((current) => { const next = new Set(current); next.delete(parent); return next; });
   };
@@ -362,6 +372,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     event.currentTarget.setPointerCapture(event.pointerId);
   };
   const pointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (drawKind === "lasso") updateLassoModifier(event);
     const start = pointer.current; if (!start) return;
     const at = point(event);
     if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return;
@@ -388,8 +399,13 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       const x = Math.min(...points.map((point) => point.x)), y = Math.min(...points.map((point) => point.y));
       const width = Math.max(...points.map((point) => point.x)) - x, height = Math.max(...points.map((point) => point.y)) - y;
       if (imageLassoSchema.safeParse(points).success && width >= 5 && height >= 5) {
-        add("object", { x, y, width, height }, points.map((point) => ({ x: Math.max(0, Math.min(1000, (point.x - x) / width * 1000)), y: Math.max(0, Math.min(1000, (point.y - y) / height * 1000)) })));
-        setDrawKind(null);
+        attempt(() => {
+          const mode = event.altKey ? "subtract" : event.ctrlKey ? "add" : "new";
+          const result = applyLassoStroke(start.scene, points, mode, selected.id);
+          commit(result.scene); setSelection(result.id);
+          setCollapsed((current) => { const next = new Set(current); next.delete(root.id); return next; });
+          if (mode === "new") setDrawKind(null);
+        });
       }
     } else if (start?.box && start.box.width > 0 && start.box.height > 0) {
       if (start.id) commit(resizeImageNode(start.scene, start.id, start.box));
@@ -467,7 +483,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   /* Canvas tools: a radio group of icon toggles with one-letter keys. */
   const TOOLS = [
     { id: null, label: "Select", key: "V", icon: <Cursor16 />, onIcon: <Cursor16Filled /> },
-    ...(imageRoot ? [{ id: "object", label: "Draw edit", key: "E", icon: <Edit16 />, onIcon: <Edit16 /> },
+    ...(imageRoot ? [{ id: "object", label: "Edit Box", key: "E", icon: <EditBox16 />, onIcon: <EditBox16 /> },
       { id: "lasso", label: "Lasso", key: "L", icon: <Lasso16 />, onIcon: <Lasso16 /> }] as const : [
       { id: "object", label: "Draw object", key: "O", icon: <Cube16 />, onIcon: <Cube16Filled /> },
       { id: "text", label: "Draw text", key: "T", icon: <Text16 />, onIcon: <Text16Filled /> },
@@ -627,7 +643,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             aria-keyshortcuts={tool.key}
             tabIndex={drawKind === tool.id ? 0 : -1}
             className={`image-tool${drawKind === tool.id ? " image-tool--on" : ""}`}
-            {...tooltipProps(tool.label, tool.key)}
+            {...tooltipProps(tool.id === "lasso" ? "Lasso: Ctrl to combine, Alt to subtract" : tool.label, tool.key)}
             onClick={() => chooseTool(tool.id)}
           ><span aria-hidden="true">{drawKind === tool.id ? tool.onIcon : tool.icon}</span></button>)}
         </div>
@@ -735,10 +751,10 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div className="image-frame" style={{ "--image-ratio": width / height, "--image-zoom": view.zoom, "--image-pan-x": `${view.x}px`, "--image-pan-y": `${view.y}px` } as CSSProperties}>
         {active && output?.imageDraft && !(imageRoot && scene.sourceImage) ? <div className="image-empty" role="status"><Image32 aria-hidden="true" /><strong>{work.status === "queued" ? "Queued" : "Generating"}</strong><span>The generated image will appear here.</span></div> : showResult ? <ReferenceImage key={output!.id} folderPath={folderPath} relativePath={output!.relativePath} sourcePath={output!.sourcePath} alt={output!.name} /> : imageRoot && scene.sourceImage ? <ReferenceImage folderPath={folderPath} relativePath={scene.sourceImage.relativePath} alt={scene.sourceImage.name} /> : output && !imageRoot && (output.relativePath || output.sourcePath) ? <ReferenceImage key={output.id} folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} onMeasured={!output.imageGeneration ? (size) => measureImportedImage(output.id, size) : undefined} /> : <div className="image-empty"><Image32 aria-hidden="true" /><strong>{templateSnapshot ? output!.name : imageRoot ? "Add an image to edit" : "Compose your image"}</strong><span>{templateSnapshot ? active ? "The generated image will appear here." : "No generated image yet." : imageRoot ? "Choose Add image file in the image bar menu, then enter an edit prompt." : "Add objects, text and groups, then describe them in the inspector."}</span></div>}
-        <svg className={`image-overlay ${drawKind ? "drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Image placement canvas" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { pointer.current = null; setDraftBox(null); setDraftLasso(null); }}>
+        <svg className={`image-overlay ${drawKind ? "drawing" : ""} ${drawKind === "lasso" && lassoModifier ? `lasso-${lassoModifier}` : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Image placement canvas" onPointerEnter={(event) => { if (drawKind === "lasso") updateLassoModifier(event); }} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { pointer.current = null; setDraftBox(null); setDraftLasso(null); }}>
           {boxes && scene.nodes.filter((node) => node.box).map((node) => {
             const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!;
-            return <g key={node.id} className={selected.id === node.id ? "selected" : ""}>{node.lasso ? <polygon data-node={node.id} points={imageLassoPoints(node, box).map(({ x, y }) => `${x},${y}`).join(" ")} fillRule="evenodd" vectorEffect="non-scaling-stroke" /> : <rect data-node={node.id} x={box.x} y={box.y} width={box.width} height={box.height} vectorEffect="non-scaling-stroke" />}{selected.id === node.id && !node.lasso && <rect className="image-box-handle" data-node={node.id} data-resize="true" x={box.x + box.width - 16} y={box.y + box.height - 16} width="16" height="16" />}</g>;
+            return <g key={node.id} className={selected.id === node.id ? "selected" : ""}>{node.lasso ? <path data-node={node.id} d={imageLassoPath(node, box)} fillRule="evenodd" vectorEffect="non-scaling-stroke" /> : <rect data-node={node.id} x={box.x} y={box.y} width={box.width} height={box.height} vectorEffect="non-scaling-stroke" />}{selected.id === node.id && !node.lasso && <rect className="image-box-handle" data-node={node.id} data-resize="true" x={box.x + box.width - 16} y={box.y + box.height - 16} width="16" height="16" />}</g>;
           })}
           {draftLasso && <polygon className="image-box-draft" points={draftLasso.map(({ x, y }) => `${x},${y}`).join(" ")} fillRule="evenodd" vectorEffect="non-scaling-stroke" />}
           {draftBox && !pointer.current?.id && <rect className="image-box-draft" {...{ x: draftBox.x, y: draftBox.y, width: draftBox.width, height: draftBox.height }} />}

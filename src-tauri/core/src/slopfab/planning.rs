@@ -86,6 +86,10 @@ pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Resul
             return Err("Image edits require one source image and nonempty boxes inside its dimensions.".into());
         }
         for step in &edit.edits {
+            if let Some(contours) = &step.mask_contours {
+                if step.invert_mask || step.mask_polygon.is_some() { return Err("Compound lasso masks cannot be combined with another mask.".into()); }
+                crate::image_mask::validate_contours(contours, request.canvas_width, request.canvas_height)?;
+            }
             if let Some(points) = &step.mask_polygon {
                 if step.invert_mask { return Err("Lasso masks cannot be combined with rectangular outpainting.".into()); }
                 crate::image_mask::validate_polygon(points, request.canvas_width, request.canvas_height)?;

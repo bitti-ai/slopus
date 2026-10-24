@@ -95,6 +95,10 @@ pub(super) fn configure_request(
         } else {
             api.set_image_edit_path(handle, request.image_edit_path.as_deref().ok_or("Image edit source has not been resolved.")?, bounds, strength, feather)?;
         }
+        if let Some(contours) = &step.mask_contours {
+            let mask = crate::image_mask::rasterize_contours(contours, request.canvas_width, request.canvas_height)?;
+            api.set_image_edit_mask(handle, &mask, request.canvas_width, request.canvas_height)?;
+        }
         if let Some(points) = &step.mask_polygon {
             let mask = crate::image_mask::rasterize_polygon(points, request.canvas_width, request.canvas_height)?;
             api.set_image_edit_mask(handle, &mask, request.canvas_width, request.canvas_height)?;

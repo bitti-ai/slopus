@@ -72,11 +72,13 @@
 .image-empty strong { color: var(--text-primary); font-size: var(--text-base); font-weight: var(--weight-semibold); }
 .image-empty span { max-width: 300px; font-size: var(--text-xs); }
 .image-overlay { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
-.image-overlay rect, .image-overlay polygon { fill: color-mix(in srgb, var(--accent) 8%, transparent); stroke: var(--accent); stroke-width: 1.5; cursor: move; }
-.image-overlay .selected > rect, .image-overlay .selected > polygon { stroke-width: 3; }
+.image-overlay rect, .image-overlay polygon, .image-overlay path { fill: color-mix(in srgb, var(--accent) 8%, transparent); stroke: var(--accent); stroke-width: 1.5; cursor: move; }
+.image-overlay .selected > rect, .image-overlay .selected > polygon, .image-overlay .selected > path { stroke-width: 3; }
 .image-box-label { position: absolute; margin: var(--space-1); padding: 0 var(--space-1); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--panel); font-size: var(--text-xs); pointer-events: none; }
 .image-overlay .image-box-handle { fill: var(--accent); cursor: nwse-resize; }
-.image-overlay.drawing, .image-overlay.drawing rect, .image-overlay.drawing polygon { cursor: crosshair; }
+.image-overlay.drawing, .image-overlay.drawing rect, .image-overlay.drawing polygon, .image-overlay.drawing path { cursor: crosshair; }
+.image-overlay.lasso-add, .image-overlay.lasso-add * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Cpath d='M16 6v7m0 6v7M6 16h7m6 0h7M25 21v8M21 25h8' fill='none' stroke='white' stroke-width='3'/%3E%3Cpath d='M16 6v7m0 6v7M6 16h7m6 0h7M25 21v8M21 25h8' fill='none' stroke='black'/%3E%3C/svg%3E") 16 16, crosshair; }
+.image-overlay.lasso-subtract, .image-overlay.lasso-subtract * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Cpath d='M16 6v7m0 6v7M6 16h7m6 0h7M21 25h8' fill='none' stroke='white' stroke-width='3'/%3E%3Cpath d='M16 6v7m0 6v7M6 16h7m6 0h7M21 25h8' fill='none' stroke='black'/%3E%3C/svg%3E") 16 16, crosshair; }
 .extend-frame { background: transparent; box-shadow: none; }
 .extend-source { position: absolute; }
 .extend-source img { width: 100%; height: 100%; object-fit: fill; }

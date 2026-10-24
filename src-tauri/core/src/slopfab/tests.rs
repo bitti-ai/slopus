@@ -138,7 +138,7 @@ fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
         canvas_width: 65, canvas_height: 41,
         image_edit_pixels: Some(std::sync::Arc::new(vec![100; 65 * 41 * 3])),
         image_edit: Some(types::ImageEditRequest { source_relative_path: "media/source.png".into(), edits: vec![
-            types::ImageEditStep { mask_polygon: None, prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31, feather: None, strength: None, invert_mask: false, outpaint_blend_overlap: None, outpaint_langevin_steps: None, reference_paths: None, refmods: None }
+            types::ImageEditStep { mask_contours: None, mask_polygon: None, prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31, feather: None, strength: None, invert_mask: false, outpaint_blend_overlap: None, outpaint_langevin_steps: None, reference_paths: None, refmods: None }
         ] }), ..Default::default()
     };
     validate_generation_controls(&request).unwrap();
@@ -1556,31 +1556,41 @@ fn moss_cfg_reaches_planning_and_generation_and_h3_rejects_it() {
 
 #[test]
 fn lasso_masks_survive_worker_serialization_and_reach_native_requests() {
-    let mut request: GenerationRequest = serde_json::from_value(serde_json::json!({
-        "jobId":"lasso", "prompt":"A flower", "stillImage":true, "frames":1, "steps":4, "seed":1,
-        "canvasWidth":64, "canvasHeight":32,
-        "imageEdit":{"sourceRelativePath":"source.png", "edits":[{
-            "prompt":"A flower", "x":0, "y":0, "width":32, "height":32, "feather":0,
-            "maskPolygon":[{"x":0,"y":0},{"x":32,"y":0},{"x":0,"y":32}]
-        }]}
-    })).unwrap();
-    let serialized = serde_json::to_value(&request).unwrap();
-    request = serde_json::from_value(serialized.clone()).unwrap();
-    assert_eq!(serde_json::to_value(&request).unwrap(), serialized);
-    validate_generation_controls(&request).unwrap();
-    request.image_edit_pixels = Some(std::sync::Arc::new(vec![100; 64 * 32 * 3]));
-    let configuration = Configuration::from_settings(&BTreeMap::new());
-    let api = ffi::Api::load(&configuration.dll_path).unwrap();
-    for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
-        let handle = RequestHandle::new(&api).unwrap();
-        configure_request(&api, &handle, &request, &configuration, ComputePlatform::Vulkan, purpose, &ReferenceVideos::default()).unwrap();
-        api.resolve(&handle).unwrap();
-        let description = api.describe(&handle).unwrap();
-        assert!(description.contains("mask"), "{description}");
+    for compound in [false, true] {
+        let mut request: GenerationRequest = serde_json::from_value(serde_json::json!({
+            "jobId":"lasso", "prompt":"A flower", "stillImage":true, "frames":1, "steps":4, "seed":1,
+            "canvasWidth":64, "canvasHeight":32,
+            "imageEdit":{"sourceRelativePath":"source.png", "edits":[{
+                "prompt":"A flower", "x":0, "y":0, "width":32, "height":32, "feather":0,
+                "maskPolygon":[{"x":0,"y":0},{"x":32,"y":0},{"x":0,"y":32}]
+            }]}
+        })).unwrap();
+        if compound {
+            let step = &mut request.image_edit.as_mut().unwrap().edits[0];
+            step.mask_contours = Some(vec![step.mask_polygon.take().unwrap(), vec![
+                crate::image_mask::MaskPoint { x: 2.0, y: 2.0 }, crate::image_mask::MaskPoint { x: 6.0, y: 2.0 }, crate::image_mask::MaskPoint { x: 2.0, y: 6.0 }
+            ]]);
+        }
+        let serialized = serde_json::to_value(&request).unwrap();
+        request = serde_json::from_value(serialized.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&request).unwrap(), serialized);
+        validate_generation_controls(&request).unwrap();
+        request.image_edit_pixels = Some(std::sync::Arc::new(vec![100; 64 * 32 * 3]));
+        let configuration = Configuration::from_settings(&BTreeMap::new());
+        let api = ffi::Api::load(&configuration.dll_path).unwrap();
+        for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+            let handle = RequestHandle::new(&api).unwrap();
+            configure_request(&api, &handle, &request, &configuration, ComputePlatform::Vulkan, purpose, &ReferenceVideos::default()).unwrap();
+            api.resolve(&handle).unwrap();
+            let description = api.describe(&handle).unwrap();
+            assert!(description.contains("mask"), "{description}");
+        }
+        request.image_edit.as_mut().unwrap().edits[0].invert_mask = true;
+        assert!(validate_generation_controls(&request).is_err());
+        request.image_edit.as_mut().unwrap().edits[0].invert_mask = false;
+        let step = &mut request.image_edit.as_mut().unwrap().edits[0];
+        if compound { step.mask_contours.as_mut().unwrap()[0][0].x = -1.0; }
+        else { step.mask_polygon.as_mut().unwrap()[0].x = -1.0; }
+        assert!(validate_generation_controls(&request).is_err());
     }
-    request.image_edit.as_mut().unwrap().edits[0].invert_mask = true;
-    assert!(validate_generation_controls(&request).is_err());
-    request.image_edit.as_mut().unwrap().edits[0].invert_mask = false;
-    request.image_edit.as_mut().unwrap().edits[0].mask_polygon.as_mut().unwrap()[0].x = -1.0;
-    assert!(validate_generation_controls(&request).is_err());
 }

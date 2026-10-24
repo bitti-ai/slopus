@@ -585,13 +585,14 @@ describe("image generation work", () => {
     expect(session.getSnapshot().config.assets.find((asset) => asset.id === work.id)?.parentAssetId).toBe("chosen");
   });
 
-  it("submits whole-image and local edits with separate reference pictures and refmods", async () => {
+  it.each([false, true])("submits whole-image and local edits with separate references (compound mask: %s)", async (compound) => {
     const { queue } = setup();
     const record = imageProject();
     let scene = createImageEditScene({ name: "Source", relativePath: "media/generated/source.jpg", width: 101, height: 77 });
     scene.nodes[0].description = "Make the light warmer like @[ref:Lighting]";
     scene = addImageNode(scene, "image-root", "object");
     Object.assign(scene.nodes[1], { name: "Lasso", description: "Add a red @[ref:Balloon]", lasso: [{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 0, y: 1000 }] });
+    if (compound) scene.nodes[1].lassoContours = [[{ x: 250, y: 250 }, { x: 500, y: 250 }, { x: 250, y: 500 }]];
     record.config.imageScene = scene;
     record.config.references = ["Lighting", "Balloon"].map((name) => ({ id: name, name, kind: "image", description: name,
       relativePath: `references/${name}.png`, intendedUse: [], createdAt: record.config.createdAt,
@@ -604,7 +605,8 @@ describe("image generation work", () => {
     const steps = request.imageEdit!.edits;
     expect(steps).toHaveLength(2);
     expect(steps[0]).toMatchObject({ x: 0, y: 0, width: 96, height: 64, feather: 0 });
-    expect(steps[1]).toMatchObject({ feather: 0, maskPolygon: [{ x: 24, y: 16 }, { x: 72, y: 16 }, { x: 24, y: 48 }] });
+    const outer = [{ x: 24, y: 16 }, { x: 72, y: 16 }, { x: 24, y: 48 }];
+    expect(steps[1]).toMatchObject({ feather: 0, ...(compound ? { maskContours: [outer, [{ x: 36, y: 24 }, { x: 48, y: 24 }, { x: 36, y: 32 }]] } : { maskPolygon: outer }) });
     for (const [index, name] of ["Lighting", "Balloon"].entries()) {
       expect(steps[index].referencePaths).toEqual(["C:/Image/media/generated/source.jpg", `C:/Image/references/${name}.png`]);
       expect(steps[index].refmods).toEqual([{ path: `C:/Image/references/${name}.safetensors`, strength: 0.75, copies: 2 }]);

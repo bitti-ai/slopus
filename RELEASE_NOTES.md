@@ -24,6 +24,8 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## Fixes and improvements
 
+- Renamed Draw edit to Edit Box with a box icon. Hold Ctrl when releasing a lasso stroke to combine overlapping areas, or Alt to subtract. Cursor indicators show the active operation; holes and split areas persist in saved projects and generation masks.
+
 - Lasso selections can be moved but not scaled. Image edits keep the source visible during generation and display the edited result when complete.
 
 - Generation effects reuse VAE fingerprints between jobs, removing repeated full-file calibration checks for unchanged VAEs. Changed or replaced VAEs are verified again; saved calibrations remain reusable after restarting.

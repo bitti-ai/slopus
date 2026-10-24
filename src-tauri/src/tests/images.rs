@@ -33,7 +33,8 @@ fn image_editing_draft_survives_save_and_reopen() {
     snapshot["scene"]["outputSize"] = serde_json::json!({"width":128,"height":64});
     snapshot["scene"]["nodes"].as_array_mut().unwrap().push(serde_json::json!({
         "id":"lasso", "parentId":"image-root", "kind":"object", "name":"Lasso", "description":"A flower", "text":"", "colors":[],
-        "box":{"x":100,"y":200,"width":300,"height":400}, "lasso":[{"x":0,"y":0},{"x":1000,"y":0},{"x":0,"y":1000}]
+        "box":{"x":100,"y":200,"width":300,"height":400}, "lasso":[{"x":0,"y":0},{"x":1000,"y":0},{"x":0,"y":1000}],
+        "lassoContours":[[{"x":100,"y":100},{"x":200,"y":100},{"x":100,"y":200}]]
     }));
     config.assets.push(serde_json::from_value(serde_json::json!({
         "id":"draft", "kind":"image", "name":"Editing Source", "relativePath":"media/imported/source.png", "mimeType":"image/png",
