@@ -11,7 +11,7 @@
 .image-tree { display: flex; flex-direction: column; }
 .image-tree > .ui-pane-header, .image-inspector > .ui-item-header { flex-shrink: 0; }
 .image-tree > [role="tree"] { flex: 1; overflow: auto; padding: var(--space-1) 0; }
-.image-inspector { display: flex; flex-direction: column; }
+.image-inspector { display: flex; flex-direction: column; overflow: hidden; }
 .image-inspector > .inspector-actions { margin-top: auto; }
 .image-pane-button.icon-button { width: var(--control-sm); height: var(--control-sm); }
 
@@ -99,7 +99,8 @@
 /* --- Inspector -------------------------------------------------------------------
    Label + control pairs are PropRows; the free-text fields stay full width
    with a 12px label above. */
-.image-inspector__fields { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3) var(--space-3); }
+/* Only the fields scroll; the selected-item header and action footer stay visible. */
+.image-inspector__fields { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3) var(--space-3); }
 .image-inspector__area { display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
 .image-inspector__area textarea { width: 100%; height: auto; min-width: 0; padding: var(--space-2); font-weight: var(--weight-regular); line-height: var(--leading-normal); resize: vertical; }
 .image-inspector__caption { margin: 0; color: var(--text-muted); font-size: var(--text-xs); }

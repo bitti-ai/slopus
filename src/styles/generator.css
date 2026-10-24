@@ -20,6 +20,7 @@
   /* Floors on both sides: with the agent pane open in a 900px window the view
      is ~540px wide, and a fixed inspector squeezed the scene list to nothing. */
   grid-template-columns: minmax(280px, 1fr) auto minmax(280px, var(--pane-generator-inspector));
+  grid-template-rows: minmax(0, 1fr);
   background: var(--surface-pane);
 }
 
@@ -663,6 +664,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: var(--surface-pane);
 }
 
@@ -703,7 +705,7 @@
   opacity: 1;
 }
 
-/* The pane's scrolling middle. It takes what the head and the debug row
+/* The pane's scrolling middle. It takes what the header and action footer
    leave, and scrolls inside it. Its sections run edge to edge, the first one
    straight under the item header. */
 .panel-scroll {
