@@ -37,9 +37,8 @@ export function GenerationEffects({ value, onChange, supported, disabled = false
       <span className="clip-effect__value">{settings[field].toFixed(2)}</span>
     </PropRow>;
   };
-  return <PropSection title="Effects" persistKey="generation.effects" summary={present.length ? `${present.length}` : "None"}>
+  return <PropSection title="Effects" tooltip={supported ? "Applied during generation. The first use prepares a reusable calibration for your VAE." : "This model does not support generation effects. Bypass or remove existing effects to generate."} persistKey="generation.effects" summary={present.length ? `${present.length}` : "None"}>
     <div className="clip-effects generation-effects">
-      <p className="clip-effect__note">{supported ? "Applied during generation. The first use prepares a reusable calibration for your VAE." : "This model does not support generation effects. Bypass or remove existing effects to generate."}</p>
       {present.map(({ id, name }) => {
         const on = effects[id]?.enabled !== false;
         const inactive = locked || !on;
