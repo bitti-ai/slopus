@@ -3,6 +3,7 @@ import { Add20, ArrowDown16, ArrowUp16, Delete16, Download16, Lora20, Spinner16,
 import "../styles/loras.css";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { highestLoraStepOverride, loraSigmaShiftOverrides, isLoraStepOverride, loadLoras, saveLoras, subscribeLoras, type Lora, type TemplateLora } from "../lib/loras";
+import { generatorModel } from "../lib/generatorModels";
 import { MAX_GENERATION_STEPS } from "../lib/project";
 import { isTauri } from "../lib/persistence";
 import { chooseEnginePath } from "../lib/runtime";
@@ -16,8 +17,9 @@ function useLoras() {
   return loras;
 }
 
-export function LoraLibrary({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: string) => void }) {
-  const loras = useLoras();
+export function LoraLibrary({ modelType, onAdd, onEdit }: { modelType: string; onAdd: () => void; onEdit: (id: string) => void }) {
+  const loras = useLoras().filter((lora) => (lora.modelType ?? "minimax-h3") === modelType);
+  const supported = generatorModel(modelType).loras;
   const download = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
   const queuedDownloads = useSyncExternalStore(subscribeWeightDownloads, getQueuedWeightDownloads);
   const [error, setError] = useState<string | null>(null);
@@ -30,9 +32,9 @@ export function LoraLibrary({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id:
     return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
   }, []);
   return <SettingsGroup heading="LoRAs">
-    <SettingsCard icon={<Add20 />} header="Add a LoRA" description="Download adapters or add local files, then turn them on in a generator">
+    {supported ? <SettingsCard icon={<Add20 />} header="Add a LoRA" description="Download adapters or add local files, then turn them on in a generator">
       <button className="secondary-button" type="button" onClick={onAdd}>Add LoRA</button>
-    </SettingsCard>
+    </SettingsCard> : <p className="settings-caption">This model does not support LoRAs.</p>}
     <div className="settings-card-list" role="list" aria-label="LoRAs">
       {loras.map((lora) => {
         const active = download?.active && download.loraId === lora.id;
@@ -55,7 +57,7 @@ export function LoraLibrary({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id:
   </SettingsGroup>;
 }
 
-export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => void }) {
+export function LoraEditor({ loraId, modelType, onDone }: { loraId: string; modelType: string; onDone: () => void }) {
   const existing = loadLoras().find(({ id }) => id === loraId);
   const [name, setName] = useState(existing?.name ?? "");
   const [path, setPath] = useState(existing?.path ?? "");
@@ -91,7 +93,7 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
         await prepareLora({ id: loraId, name: name.trim(), path: path.trim() }, allowDownload);
       }
       const library = loadLoras();
-      const entry: Lora = { ...library.find(({ id }) => id === loraId), id: loraId, name: name.trim(), path: path.trim(), samplingPreset, stepOverride: !samplingPreset && override ? Number(steps) : undefined,
+      const entry: Lora = { ...library.find(({ id }) => id === loraId), id: loraId, name: name.trim(), modelType: existing ? existing.modelType ?? "minimax-h3" : modelType, path: path.trim(), samplingPreset, stepOverride: !samplingPreset && override ? Number(steps) : undefined,
         videoSigmaShiftOverride: !samplingPreset && videoShift !== "" ? Number(videoShift) : undefined,
         audioSigmaShiftOverride: !samplingPreset && audioShift !== "" ? Number(audioShift) : undefined,
         ...(path.trim() !== existing?.path ? { needsPreparation: undefined } : {}) };
@@ -126,14 +128,14 @@ export function LoraEditor({ loraId, onDone }: { loraId: string; onDone: () => v
   </ContentDialog>;
 }
 
-export function TemplateLorasEditor({ value, onChange }: { value: TemplateLora[]; onChange: (value: TemplateLora[]) => void }) {
+export function TemplateLorasEditor({ modelType, value, onChange }: { modelType: string; value: TemplateLora[]; onChange: (value: TemplateLora[]) => void }) {
   const library = useLoras();
   const active = value.filter((entry) => entry.enabled && entry.strength !== 0);
   const dmad = active.some((entry) => library.find(({ id }) => id === entry.loraId)?.samplingPreset === "dmad-4step");
   const stepOverride = highestLoraStepOverride(active
     .flatMap((entry) => library.filter(({ id }) => id === entry.loraId)));
   const shifts = loraSigmaShiftOverrides(active.flatMap((entry) => library.filter(({ id }) => id === entry.loraId)));
-  const available = library.filter((entry) => (entry.path || entry.url) && !value.some(({ loraId }) => loraId === entry.id));
+  const available = library.filter((entry) => (entry.modelType ?? "minimax-h3") === modelType && (entry.path || entry.url) && !value.some(({ loraId }) => loraId === entry.id));
   const update = (index: number, patch: Partial<TemplateLora>) => onChange(value.map((entry, i) => i === index ? { ...entry, ...patch } : entry));
   const move = (index: number, delta: number) => {
     const next = [...value];

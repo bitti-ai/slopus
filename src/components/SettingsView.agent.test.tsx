@@ -51,6 +51,7 @@ it("applies generator changes from settings without opening or saving a project"
       ? { ...template, name: "Local weights", paths: { ...template.paths, transformer: "D:/weights/model.safetensors" } } : template) } } as never;
   });
   render(<SettingsView onClose={vi.fn()} providers={providers} />);
+  fireEvent.click(screen.getByRole("button", { name: "MiniMax H3" }));
   fireEvent.click(screen.getByRole("button", { name: "Agent" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about settings" }), { target: { value: "Use my local model weights" } });
   fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));

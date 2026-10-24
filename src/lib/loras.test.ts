@@ -145,3 +145,15 @@ it.each([0, -1, Infinity, NaN, 1e39, 1e-50])("rejects invalid LoRA sigma shift %
   expect(() => saveLoras([{ id: "bad", name: "Bad", path: "D:/bad.safetensors", videoSigmaShiftOverride: shift }])).toThrow("Sigma shift");
   expect(() => saveLoras([{ id: "bad", name: "Bad", path: "D:/bad.safetensors", audioSigmaShiftOverride: shift }])).toThrow("Sigma shift");
 });
+
+
+it("preserves model ownership while accepting older H3 library entries", () => {
+  const entries = [
+    { id: "legacy", name: "Legacy H3", path: "D:/h3.safetensors" },
+    { id: "moss", name: "MOSS adapter", path: "D:/moss.safetensors", modelType: "moss" },
+  ];
+  saveLoras(entries);
+  expect(loadLoras().filter((entry) => entries.some(({ id }) => id === entry.id))).toEqual(entries);
+  saveLoras(loadLoras().map((entry) => ({ ...entry, path: entry.path.replace("D:/", "E:/") })));
+  expect(loadLoras().find(({ id }) => id === "moss")).toMatchObject({ modelType: "moss", path: "E:/moss.safetensors" });
+});

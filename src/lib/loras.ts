@@ -5,6 +5,8 @@ import { MAX_GENERATION_STEPS } from "./project";
 export interface Lora {
   id: string;
   name: string;
+  /** Older library entries are MiniMax H3 adapters. */
+  modelType?: string;
   path: string;
   url?: string;
   stepOverride?: number;
@@ -50,6 +52,7 @@ export function loadLoras(): Lora[] {
         || typeof entry.name !== "string" || !entry.name.trim() || typeof entry.path !== "string") return [];
       ids.add(entry.id);
       return [{ id: entry.id, name: entry.name, path: entry.path,
+        ...(typeof entry.modelType === "string" && entry.modelType.trim() ? { modelType: entry.modelType.trim() } : {}),
         ...(entry.samplingPreset === "dmad-4step" ? { samplingPreset: "dmad-4step" as const } : {}),
         ...(isSigmaShift(entry.videoSigmaShiftOverride) ? { videoSigmaShiftOverride: entry.videoSigmaShiftOverride } : {}),
         ...(isSigmaShift(entry.audioSigmaShiftOverride) ? { audioSigmaShiftOverride: entry.audioSigmaShiftOverride } : {}),

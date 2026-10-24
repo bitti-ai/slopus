@@ -281,7 +281,8 @@ const engineSeverity = (status: SlopfabStatus | null, desktop: boolean): InfoBar
    a 280px navigation pane with Back at its top, and a content column that
    reads like Windows Settings — a 28px title (a breadcrumb on sub-pages) over
    groups of one-setting-per-row cards. */
-export interface SettingsNavigation { templateId: string; loraId?: string }
+export interface SettingsNavigation { templateId: string; loraId?: string; otherWeightId?: string }
+const modelPageLabel = (model: string) => model === "other" ? "Other" : model === MOSS_MODEL_TYPE ? "MOSS" : GENERATOR_MODELS.find(({ value }) => value === model)?.label ?? model;
 
 export function SettingsView({ onClose, updates, initialTab = "engine", titleBarActions, navigation, providers = CHECKING_PROVIDERS }: {
   onClose: () => void; updates?: ReactNode; initialTab?: TabId;
@@ -319,13 +320,17 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
   const downloadState = useSyncExternalStore(subscribeWeightDownloads, getWeightDownloadState);
   const queuedDownloads = useSyncExternalStore(subscribeWeightDownloads, getQueuedWeightDownloads);
   const downloadPercent = downloadState ? weightDownloadProgress(downloadState) : 0;
+  const [modelPage, setModelPage] = useState<string | null>(null);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editingLoraId, setEditingLoraId] = useState<string | null>(null);
   useEffect(() => {
     if (!navigation) return;
     setTab("engine");
-    setEditingTemplateId(loadGeneratorTemplateSettings().templates.some((template) => template.id === navigation.templateId) ? navigation.templateId : null);
-    setEditingLoraId(navigation.loraId && loadLoras().some((lora) => lora.id === navigation.loraId) ? navigation.loraId : null);
+    const template = loadGeneratorTemplateSettings().templates.find((template) => template.id === navigation.templateId);
+    const lora = loadLoras().find((entry) => entry.id === navigation.loraId);
+    setModelPage(navigation.otherWeightId ? "other" : template?.modelType ?? (lora ? lora.modelType ?? "minimax-h3" : null));
+    setEditingTemplateId(template?.id ?? null);
+    setEditingLoraId(lora?.id ?? null);
   }, [navigation]);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [editingPath, setEditingPath] = useState<EnginePathId | null>(null);
@@ -342,8 +347,8 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
   const downloadedPathsKey = JSON.stringify(Object.values(selectedTemplate.sources ?? {}).flatMap((sources) => sources.map(({ downloadedPath }) => downloadedPath)));
   const downloading = downloadState?.active && downloadState.templateId === selectedTemplate.id;
   const generatorSections = [
-    { id: "generators", title: "Generators", templates: templateSettings.templates.filter((template) => !templateNeedsDownload(template)) },
-    { id: "downloadable-generators", title: "Available to download", templates: templateSettings.templates.filter(templateNeedsDownload) },
+    { id: "generators", title: "Generators", templates: templateSettings.templates.filter((template) => template.modelType === modelPage && !templateNeedsDownload(template)) },
+    { id: "downloadable-generators", title: "Available to download", templates: templateSettings.templates.filter((template) => template.modelType === modelPage && templateNeedsDownload(template)) },
   ];
 
   useEffect(() => { setShowAdvancedOptions(false); setEditingPath(null); setPathMenu(null); }, [editingTemplateId]);
@@ -400,7 +405,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
   /* A new page opens at its top; a sub-page takes focus on its title (or on
      the name of a generator that was just created), and going back returns
      focus to the card that opened it. */
-  useEffect(() => { if (body.current) body.current.scrollTop = 0; }, [tab, editingTemplateId]);
+  useEffect(() => { if (body.current) body.current.scrollTop = 0; }, [tab, editingTemplateId, modelPage]);
   useEffect(() => {
     if (editingTemplateId) {
       if (focusName.current) { focusName.current = false; nameField.current?.focus(); nameField.current?.select(); }
@@ -409,11 +414,14 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     }
     const ref = returnFocus.current;
     returnFocus.current = null;
-    if (ref) [...(body.current?.querySelectorAll<HTMLElement>("[data-open-ref]") ?? [])].find((element) => element.dataset.openRef === ref)?.focus();
-  }, [editingTemplateId]);
+    const opener = ref && [...(body.current?.querySelectorAll<HTMLElement>("[data-open-ref]") ?? [])].find((element) => element.dataset.openRef === ref);
+    if (opener) opener.focus();
+    else if (modelPage) subpageHeading.current?.focus();
+  }, [editingTemplateId, modelPage]);
 
-  const openTemplate = (id: string) => { returnFocus.current = `template:${id}`; setEditingTemplateId(id); };
-  const leaveTemplate = () => setEditingTemplateId(null);
+  const openTemplate = (id: string) => { returnFocus.current = `template:${id}`; setModelPage(templateSettings.templates.find((template) => template.id === id)!.modelType); setEditingTemplateId(id); };
+  const leaveTemplate = () => { setModelPage(editingTemplate?.modelType ?? modelPage); setEditingTemplateId(null); };
+  const leaveModel = () => { returnFocus.current = `model:${editingTemplate?.modelType ?? modelPage}`; setEditingTemplateId(null); setModelPage(null); };
 
   const browse = async (field: EnginePathField) => {
     setError(null);
@@ -453,7 +461,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
   };
 
   const addTemplate = () => {
-    const created = createGeneratorTemplate(`Generator ${templateSettings.templates.length + 1}`);
+    const created = createGeneratorTemplate(`Generator ${templateSettings.templates.length + 1}`, modelPage ?? undefined);
     setTemplateSettings((current) => {
       const next = { ...current, templates: [...current.templates, created] };
       saveGeneratorTemplateSettings(next);
@@ -494,8 +502,9 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     setTab(id);
     setEditingTemplateId(null);
     setEditingLoraId(null);
+    setModelPage(null);
   };
-  const back = () => { if (editingTemplateId) leaveTemplate(); else onClose(); };
+  const back = () => { if (editingTemplateId) leaveTemplate(); else if (tab === "engine" && modelPage) leaveModel(); else onClose(); };
 
   const downloadStatus = downloadState && <DownloadStatus state={downloadState} onError={setError}
     templateName={templateSettings.templates.find((template) => template.id === downloadState.templateId)?.name} />;
@@ -614,7 +623,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     </SettingsGroup>
 
     <AdditionalSafetensorsEditor key={selectedTemplate.id} value={selectedTemplate.additionalSafetensors ?? []} disabled={Boolean(downloading)} animate={selectedTemplate.mode === "animate"} onChange={(additionalSafetensors) => updateTemplate({ additionalSafetensors })} />
-    {generatorModel(selectedTemplate.modelType).loras && <TemplateLorasEditor value={selectedTemplate.loras ?? []} onChange={(loras) => updateTemplate({ loras })} />}
+    {generatorModel(selectedTemplate.modelType).loras && <TemplateLorasEditor modelType={selectedTemplate.modelType} value={selectedTemplate.loras ?? []} onChange={(loras) => updateTemplate({ loras })} />}
 
     <SettingsGroup heading="Advanced">
       <SettingsCard icon={<Options20 />} header="Show advanced options" description="Per-GPU download sources for each model file">
@@ -629,16 +638,21 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
 
   const generatorList = <>
     {downloadStatus}
-    <ReferenceIconSetting templates={templateSettings} />
+    {modelPage === null ? <>
+      <ReferenceIconSetting templates={templateSettings} />
+      <div className="settings-card-list" role="list" aria-label="Generator models">
+        {[...new Set([...GENERATOR_MODELS.map(({ value }) => value), ...templateSettings.templates.map(({ modelType }) => modelType)]), "other"].map((model) =>
+          <OpenableCard key={model} icon={model === "other" ? <ModelFile20 /> : model === MOSS_MODEL_TYPE ? <Image20 /> : <Video20 />} header={modelPageLabel(model)}
+            openLabel={modelPageLabel(model)} openRef={`model:${model}`} description={model === "other" ? "Other weights" : "Generators and LoRAs"} onOpen={() => setModelPage(model)} />)}
+      </div>
+    </> : modelPage === "other" ? <OtherWeightsSettings desktop={desktop} /> : <>
     {generatorSections.filter((section) => section.id === "generators" || section.templates.length > 0).map((section) => <SettingsGroup key={section.id} heading={section.title}>
       {section.id === "generators" && <GeneratorSharing templates={[]}>{({ importButton }) => <SettingsCard icon={<Add20 />} header="Add a generator" description="Choose the generator used by default, or open one to edit its model setup">
         {importButton}
         <button type="button" className="secondary-button" onClick={addTemplate}>New generator</button>
       </SettingsCard>}</GeneratorSharing>}
       <div className="settings-card-list" role="list" aria-label={section.title}>
-        {[...new Set(section.templates.map((template) => template.modelType))].map((modelType) => <div key={modelType} className="settings-card-list" role="group" aria-label={GENERATOR_MODELS.find((model) => model.value === modelType)?.label ?? modelType}>
-        <h3 className="settings-caption">{GENERATOR_MODELS.find((model) => model.value === modelType)?.label ?? modelType}</h3>
-        {section.templates.filter((template) => template.modelType === modelType).map((template) => {
+        {section.templates.map((template) => {
           const needsDownload = templateNeedsDownload(template);
           const isDefault = template.id === templateSettings.defaultTemplateId;
           const active = downloadState?.active && downloadState.templateId === template.id;
@@ -659,11 +673,11 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
                   aria-label={weights ? `Remove downloaded weights for ${template.name}` : `Remove generator ${template.name}`}
                   data-tooltip={weights ? "Remove weights and keep the template" : "Remove generator"}><Delete16 /></button>
               </>} />;
-        })}</div>)}
+        })}
       </div>
     </SettingsGroup>)}
-    <LoraLibrary onAdd={() => setEditingLoraId(`lora-${crypto.randomUUID()}`)} onEdit={setEditingLoraId} />
-    <OtherWeightsSettings desktop={desktop} />
+    <LoraLibrary key={modelPage} modelType={modelPage} onAdd={() => setEditingLoraId(`lora-${crypto.randomUUID()}`)} onEdit={setEditingLoraId} />
+    </>}
   </>;
 
   const current = TABS.find((item) => item.id === tab)!;
@@ -720,12 +734,16 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
       </NavPane>
 
       <div className="settings-view__body" ref={body}>
-        <div className="settings-page" id={`settings-panel-${tab}`} aria-labelledby={editingTemplate ? "settings-subpage-heading" : "settings-page-heading"}>
-          {editingTemplate
+        <div className="settings-page" id={`settings-panel-${tab}`} aria-labelledby={editingTemplate || (tab === "engine" && modelPage) ? "settings-subpage-heading" : "settings-page-heading"}>
+          {tab === "engine" && (editingTemplate || modelPage)
             ? <nav className="settings-breadcrumb" aria-label="Breadcrumb">
-                <button type="button" className="settings-breadcrumb__link" onClick={leaveTemplate}>Generators</button>
+                <button type="button" className="settings-breadcrumb__link" onClick={leaveModel}>Generators</button>
                 <ChevronRight20 aria-hidden="true" className="settings-breadcrumb__separator" />
-                <h1 id="settings-subpage-heading" ref={subpageHeading} tabIndex={-1} aria-current="page">{editingTemplate.name || "Untitled generator"}</h1>
+                {editingTemplate && <>
+                  <button type="button" className="settings-breadcrumb__link" onClick={leaveTemplate}>{modelPageLabel(editingTemplate.modelType)}</button>
+                  <ChevronRight20 aria-hidden="true" className="settings-breadcrumb__separator" />
+                </>}
+                <h1 id="settings-subpage-heading" ref={subpageHeading} tabIndex={-1} aria-current="page">{editingTemplate ? editingTemplate.name || "Untitled generator" : modelPageLabel(modelPage!)}</h1>
               </nav>
             : <h1 id="settings-page-heading" className="settings-page__title">{current.label}</h1>}
 
@@ -753,7 +771,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
         }} />
     </aside>
     </div>
-    {editingLoraId && <LoraEditor key={editingLoraId} loraId={editingLoraId} onDone={() => setEditingLoraId(null)} />}
+    {editingLoraId && <LoraEditor key={editingLoraId} loraId={editingLoraId} modelType={modelPage ?? "minimax-h3"} onDone={() => setEditingLoraId(null)} />}
     </>
   );
 }

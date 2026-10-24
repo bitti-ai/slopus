@@ -38,6 +38,7 @@ it("imports from the Generators page and updates its list without downloading or
   vi.mocked(invoke).mockImplementation(async (command) => command === "import_slop_file" ? serializeGeneratorSlop([shared]) : null as never);
   const previous = loadGeneratorTemplateSettings();
   render(<SettingsView onClose={() => undefined} />);
+  fireEvent.click(screen.getByRole("button", { name: "MiniMax H3" }));
   fireEvent.click(screen.getByRole("button", { name: "Import" }));
   await screen.findByText("Added 1 generator template.");
   expect(screen.getByRole("button", { name: "Edit Shared generator generator" })).toBeTruthy();

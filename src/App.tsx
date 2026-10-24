@@ -218,7 +218,7 @@ function App() {
   const navigateFromQueue = (target: WorkQueueTarget) => {
     if (target.kind === "download") {
       openSettings();
-      setSettingsNavigation({ templateId: target.download.templateId, loraId: target.download.loraId });
+      setSettingsNavigation({ templateId: target.download.templateId, loraId: target.download.loraId, otherWeightId: target.download.otherWeightId });
       return;
     }
     const record = target.kind === "work" ? workQueue.projectRecord(target.item.projectKey)

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { middleEllipsis, SettingsView } from "./SettingsView";
 import { createGeneratorTemplate, mossImageTemplate, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings } from "../lib/settings";
 import { loadReferenceIconGeneratorId } from "../lib/referenceIconSettings";
-import { loadLoras } from "../lib/loras";
+import { loadLoras, saveLoras } from "../lib/loras";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -20,7 +20,11 @@ afterEach(() => {
   delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 });
 
-const open = () => render(<SettingsView onClose={() => undefined} />);
+const open = (model: string | null = "MiniMax H3") => {
+  const view = render(<SettingsView onClose={() => undefined} />);
+  if (model) fireEvent.click(screen.getByRole("button", { name: model }));
+  return view;
+};
 const tab = (name: string) => within(screen.getByRole("navigation", { name: "Settings sections" })).getByRole("button", { name: new RegExp(`^${name}`) });
 const editDefaultGenerator = () => fireEvent.click(screen.getByRole("button", { name: "Edit Default generator" }));
 const combo = (name: string) => screen.getByRole("combobox", { name });
@@ -69,9 +73,72 @@ describe("the settings page", () => {
 });
 
 describe("the settings screen", () => {
+  it("opens model-specific generators and LoRAs, and keeps Other weights on their own page", () => {
+    saveLoras([{ id: "future-adapter", name: "MOSS adapter", modelType: "moss", path: "D:/moss-adapter.safetensors" }]);
+    open(null);
+    const models = screen.getByRole("list", { name: "Generator models" });
+    expect(within(models).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["MiniMax H3", "MOSS", "Other"]);
+    expect(screen.queryByRole("button", { name: "Edit Default generator" })).toBeNull();
+    fireEvent.click(within(models).getByRole("button", { name: "MiniMax H3" }));
+    expect(screen.getByRole("button", { name: "Edit Default generator" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit TaoMate 3-Step LoRA" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Edit MOSS adapter LoRA" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit MOSS Image generator" })).toBeNull();
+    expect(screen.queryByRole("list", { name: "Other weights" })).toBeNull();
+    editDefaultGenerator();
+    fireEvent.click(combo("Add LoRA to generator"));
+    expect(screen.queryByRole("option", { name: "MOSS adapter" })).toBeNull();
+    fireEvent.keyDown(combo("Add LoRA to generator"), { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Generators" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "MiniMax H3" }));
+    fireEvent.click(screen.getByRole("button", { name: "MOSS" }));
+    expect(screen.getByRole("button", { name: "Edit MOSS Image generator" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit MOSS adapter LoRA" })).toBeTruthy();
+    expect(screen.getByText("This model does not support LoRAs.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add LoRA" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit TaoMate 3-Step LoRA" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit Default generator" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Generators" }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "MOSS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Other" }));
+    expect(screen.getByRole("list", { name: "Other weights" })).toBeTruthy();
+    for (const name of ["Real-ESRGAN", "SeedVR2"]) expect(screen.getByText(name)).toBeTruthy();
+    expect(screen.queryByRole("list", { name: "Generators" })).toBeNull();
+    expect(screen.queryByRole("list", { name: "LoRAs" })).toBeNull();
+  });
+
+  it("creates a generator for the selected model and follows model changes when returning", () => {
+    open("MOSS");
+    const defaultId = loadGeneratorTemplateSettings().defaultTemplateId;
+    fireEvent.click(screen.getByRole("button", { name: "New generator" }));
+    const name = (screen.getByLabelText("Generator name") as HTMLInputElement).value;
+    expect(loadGeneratorTemplateSettings().templates.find((template) => template.name === name)).toMatchObject({ modelType: "moss", attention: "flash2", defaultSteps: 50 });
+    expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe(defaultId);
+    fireEvent.click(combo("Generator model"));
+    fireEvent.click(screen.getByRole("option", { name: /^MiniMax H3/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("heading", { level: 1, name: "MiniMax H3" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: `Edit ${name} generator` })).toBeTruthy();
+  });
+
+  it("opens the model page when navigating from generator, LoRA and Other downloads", () => {
+    const props = { onClose: vi.fn() };
+    const view = render(<SettingsView {...props} navigation={{ templateId: "moss-image" }} />);
+    expect(combo("Generator model").getAttribute("data-value")).toBe("moss");
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("heading", { level: 1, name: "MOSS" })).toBeTruthy();
+    view.rerender(<SettingsView {...props} navigation={{ templateId: "lora:taomate-3step", loraId: "taomate-3step" }} />);
+    expect(screen.getByRole("dialog", { name: "Edit LoRA" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("heading", { level: 1, name: "MiniMax H3" })).toBeTruthy();
+    view.rerender(<SettingsView {...props} navigation={{ templateId: "other:seedvr2", otherWeightId: "seedvr2" }} />);
+    expect(screen.getByRole("heading", { level: 1, name: "Other" })).toBeTruthy();
+    expect(screen.getByRole("list", { name: "Other weights" })).toBeTruthy();
+  });
+
   it("groups MOSS under its model and edits its image-only weight setup", () => {
-    open();
-    expect(screen.getByRole("group", { name: "MOSS Image" })).toBeTruthy();
+    open("MOSS");
+    expect(screen.getByRole("heading", { level: 1, name: "MOSS" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Edit MOSS Image generator" }));
     expect(combo("Generator model").getAttribute("data-value")).toBe("moss");
     expect(screen.queryByRole("combobox", { name: "Generator mode" })).toBeNull();
@@ -97,7 +164,7 @@ describe("the settings screen", () => {
     expect((motion() as HTMLButtonElement).disabled).toBe(true);
     pick("Generator mode", "Text prompt");
     expect(motion().getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "Generators" }));
+    fireEvent.click(screen.getByRole("button", { name: "MiniMax H3" }));
     fireEvent.click(screen.getByRole("button", { name: "New generator" }));
     expect(motion().getAttribute("aria-checked")).toBe("false");
     view.unmount();
@@ -115,7 +182,7 @@ describe("the settings screen", () => {
     expect(optionsOf("Generator attention")).toEqual(["Exact attention", "Flash attention", "Sage attention", "Sol attention"]);
     pick("Generator attention", "Sol attention");
     expect(screen.getByText("Sol attention requires a CUDA GPU on the machine running generation.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Generators" }));
+    fireEvent.click(screen.getByRole("button", { name: "MiniMax H3" }));
     fireEvent.click(screen.getByRole("button", { name: "New generator" }));
     expect(combo("Generator attention").getAttribute("data-value")).toBe("sage2");
     view.unmount();
@@ -165,12 +232,12 @@ describe("the settings screen", () => {
 
   it("keeps the popup's saved icon choice without exposing confirmation in settings", () => {
     localStorage.setItem("slopus.reference-icon-automation.v1", "enabled");
-    const view = open();
+    const view = open(null);
     const automatic = () => toggle("Automatic reference icon generation");
     expect(automatic().getAttribute("aria-checked")).toBe("true");
     expect(screen.queryByRole("switch", { name: "Ask before automatic icon generation" })).toBeNull();
     view.unmount();
-    open();
+    open(null);
     expect(automatic().getAttribute("aria-checked")).toBe("true");
     expect(localStorage.getItem("slopus.reference-icon-automation.v1")).toBe("enabled");
     fireEvent.click(automatic());
@@ -304,7 +371,7 @@ describe("the settings screen", () => {
     expect(screen.queryByRole("button", { name: /Clear generator paths/ })).toBeNull();
     editDefaultGenerator();
     expect(screen.getByRole("button", { name: /Clear generator paths/ })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Generators" }));
+    fireEvent.click(screen.getByRole("button", { name: "MiniMax H3" }));
     expect(screen.queryByRole("button", { name: /Clear generator paths/ })).toBeNull();
     fireEvent.click(tab("Appearance"));
     expect(screen.queryByRole("button", { name: /Clear generator paths/ })).toBeNull();
@@ -313,11 +380,12 @@ describe("the settings screen", () => {
   it("edits generators on a sub-page with a breadcrumb and returns on Escape or Back", async () => {
     const onClose = vi.fn();
     render(<SettingsView onClose={onClose} />);
+    fireEvent.click(screen.getByRole("button", { name: "MiniMax H3" }));
     const opener = screen.getByRole("button", { name: "Edit Default generator" });
     opener.focus(); fireEvent.click(opener);
     expect(screen.queryByRole("dialog")).toBeNull();
     const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
-    expect(breadcrumb.textContent).toBe("GeneratorsDefault");
+    expect(breadcrumb.textContent).toBe("GeneratorsMiniMax H3Default");
     expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Default" }));
     // The navigation pane stays usable while a sub-page is open.
     expect(tab("Appearance")).toBeTruthy();
@@ -326,7 +394,7 @@ describe("the settings screen", () => {
     }
 
     fireEvent.keyDown(screen.getByLabelText("Generator name"), { key: "Escape" });
-    expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).toBeNull();
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" }).textContent).toBe("GeneratorsMiniMax H3");
     expect(onClose).not.toHaveBeenCalled();
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Edit Default generator" })));
 
@@ -335,12 +403,16 @@ describe("the settings screen", () => {
     expect(screen.queryByLabelText("Generator name")).toBeNull();
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "MiniMax H3" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("edits LoRAs in a content dialog and discards unsaved changes on Cancel or Escape", async () => {
     const onClose = vi.fn();
     render(<SettingsView onClose={onClose} />);
+    fireEvent.click(screen.getByRole("button", { name: "MiniMax H3" }));
     const opener = screen.getByRole("button", { name: "Edit TaoMate 3-Step LoRA" });
     opener.focus(); fireEvent.click(opener);
     const dialog = screen.getByRole("dialog", { name: "Edit LoRA" });
@@ -384,16 +456,16 @@ describe("the settings screen", () => {
     const first = createGeneratorTemplate("Video"), second = createGeneratorTemplate("Icons");
     const templates = { templates: [first], defaultTemplateId: first.id, catalogVersion: 9 };
     saveGeneratorTemplateSettings(templates);
-    const view = open();
+    const view = open(null);
     expect(combo("Reference icon generator").getAttribute("data-value")).toBe(first.id);
     view.unmount();
     saveGeneratorTemplateSettings({ ...templates, templates: [first, second] });
-    const reopened = open();
+    const reopened = open(null);
     pick("Reference icon generator", "Icons");
     expect(loadReferenceIconGeneratorId()).toBe(second.id);
     expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe(first.id);
     reopened.unmount();
-    open();
+    open(null);
     expect(combo("Reference icon generator").getAttribute("data-value")).toBe(second.id);
   });
 
@@ -413,7 +485,7 @@ describe("the settings screen", () => {
     expect(loadGeneratorTemplateSettings().templates.find((template) => template.name === "Fast draft")).toMatchObject({ videoSigmaShift: 8.5, audioSigmaShift: 2.5 });
     expect(screen.getByRole("heading", { level: 1, name: "Fast draft" })).toBeTruthy();
     enterPath("Transformer weights", "D:\\Models\\draft.safetensors");
-    fireEvent.click(screen.getByRole("button", { name: "Generators" }));
+    fireEvent.click(screen.getByRole("button", { name: "MiniMax H3" }));
     expect(screen.queryByRole("group", { name: "Transformer weights" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Set Fast draft as default" }));
 
