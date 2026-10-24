@@ -32,21 +32,23 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-it("generates only the scene open in the inspector", () => {
+it.each(["scene", "shot"])("generates only the selected scene from the %s inspector", (view) => {
   const state = setup();
-  fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
-  const panel = within(screen.getByRole("complementary", { name: "Scene: Second scene" }));
+  fireEvent.click(screen.getByRole("button", { name: view === "shot" ? "Shot 1 of Second scene" : "Select scene Second scene" }));
+  const panel = within(screen.getByRole("complementary", { name: view === "shot" ? "Shot 1 of Second scene" : "Scene: Second scene" }));
   fireEvent.click(panel.getByRole("button", { name: "Generate" }));
   expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["draft", "queued"]);
   expect(panel.getByRole("button", { name: "Cancel" })).toBeEnabled();
 });
 
-it.each(["queued", "generating"] as const)("cancels only the %s scene open in the inspector", (status) => {
+it.each([
+  ["queued", "scene"], ["generating", "scene"], ["queued", "shot"], ["generating", "shot"],
+] as const)("cancels only the %s scene from the %s inspector", (status, view) => {
   const initial = project();
   initial.generationJobs.forEach((job) => { job.status = status; });
   setup(initial);
-  fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
-  const panel = within(screen.getByRole("complementary", { name: "Scene: Second scene" }));
+  fireEvent.click(screen.getByRole("button", { name: view === "shot" ? "Shot 1 of Second scene" : "Select scene Second scene" }));
+  const panel = within(screen.getByRole("complementary", { name: view === "shot" ? "Shot 1 of Second scene" : "Scene: Second scene" }));
   fireEvent.click(panel.getByRole("button", { name: "Cancel" }));
   expect(cancelSlopfabGeneration).toHaveBeenCalledExactlyOnceWith("scene-second");
   expect(panel.getByRole("button", { name: "Cancelling…" })).toBeDisabled();

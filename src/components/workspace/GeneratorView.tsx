@@ -674,26 +674,26 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             />
           </div>
 
-          <div className="inspector-actions">
-            {debugEnabled && !animate && <button
-              type="button"
-              className="secondary-button debug-prompt__toggle"
-              aria-expanded={showDebugPrompt}
-              aria-haspopup="dialog"
-              onClick={() => setShowDebugPrompt(true)}
-            >Debug prompt</button>}
-            <button
-              type="button"
-              className="primary-button"
-              data-tooltip={selectedCancellable ? `Cancel ${selected.title}` : selectedBlocker ?? `Generate ${selected.title}`}
-              disabled={selectedCancellable ? selectedCancelling : Boolean(selectedBlocker)}
-              onClick={() => generateScene(selected)}
-            >
-              {selectedCancellable ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}
-              {selectedCancellable ? selectedCancelling ? "Cancelling…" : "Cancel" : "Generate"}
-            </button>
-          </div>
         </>}
+      <div className="inspector-actions">
+        {debugEnabled && !animate && !openShot && <button
+          type="button"
+          className="secondary-button debug-prompt__toggle"
+          aria-expanded={showDebugPrompt}
+          aria-haspopup="dialog"
+          onClick={() => setShowDebugPrompt(true)}
+        >Debug prompt</button>}
+        <button
+          type="button"
+          className="primary-button"
+          data-tooltip={selectedCancellable ? `Cancel ${selected.title}` : selectedBlocker ?? `Generate ${selected.title}`}
+          disabled={selectedCancellable ? selectedCancelling : Boolean(selectedBlocker)}
+          onClick={() => generateScene(selected)}
+        >
+          {selectedCancellable ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}
+          {selectedCancellable ? selectedCancelling ? "Cancelling…" : "Cancel" : "Generate"}
+        </button>
+      </div>
     </aside>}
 
     {debugEnabled && showDebugPrompt && selected && !openShot && <DebugPromptDialog
