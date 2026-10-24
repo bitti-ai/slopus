@@ -18,11 +18,13 @@ export interface CommandBarProps {
   children: ReactNode;
   "aria-label"?: string;
   className?: string;
+  /** Content centered between the leading and trailing groups. */
+  center?: ReactNode;
   /** Content pushed to the trailing edge. */
   end?: ReactNode;
 }
 
-export function CommandBar({ children, end, className, ...aria }: CommandBarProps) {
+export function CommandBar({ children, center, end, className, ...aria }: CommandBarProps) {
   const bar = useRef<HTMLDivElement>(null);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -35,8 +37,9 @@ export function CommandBar({ children, end, className, ...aria }: CommandBarProp
     buttons[(index + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
   };
   return (
-    <div ref={bar} role="toolbar" aria-label={aria["aria-label"]} className={cx("ui-command-bar", className)} onKeyDown={onKeyDown}>
+    <div ref={bar} role="toolbar" aria-label={aria["aria-label"]} className={cx("ui-command-bar", Boolean(center) && "ui-command-bar--centered", className)} onKeyDown={onKeyDown}>
       <div className="ui-command-bar__primary">{children}</div>
+      {center && <div className="ui-command-bar__center">{center}</div>}
       {end && <div className="ui-command-bar__end">{end}</div>}
     </div>
   );

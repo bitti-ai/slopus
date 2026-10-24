@@ -46,6 +46,9 @@
   background: var(--surface-chrome);
 }
 
+.generator-command .generator-runtime { flex: 0 1 auto; }
+.generator-command .generator-template { min-width: 0; }
+
 /* "Generate all" is the screen's one accent button, as in the mock: an accent
    fill on the command bar's otherwise subtle row. */
 .generator-command .generator-command__generate:not(:disabled) {
@@ -926,6 +929,7 @@
    picker narrows, and the scene rows keep the title by dropping the caption
    and the status chip — the status glyph beside the title still carries it. */
 @container generator-main (max-width: 440px) {
+  .generator-command .generator-runtime__label { display: none; }
   /* Visually hidden, not display:none — the label is the button's
      accessible name. */
   .generator-command .ui-cmd--labelled .ui-cmd__label {

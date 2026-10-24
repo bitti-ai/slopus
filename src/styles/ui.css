@@ -1455,7 +1455,13 @@
   padding: 0 var(--space-1);
 }
 
+.ui-command-bar--centered {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
 .ui-command-bar__primary,
+.ui-command-bar__center,
 .ui-command-bar__end {
   min-width: 0;
   display: flex;

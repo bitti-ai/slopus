@@ -492,11 +492,12 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
         aria-label="Generator"
         className="generator-command"
         end={<>
+          <CommandBarButton icon={<Add16 />} label="Add scene" showLabel onClick={newScene} />
+          <CommandBarSeparator />
           <CommandBarButton icon={density === "tiles" ? <GridView16Filled /> : <GridView16 />} label="Tiles" pressed={density === "tiles"} onClick={() => chooseDensity("tiles")} />
           <CommandBarButton icon={density === "list" ? <ListView16Filled /> : <ListView16 />} label="List" pressed={density === "list"} onClick={() => chooseDensity("list")} />
         </>}
-      >
-        {cancellable.length > 0
+        center={cancellable.length > 0
           ? <CommandBarButton
             className="generator-command__cancel"
             icon={<Stop14 />}
@@ -514,7 +515,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             disabled={active.length > 0}
             onClick={() => void generateAll()}
           />}
-        <CommandBarSeparator />
+      >
         {/* The generator the next render uses, with its readiness as a glyph
             beside the name; the words for a state that needs attention are
             in the tooltip and the status bar. */}
@@ -532,8 +533,6 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             onChange={chooseGeneratorTemplate}
           />
         </span>
-        <CommandBarSeparator />
-        <CommandBarButton icon={<Add16 />} label="Add scene" showLabel onClick={newScene} />
       </CommandBar>
 
       <div className="generator-board">
