@@ -1,23 +1,33 @@
 use super::{events::NativeEvent, ffi::{Api, RequestHandle}, platform::ComputePlatform, runtime::QueueItem, types::ProgressEvent};
 use sha2::{Digest, Sha256};
-use std::{fs::File, io::Read, path::{Path, PathBuf}, sync::atomic::{AtomicBool, Ordering}, time::Instant};
+use std::{io::Read, path::{Path, PathBuf}, sync::atomic::{AtomicBool, Ordering}, time::Instant};
 
-fn calibration_path(directory: &Path, vae: &Path, cancel: &AtomicBool) -> Result<PathBuf, String> {
-    let mut source = File::open(vae).map_err(|e| format!("Cannot read the VAE for generation effects: {e}"))?;
-    let mut hash = Sha256::new();
-    let mut buffer = vec![0; 1024 * 1024];
-    loop {
-        if cancel.load(Ordering::Acquire) { return Err("Generation effects preparation cancelled.".into()); }
-        let count = source.read(&mut buffer).map_err(|e| e.to_string())?;
-        if count == 0 { break; }
-        hash.update(&buffer[..count]);
-    }
-    Ok(directory.join(format!("h3-v1-64-256-{:x}.safetensors", hash.finalize())))
+fn calibration_path(directory: &Path, vae: &Path, cancel: &AtomicBool, mut checking: impl FnMut()) -> Result<PathBuf, String> {
+    use super::lcs_fingerprint::{check_cancel, Fingerprints};
+    static FINGERPRINTS: std::sync::OnceLock<std::sync::Mutex<Fingerprints>> = std::sync::OnceLock::new();
+    let digest = FINGERPRINTS.get_or_init(Default::default).lock().map_err(|_| "VAE fingerprint cache lock failed.")?
+        .get(vae, cancel, |source| {
+            checking();
+            let mut hash = Sha256::new();
+            let mut buffer = vec![0; 1024 * 1024];
+            loop {
+                check_cancel(cancel)?;
+                let count = source.read(&mut buffer).map_err(|e| e.to_string())?;
+                if count == 0 { break; }
+                hash.update(&buffer[..count]);
+            }
+            Ok(format!("{:x}", hash.finalize()))
+        })?;
+    Ok(directory.join(format!("h3-v1-64-256-{digest}.safetensors")))
 }
 
 pub(super) fn prepare(api: &Api, request: &RequestHandle, item: &QueueItem, platform: ComputePlatform) -> Result<bool, String> {
     let Some(settings) = item.request.generation_effects.as_ref().map(|e| e.native_settings()).transpose()?.flatten() else { return Ok(false); };
     api.require_lcs()?;
+    // Retain the library's small fingerprint cache across isolated jobs, including
+    // Vulkan hosts. The queue still releases reused model/GPU buffers when idle.
+    static RUNTIME: std::sync::Mutex<Option<Api>> = std::sync::Mutex::new(None);
+    *RUNTIME.lock().map_err(|_| "LCS runtime cache lock failed.")? = Some(api.clone());
     let started = Instant::now();
     let report = |completed, total| {
         (item.events)(NativeEvent::Progress(ProgressEvent {
@@ -28,12 +38,12 @@ pub(super) fn prepare(api: &Api, request: &RequestHandle, item: &QueueItem, plat
         }));
         !item.cancel.load(Ordering::Acquire)
     };
-    if !report(0, 0) { return Err("Generation effects preparation cancelled.".into()); }
+    super::lcs_fingerprint::check_cancel(&item.cancel)?;
     let vae = item.configuration.models.iter().find(|(id, _, _)| *id == 3).and_then(|(_, _, path)| path.as_deref()).ok_or("Generation effects require a video VAE.")?;
     let log_path = PathBuf::from(crate::diagnostics::log_info()?.path);
     let directory = log_path.parent().ok_or("Cannot locate the generation effects cache.")?.join("lcs");
     std::fs::create_dir_all(&directory).map_err(|e| format!("Cannot create the generation effects cache: {e}"))?;
-    let path = calibration_path(&directory, vae, &item.cancel)?;
+    let path = calibration_path(&directory, vae, &item.cancel, || { report(0, 0); })?;
     let settings = settings.to_string();
     // set_lcs snapshots the archive, so a valid cache needs no GPU calibration.
     if path.is_file() && api.set_lcs(request, &path, &settings).is_ok() { return Ok(true); }
@@ -55,11 +65,11 @@ mod tests {
         let vae = directory.path().join("vae");
         let cancel = AtomicBool::new(false);
         std::fs::write(&vae, b"first").unwrap();
-        let first = calibration_path(directory.path(), &vae, &cancel).unwrap();
-        assert_eq!(first, calibration_path(directory.path(), &vae, &cancel).unwrap());
+        let first = calibration_path(directory.path(), &vae, &cancel, || {}).unwrap();
+        assert_eq!(first, calibration_path(directory.path(), &vae, &cancel, || panic!("cached VAE must not report another calibration check")).unwrap());
         std::fs::write(&vae, b"other").unwrap();
-        assert_ne!(first, calibration_path(directory.path(), &vae, &cancel).unwrap());
+        assert_ne!(first, calibration_path(directory.path(), &vae, &cancel, || {}).unwrap());
         cancel.store(true, Ordering::Release);
-        assert!(calibration_path(directory.path(), &vae, &cancel).unwrap_err().contains("cancelled"));
+        assert!(calibration_path(directory.path(), &vae, &cancel, || {}).unwrap_err().contains("cancelled"));
     }
 }

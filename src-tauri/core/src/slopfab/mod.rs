@@ -16,6 +16,7 @@ mod events;
 mod ffi;
 mod generation;
 mod lcs;
+mod lcs_fingerprint;
 mod h3;
 mod icons;
 mod planning;

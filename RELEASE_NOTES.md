@@ -16,6 +16,8 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## Fixes and improvements
 
+- Generation effects reuse VAE fingerprints between jobs, removing repeated full-file calibration checks for unchanged VAEs. Changed or replaced VAEs are verified again; saved calibrations remain reusable after restarting.
+
 - Renamed image roots on the still image creation page now retain their names when switching images and reopening projects.
 - Image edits keep the original as the parent with its saved prompt and settings. Child results open as normal images ready for further edits; selecting images does not create editing copies.
 - Whole-image edits disable feathering at the native generation boundary, including requests with missing or previously saved feather settings.

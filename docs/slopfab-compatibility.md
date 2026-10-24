@@ -20,7 +20,13 @@ The first active request calibrates its VAE automatically using 64 colors at
 256 pixels. Calibration runs on the generation worker, reports progress and
 honors cancellation. Completed archives are cached under `lcs` beside the
 host's diagnostic log, keyed by full VAE SHA-256, calibration format and
-parameters. Corrupt archives are regenerated. Planning never calibrates or
+parameters. Full-file fingerprints are cached in both Slopus and SlopFab for
+the app/worker session. Each reuse checks file identity, size, modification and
+filesystem change times, so edits and replacements trigger fresh verification.
+The first use after a restart verifies the VAE again but reuses its saved
+calibration. Cached checks do not show calibration progress. Slopus retains the
+LCS library cache between isolated jobs while still releasing idle GPU model
+buffers. Corrupt archives are regenerated. Planning never calibrates or
 runs inference. The generation request snapshots the archive before sampling;
 region masks use fractional coverage of the resolved latent patch grid.
 
@@ -29,7 +35,7 @@ workers from silently dropping them. Each worker calibrates and caches its
 own VAE. Update workers alongside the desktop app. A runtime missing the LCS
 exports reports an explicit upgrade error.
 
-Both bundled libraries are built from SlopFab commit `e3eb8c4` (API 1.31.0)
+Both bundled libraries are built from SlopFab commit `274ce2e` (API 1.31.0)
 with FFmpeg disabled. Windows and Linux C API and embedded-tokenizer checks
 pass, including the previously failing malformed LCS settings checks. Slopus
 checks cover UI authoring, project persistence, request snapshots, worker
