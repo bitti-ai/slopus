@@ -8,7 +8,7 @@ import { ImageEditor } from "./ImageEditor";
 import { choose, comboValue } from "./comboTestUtils";
 import { imageGenerationSnapshotSchema, parseProjectConfig, referenceImages, sceneFrameInputs, type ProjectConfig } from "../../lib/project";
 import { completeImageDraft, createTemplateImageDraft, imageGenerationSnapshot, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
-import { createGeneratorTemplate, mossImageTemplate, defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
+import { createGeneratorTemplate, mossImageTemplate, fiboImageTemplate, defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "../../lib/imageScene";
 import type { WorkItem } from "../../lib/workQueue";
 import { compileImageEdits } from "../../lib/imageEditing";
@@ -59,6 +59,31 @@ it.each(["queued", "generating"] as const)("shows a separate empty %s entry with
   fireEvent.click(screen.getByRole("button", { name: `View ${draftName}` }));
   expect(document.querySelector(".image-frame img")).toBeNull();
   expect(current().assets[0]).toEqual(original);
+});
+
+it("requires image input for Fibo, enables editing tools and disables unsupported templates", () => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  const fibo = { ...fiboImageTemplate(), sources: {}, paths: { transformer: "fibo", textEncoder: "qwen", videoVae: "flux", tokenizer: "", audioVae: "" } };
+  saveGeneratorTemplateSettings({ templates: [fibo], defaultTemplateId: fibo.id, catalogVersion: 14 });
+  const initial = parseProjectConfig(fixture);
+  initial.imageScene = createImageScene("Make the sky blue");
+  setup(initial);
+  expect(screen.getByRole("combobox", { name: "Generator" })).toHaveTextContent("Fibo 2.0 Edit Turbo");
+  expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
+  expect(screen.getByRole("status")).toHaveTextContent("requires one to 4 image references");
+  cleanup();
+  const source = { id: "source", kind: "image" as const, name: "Source", relativePath: "media/source.png", width: 512, height: 512, mimeType: "image/png", createdAt: initial.createdAt };
+  initial.assets = [source];
+  initial.imageScene = { ...createImageEditScene(source), outputAssetId: source.id };
+  initial.imageScene.nodes[0].description = "Make the sky blue";
+  setup(initial);
+  expect(screen.getByRole("button", { name: "Generate" })).toBeEnabled();
+  expect(screen.getByRole("radio", { name: "Edit Box" })).toBeEnabled();
+  expect(screen.getByRole("radio", { name: "Lasso" })).toBeEnabled();
+  expect(screen.queryByRole("spinbutton", { name: "CFG" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Template" }));
+  expect(screen.getByRole("menuitem", { name: "Zoom" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Character sheet" })).toBeDisabled();
 });
 
 it("offers MOSS for new images and disables editing and reference templates", () => {

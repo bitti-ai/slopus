@@ -1,3 +1,4 @@
+import { FIBO_MODEL_TYPE } from "./settings";
 import { imageSettings } from "./imageSettings";
 import { createImageEditScene, createImageScene, imageLassoContours, imageSourceSchema, type ImageNode, type ImageScene, type ImageSource, type ImagePoint } from "./imageScene";
 import { compileImagePrompt } from "./imagePrompt";
@@ -29,7 +30,7 @@ export function imageEditSize(source: Pick<ImageSource, "width" | "height">, sho
 export function imageEditOutputSize(scene: ImageScene) {
   return scene.outputSize ?? imageEditSize(scene.sourceImage!);
 }
-export function compileImageEdits(config: ProjectConfig): { source: ImageSource; edits: (ImageEditStep & { references: ProjectReference[] })[] } {
+export function compileImageEdits(config: ProjectConfig, options: { modelType?: string } = {}): { source: ImageSource; edits: (ImageEditStep & { references: ProjectReference[] })[] } {
   const scene = config.imageScene!;
   const source = scene.sourceImage;
   if (!source) throw new Error("Open an image before adding edits.");
@@ -46,10 +47,10 @@ export function compileImageEdits(config: ProjectConfig): { source: ImageSource;
     const y = Math.min(size.height - 1, Math.floor(node.box.y * size.height / 1000));
     const right = Math.min(size.width, Math.ceil((node.box.x + node.box.width) * size.width / 1000));
     const bottom = Math.min(size.height, Math.ceil((node.box.y + node.box.height) * size.height / 1000));
-    const description = ["The edited keyframe corresponds to <Picture 1> with the following change. Preserve the composition and any previously completed edits.", node.description,
+    const description = [options.modelType === FIBO_MODEL_TYPE ? "" : "The edited keyframe corresponds to <Picture 1> with the following change. Preserve the composition and any previously completed edits.", node.description,
       node.text ? `Render the exact text "${node.text}".` : ""].filter(Boolean).join(" ");
     const editScene = { ...createImageScene(description), rootType: "image" as const, sourceImage: source, referenceIds: [] };
-    const compiled = compileImagePrompt({ ...config, imageSettings: { ...imageSettings(config), defaultLook: null }, imageScene: editScene });
+    const compiled = compileImagePrompt({ ...config, imageSettings: { ...imageSettings(config), defaultLook: null }, imageScene: editScene }, options);
     // A full-canvas edit has no surrounding source to blend into at its edges.
     const wholeImage = x === 0 && y === 0 && right === size.width && bottom === size.height;
     const contours = imageLassoContours(node).map((points) => points.map(({ x, y }) => ({ x: x * size.width / 1000, y: y * size.height / 1000 })));

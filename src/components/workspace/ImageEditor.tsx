@@ -73,11 +73,6 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const generatedImage = config.assets.find((asset) => asset.id === scene.outputAssetId && !asset.imageDraft && asset.imageGeneration);
   const recordedSeed = generatedImage?.imageGeneration?.usedSeed ?? generatedImage?.imageGeneration?.scene.seed;
   const usedSeed = recordedSeed !== undefined && recordedSeed >= 0 ? recordedSeed : undefined;
-  const editPlan = useMemo(() => {
-    if (!imageRoot) return null;
-    try { return { ...compileImageEdits(config), error: null }; }
-    catch (reason) { return { edits: [], error: String(reason instanceof Error ? reason.message : reason) }; }
-  }, [config, imageRoot]);
   const [selection, setSelection] = useState(root.id);
   const selected = scene.nodes.find((node) => node.id === selection) ?? root;
   const [collapsed, setCollapsed] = useState(new Set<string>());
@@ -105,9 +100,20 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const imageTemplates = templates.templates.filter(templateSupportsImages);
   const template = imageTemplates.find((candidate) => candidate.id === templateId) ?? imageTemplates.find(templateUsable) ?? imageTemplates[0];
   const model = generatorModel(template?.modelType);
+  const editPlan = useMemo(() => {
+    if (!imageRoot) return null;
+    try { return { ...compileImageEdits(config, { modelType: template?.modelType }), error: null }; }
+    catch (reason) { return { edits: [], error: String(reason instanceof Error ? reason.message : reason) }; }
+  }, [config, imageRoot, template?.modelType]);
+  const inputBlocked = useMemo(() => {
+    if (imageRoot || !model.requiresImageInput) return null;
+    try { compileImagePrompt(config, { modelType: template?.modelType }); return null; }
+    catch (reason) { return reason instanceof Error ? reason.message : String(reason); }
+  }, [config, imageRoot, model.requiresImageInput, template?.modelType]);
+  const outpaintingBlocked = !model.imageOutpainting ? `${model.label} does not support Zoom.` : null;
   const effectsBlocked = activeGenerationEffects(scene.generationEffects) && !model.generationEffects ? "This model does not support generation effects. Bypass or remove the effects, or choose another generator." : null;
   const editingBlocked = !model.imageEditing ? `${model.label} does not support image editing. Choose an editing generator.` : null;
-  const referencesBlocked = !model.imageReferences ? `${model.label} does not support reference images. Choose a reference generator.` : null;
+  const referencesBlocked = !model.characterSheets ? `${model.label} does not support character sheets. Choose a character sheet generator.` : null;
   const isMiniMaxH3 = !template || template.modelType === MINIMAX_H3_MODEL_TYPE;
   const onChange = (update: ConfigUpdate) => changeConfig((current) => {
     const next = typeof update === "function" ? update(current) : update;
@@ -585,9 +591,9 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   // A chip for a video or audio reference names it; one deleted says so.
   const missingReference = (id: string) => config.references.find((reference) => reference.id === id)?.name ?? "Deleted reference";
   const templateInspector = Boolean((extendMode && output && extendOptions) || (output && templateSourceId === output.id) || (runningTemplate && templateSource));
-  const generateDisabled = active ? work.cancelling || work.status === "encoding" : Boolean(effectsBlocked) || Boolean(templateSnapshot && output?.imageDraft) || !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editingBlocked || editPlan?.error) : !imageScenePrompt(scene));
+  const generateDisabled = active ? work.cancelling || work.status === "encoding" : Boolean(inputBlocked || effectsBlocked) || Boolean(templateSnapshot && output?.imageDraft) || !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editingBlocked || editPlan?.error) : !imageScenePrompt(scene));
   const generateButton = <div className={`image-generation-controls${active ? "" : " image-generation-controls--split"}`}>
-    <button type="button" className="primary-button image-generate-button" data-tooltip={effectsBlocked ?? (imageRoot ? editingBlocked : null) ?? editPlan?.error ?? undefined}
+    <button type="button" className="primary-button image-generate-button" data-tooltip={inputBlocked ?? effectsBlocked ?? (imageRoot ? editingBlocked : null) ?? editPlan?.error ?? undefined}
       disabled={generateDisabled || (!active && !validCount)} onClick={() => {
         if (active) { attempt(() => onCancel(work.id)); return; }
         setGenerationCount("1"); setGenerationOptionsOpen(false);
@@ -667,7 +673,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           disabled={!output || (!output.relativePath && !output.sourcePath)}
           onClick={(event) => templateMenu.open(event.currentTarget, [{ label: "Character sheet", icon: <Image16 />, disabled: Boolean(referencesBlocked),
             onSelect: () => { setExtendSourceId(null); setTemplateSourceId(output!.id); },
-          }, { label: "Zoom", icon: <Boxes16 />, disabled: Boolean(editingBlocked) || !output?.width || !output?.height || Boolean(active),
+          }, { label: "Zoom", icon: <Boxes16 />, disabled: Boolean(outpaintingBlocked) || !output?.width || !output?.height || Boolean(active),
             onSelect: () => {
               setTemplateSourceId(null); setExtendSourceId(output!.id);
               setExtendOptions({ bounds: initialExtendBounds(output!.width!, output!.height!), prompt: "", steps: template?.defaultSteps ?? 20, seed: -1 });
@@ -762,7 +768,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         {boxes && scene.nodes.filter((node) => node.box).map((node) => { const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!; return <span key={node.id} className="image-box-label" style={{ left: `${box.x / 10}%`, top: `${box.y / 10}%` }}>{node.name}</span>; })}
       </div></div>}
       {(error || work?.error) && <InfoBar className="image-error" severity="error" title="Couldn’t update the image" message={error ?? work?.error ?? ""} onClose={error ? () => setError(null) : undefined} />}
-      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : extendMode && extendOptions ? `Zoom: ${extendSize?.width ?? "-"} \u00d7 ${extendSize?.height ?? "-"} px` : templateSnapshot ? `${templateSnapshot.kind === "extend" ? "Zoom" : "Character sheet"} · ${width} × ${height} px` : imageRoot ? editingBlocked ?? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
+      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : extendMode && extendOptions ? `Zoom: ${extendSize?.width ?? "-"} \u00d7 ${extendSize?.height ?? "-"} px` : templateSnapshot ? `${templateSnapshot.kind === "extend" ? "Zoom" : "Character sheet"} · ${width} × ${height} px` : imageRoot ? editingBlocked ?? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : inputBlocked ?? (!isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`)}</span></div>
       <ImageBar ref={imageResults} workItems={workItems} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
         onMenu={(id, x, y, inFamily) => { setContextMenu(null); setImageMenu({ id, x, y, inFamily, source: "bar" }); }} />
     </section>
@@ -770,7 +776,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     {extendMode && output && extendOptions ? <ExtendSettings config={config} source={output} options={extendOptions} onChange={setExtendOptions}
       onResolutionChange={(resolution) => onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), resolution } }))}
       references={promptReferences} missingLabel={missingReference} busy={Boolean(active)}
-      disabledReason={editingBlocked ?? (!isTauri() ? "Template execution is available in the desktop app." : !onGenerateExtend || !template || !templateUsable(template) ? "Choose a downloaded generator to execute this template." : null)}
+      disabledReason={outpaintingBlocked ?? (!isTauri() ? "Template execution is available in the desktop app." : !onGenerateExtend || !template || !templateUsable(template) ? "Choose a downloaded generator to execute this template." : null)}
       onExecute={() => attempt(() => onGenerateExtend?.(template!, output.id, extendOptions))} onClose={() => setExtendSourceId(null)}
     /> : output && templateSourceId === output.id ? <CharacterSheetSettings
       config={config} source={output} references={promptReferences} missingLabel={missingReference} defaultSteps={template?.defaultSteps ?? 20} busy={Boolean(active)}
@@ -842,7 +848,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         </PropSection>}
       </div>
       <div className="inspector-actions">
-        {debugEnabled && <button type="button" className="secondary-button debug-prompt__toggle" aria-haspopup="dialog" onClick={() => attempt(() => setDebugPrompt(imageRoot ? imageEditDebugPrompt(compileImageEdits(config).edits) : compileImagePrompt(config, { modelType: template?.modelType }).prompt))}>Debug prompt</button>}
+        {debugEnabled && <button type="button" className="secondary-button debug-prompt__toggle" aria-haspopup="dialog" onClick={() => attempt(() => setDebugPrompt(imageRoot ? imageEditDebugPrompt(compileImageEdits(config, { modelType: template?.modelType }).edits) : compileImagePrompt(config, { modelType: template?.modelType }).prompt))}>Debug prompt</button>}
         {(!extendMode || active) && generateButton}
       </div>
     </aside>}

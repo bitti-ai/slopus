@@ -9,7 +9,15 @@
     "loras": true,
     "motionCache": true,
     "generationEffects": true,
-    "cfg": null
+    "cfg": null,
+    "imageOutpainting": true,
+    "characterSheets": true,
+    "requiresImageInput": false,
+    "editImageReferences": true,
+    "maxImageReferences": 9,
+    "refmods": true,
+    "sigmaShifts": true,
+    "cudaOnly": false
   },
   "moss": {
     "label": "MOSS Image",
@@ -23,6 +31,34 @@
     "generationEffects": false,
     "cfg": {
       "default": 3
-    }
+    },
+    "imageOutpainting": false,
+    "characterSheets": false,
+    "requiresImageInput": false,
+    "editImageReferences": false,
+    "maxImageReferences": 0,
+    "refmods": false,
+    "sigmaShifts": true,
+    "cudaOnly": true
+  },
+  "fibo2": {
+    "label": "Fibo 2.0",
+    "description": "Image editing with source or reference images on CUDA",
+    "imageGeneration": true,
+    "videoGeneration": false,
+    "imageEditing": true,
+    "imageReferences": true,
+    "loras": false,
+    "motionCache": false,
+    "generationEffects": false,
+    "cfg": null,
+    "imageOutpainting": false,
+    "characterSheets": false,
+    "requiresImageInput": true,
+    "editImageReferences": false,
+    "maxImageReferences": 4,
+    "refmods": false,
+    "sigmaShifts": false,
+    "cudaOnly": true
   }
 }

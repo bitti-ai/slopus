@@ -135,6 +135,35 @@ impl Configuration {
         if !features.image_editing && request.image_edit.is_some() {
             return Err(format!("{} does not support image editing.", features.label));
         }
+        if features.requires_image_input && request.image_edit.is_none() && request.reference_paths.is_empty() {
+            return Err(format!("{} requires a source image or image references.", features.label));
+        }
+        if request.still_image && features.image_references && request.reference_paths.len() > features.max_image_references {
+            return Err(format!("{} supports at most {} reference images.", features.label, features.max_image_references));
+        }
+        if !features.refmods && (!request.refmods.is_empty() || request.image_edit.as_ref().is_some_and(|edit| edit.edits.iter().any(|step| step.refmods.as_ref().is_some_and(|items| !items.is_empty())))) {
+            return Err(format!("{} does not support refmods.", features.label));
+        }
+        if let Some(edit) = &request.image_edit {
+            if !features.edit_image_references && (!request.reference_paths.is_empty() || edit.edits.iter().any(|step| step.reference_paths.as_ref().is_some_and(|paths| !paths.is_empty()))) {
+                return Err(format!("{} edits use exactly one source image without additional image references.", features.label));
+            }
+            if !features.image_outpainting && edit.edits.iter().any(|step| step.invert_mask) {
+                return Err(format!("{} does not support Zoom or outpainting.", features.label));
+            }
+        }
+        if !features.sigma_shifts {
+            let shifts = self.sigma_shifts.as_ref().map_err(Clone::clone)?;
+            if [shifts.video, shifts.audio, shifts.video_override, shifts.audio_override, request.video_sigma_shift, request.audio_sigma_shift].iter().any(Option::is_some)
+                || request.audio_steps.is_some() || self.sampling_preset.as_ref().map_err(Clone::clone)?.is_some() {
+                return Err(format!("{} uses its own sampling schedule without H3 overrides.", features.label));
+            }
+        }
+        if self.model_type == "fibo2" && (self.animate || request.latent_upscale || request.latent_bridge.is_some()
+            || request.continuation_path.is_some() || request.continuation_relative_path.is_some() || request.save_latents_path.is_some()
+            || self.attention != "flash2") {
+            return Err("Fibo requires Flash attention and image inputs, without H3 video or latent features.".into());
+        }
         if !features.image_references && (!request.reference_paths.is_empty() || !request.refmods.is_empty()) {
             return Err(format!("{} does not support image references or refmods.", features.label));
         }

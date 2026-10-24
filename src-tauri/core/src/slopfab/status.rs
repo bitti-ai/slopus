@@ -6,7 +6,7 @@ fn model_statuses(configuration: &Configuration, available: impl Fn(&Path) -> bo
     let mut models = configuration
         .models
         .iter()
-        .filter(|(id, _, _)| configuration.model_type != "moss" || *id != 4)
+        .filter(|(id, _, _)| crate::models::generator_features(&configuration.model_type).video_generation || *id != 4)
         .filter(|(id, _, _)| !configuration.animate || (*id != 1 && *id != 2))
         .map(|(_, id, path)| ModelStatus {
             id,

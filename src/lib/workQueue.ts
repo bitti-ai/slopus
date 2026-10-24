@@ -277,7 +277,7 @@ export class WorkQueue {
     const scene = current.imageScene ?? createImageScene(current.brief.prompt);
     if (!generatorModel(template.modelType).imageEditing && scene.rootType === "image") throw new Error(`${generatorModel(template.modelType).label} does not support image editing. Choose an editing generator.`);
     if (activeGenerationEffects(scene.generationEffects) && !generatorModel(template.modelType).generationEffects) throw new Error("This model does not support generation effects. Bypass or remove the effects, or choose another generator.");
-    const edit = scene.rootType === "image" ? compileImageEdits(current) : null;
+    const edit = scene.rootType === "image" ? compileImageEdits(current, { modelType: template.modelType }) : null;
     if (!imageScenePrompt(scene)) throw new Error("Describe the image or add an object before generating.");
     const projectKey = projectQueueKey(session.record);
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && (item.imageDraftId ?? item.imageAssetId) === scene.outputAssetId && isWorkActive(item))) return;
@@ -303,7 +303,7 @@ export class WorkQueue {
       current = session.getSnapshot().config;
     }
     const referencePaths = (selected: typeof references) => [
-      ...(edit ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
+      ...(edit && generatorModel(template.modelType).editImageReferences ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
       ...selected.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
     ];
     let seed = imageGenerationSeed(scene.seed);
@@ -335,7 +335,7 @@ export class WorkQueue {
   }
   enqueueExtendImage(session: ProjectSession, template: GeneratorTemplate, sourceId: string, options: ExtendOptions) {
     if (!isTauri()) throw new Error("Zoom requires the desktop app.");
-    if (!generatorModel(template.modelType).imageEditing) throw new Error("Choose a generator that supports image editing for Zoom.");
+    if (!generatorModel(template.modelType).imageOutpainting) throw new Error("Choose a generator that supports image editing for Zoom.");
     if (template.mode === "animate") throw new Error("Choose a prompt generator for Zoom.");
     const current = session.getSnapshot().config;
     const source = current.assets.find((asset) => asset.id === sourceId && asset.kind === "image" && !asset.imageDraft);
@@ -376,7 +376,7 @@ export class WorkQueue {
   }
   enqueueCharacterSheet(session: ProjectSession, template: GeneratorTemplate, sourceId: string, options?: CharacterSheetOptions) {
     if (!isTauri()) throw new Error("Character sheet generation requires the desktop app.");
-    if (!generatorModel(template.modelType).imageReferences) throw new Error("Choose a generator that supports image references for character sheets.");
+    if (!generatorModel(template.modelType).characterSheets) throw new Error("Choose a generator that supports image references for character sheets.");
     if (template.mode === "animate") throw new Error("Choose a prompt generator for the character sheet.");
     const current = session.getSnapshot().config;
     const source = current.assets.find((asset) => asset.id === sourceId && asset.kind === "image");

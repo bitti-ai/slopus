@@ -122,3 +122,17 @@ it("disables feathering for a full-canvas edit box at the selected resolution", 
   config.imageScene.nodes[1].box!.width = 500;
   expect(compileImageEdits(config).edits[0].feather).toBeUndefined();
 });
+
+it("uses plain Fibo edit instructions, preserves structured JSON and rejects extra pictures", () => {
+  const config = parseProjectConfig(fixture);
+  config.imageScene = createImageEditScene({ name: "Source", relativePath: "media/source.png", width: 512, height: 512 });
+  const compile = () => compileImageEdits(config, { modelType: "fibo2" });
+  config.imageScene.nodes[0].description = "Make the sky blue";
+  expect(compile().edits[0]).toMatchObject({ prompt: "Make the sky blue.", references: [], feather: 0 });
+  const json = '{"edit_instruction":"Make the sky blue","structured_caption":{"sky":"Blue"}}';
+  config.imageScene.nodes[0].description = json;
+  expect(compile().edits[0].prompt).toBe(json);
+  config.references = [{ id: "extra", kind: "image", name: "Extra", relativePath: "references/extra.png", description: "", intendedUse: [], createdAt: config.createdAt }];
+  config.imageScene.nodes[0].description = "Use @[ref:extra]";
+  expect(compile).toThrow(/source image only/);
+});

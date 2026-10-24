@@ -74,6 +74,7 @@ function migratedStorageItem(key: string, legacyKey: string): string | null {
 
 export const MINIMAX_H3_MODEL_TYPE = "minimax-h3";
 export const MOSS_MODEL_TYPE = "moss";
+export const FIBO_MODEL_TYPE = "fibo2";
 export const templateSupportsVideo = (template: Pick<GeneratorTemplate, "modelType">): boolean => generatorModel(template.modelType).videoGeneration;
 export const templateSupportsImages = (template: Pick<GeneratorTemplate, "modelType" | "mode">): boolean => generatorModel(template.modelType).imageGeneration && template.mode !== "animate";
 
@@ -111,10 +112,10 @@ export interface WeightSource {
 }
 
 export function generatorPathFields(template: Pick<GeneratorTemplate, "mode"> & { modelType?: string }): EnginePathField[] {
-  if (template.modelType === MOSS_MODEL_TYPE) return ENGINE_PATH_FIELDS.filter(({ id }) => id !== "audioVae").map((field) => {
+  if (template.modelType === MOSS_MODEL_TYPE || template.modelType === FIBO_MODEL_TYPE) return ENGINE_PATH_FIELDS.filter(({ id }) => id !== "audioVae").map((field) => {
     if (field.id === "transformer") return { ...field, hint: "The main model that turns your description into an image." };
     if (field.id === "videoVae") return { ...field, label: "Image VAE weights", hint: "Decodes the model's internal picture into an image." };
-    if (field.id === "tokenizer") return { ...field, required: true, directory: false, extensions: ["json"], hint: "The Qwen3.5 tokenizer JSON used by MOSS." };
+    if (field.id === "tokenizer" && template.modelType === MOSS_MODEL_TYPE) return { ...field, required: true, directory: false, extensions: ["json"], hint: "The Qwen3.5 tokenizer JSON used by MOSS." };
     return field;
   });
   return template.mode === "animate"
@@ -229,8 +230,8 @@ export function createGeneratorTemplate(name = "New template", modelType = MINIM
     id: `generator-template-${crypto.randomUUID()}`,
     name,
     modelType,
-    defaultSteps: modelType === MOSS_MODEL_TYPE ? 50 : DEFAULT_GENERATION_STEPS,
-    attention: modelType === MOSS_MODEL_TYPE ? "flash2" : "sage2",
+    defaultSteps: modelType === MOSS_MODEL_TYPE ? 50 : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS,
+    attention: generatorModel(modelType).cudaOnly ? "flash2" : "sage2",
     paths: copyPaths(EMPTY_ENGINE_SETTINGS),
   };
 }
@@ -246,6 +247,17 @@ export function mossImageTemplate(): GeneratorTemplate {
   };
   const sources = Object.fromEntries(Object.entries(paths).filter(([, url]) => url).map(([id, url]) => [id, [{ url, gpuModel: "", minVramGb: 0 }]]));
   return { id: "moss-image", name: "MOSS Image", modelType: MOSS_MODEL_TYPE, defaultSteps: 50, attention: "flash2", paths, sources };
+}
+
+export function fiboImageTemplate(): GeneratorTemplate {
+  const root = "https://huggingface.co/Comfy-Org/Fibo-2.0/resolve/main/";
+  const paths: EngineSettings = {
+    transformer: `${root}diffusion_models/fibo2_edit_turbo_int8_convrot.safetensors`,
+    textEncoder: `${root}text_encoders/qwen3vl_4b_int8_convrot.safetensors`,
+    videoVae: `${root}vae/flux2-vae.safetensors`, tokenizer: "", audioVae: "",
+  };
+  const sources = Object.fromEntries(Object.entries(paths).filter(([, url]) => url).map(([id, url]) => [id, [{ url, gpuModel: "", minVramGb: 0 }]]));
+  return { id: "fibo2-edit-turbo", name: "Fibo 2.0 Edit Turbo", modelType: FIBO_MODEL_TYPE, defaultSteps: 4, attention: "flash2", paths, sources };
 }
 
 const MINIMAX_REF2VA_W4A8_URL = "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors";
@@ -319,9 +331,9 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 }
 
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
-  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate()],
+  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 13,
+  catalogVersion: 14,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -383,7 +395,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? templates.find(templateUsable)?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -565,6 +577,12 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 13 })!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
+        if ((normalized.catalogVersion ?? 0) < 14) {
+          const template = fiboImageTemplate();
+          if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 14 })!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
         return normalized;
       }
     }
@@ -620,7 +638,7 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   // A LAN worker receives URLs for weights it should download itself.
   const remote = remoteWorkerSelected();
   const options: ProviderSetting["options"] = { ...(base?.options ?? {}), attention, inferenceBackend: loadInferenceBackend() };
-  const moss = shifts.modelType === MOSS_MODEL_TYPE;
+  const imageOnly = !generatorModel(shifts.modelType).videoGeneration;
   options.modelType = shifts.modelType ?? MINIMAX_H3_MODEL_TYPE;
   // Always replace project-carried adapter paths with this machine's selection.
   delete options.loras;
@@ -641,7 +659,7 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   if (latentUpscaler) options.latentUpscaler = latentUpscaler;
   if (remote && sources) {
     options.workerWeightSources = JSON.stringify(Object.fromEntries(Object.entries(sources)
-      .filter(([role, entries]) => entries?.length && !(moss && role === "audioVae") && !(mode === "animate" && (role === "textEncoder" || role === "tokenizer")))
+      .filter(([role, entries]) => entries?.length && !(imageOnly && role === "audioVae") && !(mode === "animate" && (role === "textEncoder" || role === "tokenizer")))
       .map(([role, entries]) => [role, entries!.map(({ url, gpuModel, minVramGb }) => ({ url, gpuModel, minVramGb }))])));
   }
   if (motionCache && mode !== "animate") options.motionCache = true;
@@ -664,13 +682,13 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
     delete options.motionCache;
   }
   for (const field of ENGINE_PATH_FIELDS) {
-    if ((moss && field.id === "audioVae") || (mode === "animate" && (field.id === "textEncoder" || field.id === "tokenizer"))) {
+    if ((imageOnly && field.id === "audioVae") || (mode === "animate" && (field.id === "textEncoder" || field.id === "tokenizer"))) {
       delete options[field.id];
       continue;
     }
     const value = remote ? workerWeight(settings[field.id].trim(), sources?.[field.id]) : settings[field.id].trim();
     if (value && (remote || !isDownloadUrl(value))) options[field.id] = value;
-    else if (isDownloadUrl(value)) delete options[field.id];
+    else if (isDownloadUrl(value) || shifts.modelType === FIBO_MODEL_TYPE && field.id === "tokenizer") delete options[field.id];
   }
   return { enabled: base?.enabled ?? true, model: base?.model ?? null, options };
 }

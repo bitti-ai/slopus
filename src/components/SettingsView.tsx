@@ -25,7 +25,7 @@ import { retryWeightDownload } from "../lib/weightDownloads";
 import { getQueuedWeightDownloads, cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress, type DownloadState } from "../lib/weightDownloads";
 import { CHECKING_PROVIDERS, chooseEnginePath, getAgentModels, getEngineStatus, type ProviderStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
 import {
-  EMPTY_ENGINE_SETTINGS, generatorPathFields, generatorModel, GENERATOR_MODELS, MOSS_MODEL_TYPE,
+  EMPTY_ENGINE_SETTINGS, generatorPathFields, generatorModel, GENERATOR_MODELS, MOSS_MODEL_TYPE, FIBO_MODEL_TYPE,
   createGeneratorTemplate, defaultGeneratorTemplate,
   isEndpointProviderConfigured, loadAgentEndpointSettings,
   loadGeneratorTemplateSettings, saveAgentEndpointSettings, saveGeneratorTemplateSettings,
@@ -578,7 +578,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
         <ComboBox aria-label="Generator model" value={selectedTemplate.modelType} options={[
           ...GENERATOR_MODELS,
           ...(!GENERATOR_MODELS.some(({ value }) => value === selectedTemplate.modelType) ? [{ value: selectedTemplate.modelType, label: selectedTemplate.modelType }] : []),
-        ]} onChange={(modelType) => updateTemplate({ modelType, ...(modelType === MOSS_MODEL_TYPE ? { mode: "prompt", attention: "flash2", defaultSteps: 50, motionCache: false, loras: [], audioSigmaShift: undefined } : {}) })} />
+        ]} onChange={(modelType) => updateTemplate({ modelType, ...(modelType === MOSS_MODEL_TYPE || modelType === FIBO_MODEL_TYPE ? { mode: "prompt", attention: "flash2", defaultSteps: modelType === FIBO_MODEL_TYPE ? 4 : 50, motionCache: false, loras: [], audioSigmaShift: undefined, ...(modelType === FIBO_MODEL_TYPE ? { videoSigmaShift: undefined } : {}) } : {}) })} />
       </SettingsCard>
       {generatorModel(selectedTemplate.modelType).videoGeneration && <SettingsCard icon={<Video20 />} header="Mode">
         <ComboBox aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"} onChange={(value) => updateTemplate({ mode: value === "animate" ? "animate" : "prompt" })}
@@ -592,8 +592,8 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
       </SettingsCard>
     </SettingsGroup>
 
-    <SettingsGroup heading="Sampling">
-      {(["videoSigmaShift", "audioSigmaShift"] as const).filter((key) => selectedTemplate.modelType !== MOSS_MODEL_TYPE || key !== "audioSigmaShift").map((key) => {
+    {generatorModel(selectedTemplate.modelType).sigmaShifts && <SettingsGroup heading="Sampling">
+      {(["videoSigmaShift", "audioSigmaShift"] as const).filter((key) => generatorModel(selectedTemplate.modelType).sigmaShifts && (generatorModel(selectedTemplate.modelType).videoGeneration || key !== "audioSigmaShift")).map((key) => {
         const label = `${key === "videoSigmaShift" ? selectedTemplate.modelType === MOSS_MODEL_TYPE ? "Image" : "Video" : "Audio"} sigma shift`;
         const fallback = selectedTemplate.modelType === MOSS_MODEL_TYPE ? 5 : key === "audioSigmaShift" ? DEFAULT_AUDIO_SIGMA_SHIFT : selectedTemplate.mode === "animate" ? 3 : DEFAULT_VIDEO_SIGMA_SHIFT;
         return <SettingsCard key={key} icon={<Steps20 />} header={label} description="Default for this generator. Scene values and active LoRA overrides take priority. Leave blank for the model default.">
@@ -604,12 +604,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
             }} />
         </SettingsCard>;
       })}
-    </SettingsGroup>
+    </SettingsGroup>}
 
     <SettingsGroup heading="Performance">
       <SettingsCard icon={<Gauge20 />} header="Attention" description={selectedTemplate.attention === "sol" ? "Sol attention requires a CUDA GPU on the machine running generation." : undefined}>
         <ComboBox aria-label="Generator attention" value={selectedTemplate.attention} onChange={(value) => updateTemplate({ attention: value as AttentionMode })}
-          options={selectedTemplate.modelType === MOSS_MODEL_TYPE ? [{ value: "flash2", label: "Flash attention" }] : [{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }, { value: "sol", label: "Sol attention" }]} />
+          options={generatorModel(selectedTemplate.modelType).cudaOnly ? [{ value: "flash2", label: "Flash attention" }] : [{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }, { value: "sol", label: "Sol attention" }]} />
       </SettingsCard>
       {generatorModel(selectedTemplate.modelType).motionCache && <SettingsCard icon={<Flash20 />} header="Enable MotionCache" description={<span id="motion-cache-help">{selectedTemplate.mode === "animate" ? "Unavailable in Animate mode" : "Reuses similar denoising results to reduce computation. May affect detail and motion."}</span>}>
         <ToggleSwitch aria-label="Enable MotionCache" aria-describedby="motion-cache-help"
@@ -642,7 +642,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
       <ReferenceIconSetting templates={templateSettings} />
       <div className="settings-card-list" role="list" aria-label="Generator models">
         {[...new Set([...GENERATOR_MODELS.map(({ value }) => value), ...templateSettings.templates.map(({ modelType }) => modelType)]), "other"].map((model) =>
-          <OpenableCard key={model} icon={model === "other" ? <ModelFile20 /> : model === MOSS_MODEL_TYPE ? <Image20 /> : <Video20 />} header={modelPageLabel(model)}
+          <OpenableCard key={model} icon={model === "other" ? <ModelFile20 /> : !generatorModel(model).videoGeneration ? <Image20 /> : <Video20 />} header={modelPageLabel(model)}
             openLabel={modelPageLabel(model)} openRef={`model:${model}`} description={model === "other" ? "Other weights" : "Generators and LoRAs"} onOpen={() => setModelPage(model)} />)}
       </div>
     </> : modelPage === "other" ? <OtherWeightsSettings desktop={desktop} /> : <>

@@ -1,4 +1,4 @@
-import { loadGeneratorTemplateSettings, templateUsable, templateSupportsImages, type GeneratorTemplateSettings } from "./settings";
+import { loadGeneratorTemplateSettings, generatorModel, templateUsable, templateSupportsImages, type GeneratorTemplateSettings } from "./settings";
 
 export type ReferenceIconAutomation = "ask" | "enabled" | "disabled";
 
@@ -47,7 +47,7 @@ export function saveReferenceIconGeneratorId(id: string) {
 }
 
 export function availableReferenceIconGenerators(settings: GeneratorTemplateSettings) {
-  return settings.templates.filter((template) => templateSupportsImages(template) && templateUsable(template));
+  return settings.templates.filter((template) => templateSupportsImages(template) && !generatorModel(template.modelType).requiresImageInput && templateUsable(template));
 }
 
 export function referenceIconGenerator(settings = loadGeneratorTemplateSettings(), id = loadReferenceIconGeneratorId()) {

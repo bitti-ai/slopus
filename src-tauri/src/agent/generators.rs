@@ -261,8 +261,15 @@ pub(crate) fn prepare(
             return Err("A new generator needs a name.".into());
         }
         if let Some(model) = &patch.model_type {
-            if model != "minimax-h3" {
-                return Err("Only the minimax-h3 model family is currently supported.".into());
+            if !["minimax-h3", "moss", "fibo2"].contains(&model.as_str()) {
+                return Err("Unsupported generator model family.".into());
+            }
+            if model != "minimax-h3" && (add || template["modelType"] != model.as_str()) {
+                template["defaultSteps"] = json!(if model == "fibo2" { 4 } else { 50 });
+                template["attention"] = json!("flash2");
+                template["mode"] = json!("prompt");
+                template["motionCache"] = json!(false);
+                template["loras"] = json!([]);
             }
             template["modelType"] = json!(model);
         }
@@ -343,8 +350,8 @@ pub(crate) fn prepare(
                 return Err("Download the generator's weights and additional files before making it the default.".into());
             }
             for role in ["transformer", "textEncoder", "videoVae", "audioVae", "tokenizer"] {
-                let moss = template["modelType"] == "moss";
-                if (moss && role == "audioVae") || (!moss && role == "tokenizer") { continue; }
+                let features = slopus_core::models::generator_features(template["modelType"].as_str().unwrap_or("minimax-h3"));
+                if (!features.video_generation && role == "audioVae") || (template["modelType"] != "moss" && role == "tokenizer") { continue; }
                 if role == "textEncoder" && template["mode"] == "animate" {
                     continue;
                 }

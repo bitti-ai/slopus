@@ -1594,3 +1594,71 @@ fn lasso_masks_survive_worker_serialization_and_reach_native_requests() {
         assert!(validate_generation_controls(&request).is_err());
     }
 }
+
+#[test]
+fn fibo_planning_and_execution_requests_keep_the_image_family_and_masks() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.model_type = "fibo2".into();
+    configuration.attention = "flash2";
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    for mask in [false, true] {
+        let mut request: GenerationRequest = serde_json::from_value(serde_json::json!({
+            "jobId":"fibo", "prompt":"Make the object blue", "stillImage":true, "frames":1, "steps":4, "seed":1,
+            "canvasWidth":64, "canvasHeight":96,
+            "imageEdit":{"sourceRelativePath":"source.png", "edits":[{
+                "prompt":"Make the object blue", "x":0, "y":0, "width":64, "height":96, "feather":0
+            }]}
+        })).unwrap();
+        if mask {
+            request.image_edit.as_mut().unwrap().edits[0].mask_polygon = Some(vec![
+                crate::image_mask::MaskPoint { x: 0.0, y: 0.0 },
+                crate::image_mask::MaskPoint { x: 32.0, y: 0.0 },
+                crate::image_mask::MaskPoint { x: 0.0, y: 32.0 },
+            ]);
+        }
+        request.image_edit_pixels = Some(std::sync::Arc::new(vec![100; 64 * 96 * 3]));
+        for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+            let handle = RequestHandle::new(&api).unwrap();
+            configure_request(&api, &handle, &request, &configuration, ComputePlatform::Cuda13, purpose, &ReferenceVideos::default()).unwrap();
+            let plan = api.resolve(&handle).unwrap();
+            assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames, plan.num_model_evaluations), (64, 96, 1, 4));
+            let description = api.describe(&handle).unwrap();
+            assert!(description.contains("Fibo"), "{description}");
+            assert!(configure_request(&api, &handle, &request, &configuration, ComputePlatform::Vulkan, purpose, &ReferenceVideos::default()).unwrap_err().contains("requires CUDA"));
+        }
+    }
+}
+
+#[test]
+fn fibo_validates_image_inputs_and_rejects_unsupported_h3_controls() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.model_type = "fibo2".into();
+    configuration.attention = "flash2";
+    let mut request = GenerationRequest { still_image: true, frames: 1, steps: 4, prompt: "Make it blue".into(), canvas_width: 512, canvas_height: 512, ..Default::default() };
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("requires a source image"));
+    request.reference_paths = vec!["image.png".into(); 4];
+    configuration.validate_inputs(&request).unwrap();
+    request.reference_paths.push("extra.png".into());
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("at most 4"));
+    request.reference_paths.truncate(1);
+    for (name, value, message) in [
+        ("guidanceScale", serde_json::json!(3), "CFG"),
+        ("generationEffects", serde_json::json!({"sharpness":{"strength":1}}), "generation effects"),
+        ("stillImage", serde_json::json!(false), "video generation"),
+        ("videoSigmaShift", serde_json::json!(3), "sampling schedule"),
+        ("latentUpscale", serde_json::json!(true), "latent features"),
+    ] {
+        let mut json = serde_json::to_value(&request).unwrap();
+        json[name] = value;
+        let invalid = serde_json::from_value(json).unwrap();
+        assert!(configuration.validate_inputs(&invalid).unwrap_err().contains(message), "{name}");
+    }
+    request.image_edit = Some(serde_json::from_value(serde_json::json!({"sourceRelativePath":"source.png", "edits":[{
+        "prompt":"Make it blue", "x":0, "y":0, "width":512, "height":512
+    }]})).unwrap());
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("without additional image references"));
+    request.reference_paths.clear();
+    configuration.validate_inputs(&request).unwrap();
+    request.image_edit.as_mut().unwrap().edits[0].invert_mask = true;
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("outpainting"));
+}

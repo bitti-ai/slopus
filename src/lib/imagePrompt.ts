@@ -1,4 +1,4 @@
-import { MOSS_MODEL_TYPE, generatorModel } from "./settings";
+import { FIBO_MODEL_TYPE, MOSS_MODEL_TYPE, generatorModel } from "./settings";
 import { imageSettings } from "./imageSettings";
 import { createImageScene, imageScenePromptParts, imageScenePromptText } from "./imageScene";
 import { actionReferenceIds, activeReferenceRefmods, isVideoReference, referenceDefinition, referenceImages, splitActionText, type ProjectConfig } from "./project";
@@ -19,6 +19,23 @@ export function compileImagePrompt(config: ProjectConfig, options: { modelType?:
   if (!model.imageEditing && scene.rootType === "image") throw new Error(`${model.label} does not support image editing.`);
   if (!model.imageReferences && references.some((reference) => referenceImages(reference).length || activeReferenceRefmods(reference).length)) {
     throw new Error(`${model.label} does not support reference images or refmods. Choose a reference generator.`);
+  }
+  if (options.modelType === FIBO_MODEL_TYPE) {
+    const pictures = references.flatMap(referenceImages);
+    if (references.some((reference) => activeReferenceRefmods(reference).length)) throw new Error("Fibo 2.0 does not support refmods.");
+    if (scene.rootType === "image" && pictures.length) throw new Error("Fibo edits use the source image only. Remove additional image references from this edit prompt.");
+    if (scene.rootType !== "image" && (!pictures.length || pictures.length > model.maxImageReferences)) throw new Error(`Fibo 2.0 requires one to ${model.maxImageReferences} image references. Cite them in the prompt or open an image to edit.`);
+    const parts = imageScenePromptParts(scene);
+    const rootPrompt = scene.nodes.find((node) => node.kind === "root")?.description.trim() ?? "";
+    // Preserve optional structured edit JSON verbatim instead of adding prose punctuation.
+    const structured = rootPrompt.startsWith("{") && scene.nodes.length === 1 && !scene.background.trim() && scene.style.mode === "none";
+    const authored = structured ? rootPrompt : parts ? [parts.style, parts.composition].filter(Boolean).join("\n") : "";
+    let imageIndex = 0;
+    const descriptions = new Map(references.map((reference) => {
+      const numbers = referenceImages(reference).map(() => `image ${++imageIndex}`);
+      return [reference.id, `${reference.name}${numbers.length ? ` (${numbers.join(", ")})` : ""}${referenceDefinition(reference) ? `: ${referenceDefinition(reference)}` : ""}`];
+    }));
+    return { prompt: splitActionText(authored).map((part) => part.kind === "text" ? part.value : descriptions.get(part.value)!).join(""), references };
   }
   if (options.modelType === MOSS_MODEL_TYPE) {
     const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")?.options.find((option) => option.id === imageSettings(config).defaultLook)?.label;

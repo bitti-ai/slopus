@@ -1,4 +1,4 @@
-//! H3 and Animate request recipes for the SlopFab backend.
+//! Model request recipes for the SlopFab backend.
 use super::{
     config::{Configuration, SamplingPreset},
     ffi::{self, RequestHandle},
@@ -18,11 +18,11 @@ pub(super) fn configure_request(
     references: &ReferenceVideos,
 ) -> Result<(), String> {
     configuration.validate_inputs(request)?;
-    if configuration.model_type == "moss" {
+    if crate::models::generator_features(&configuration.model_type).cuda_only {
         if platform == ComputePlatform::Vulkan {
-            return Err("MOSS requires CUDA. Select a CUDA backend or worker.".into());
+            return Err(format!("{} requires CUDA. Select a CUDA backend or worker.", crate::models::generator_features(&configuration.model_type).label));
         }
-        api.set_model_family(handle, "moss")?;
+        api.set_model_family(handle, &configuration.model_type)?;
     }
     if configuration.attention == "sol" && platform == ComputePlatform::Vulkan {
         return Err("Sol attention requires CUDA. Select a CUDA GPU or worker, or choose another attention mode in Settings.".into());
@@ -58,7 +58,7 @@ pub(super) fn configure_request(
         request.frames
     };
     api.set_frames(handle, frames)?;
-    if request.still_image && configuration.model_type != "moss" {
+    if request.still_image && !matches!(configuration.model_type.as_str(), "moss" | "fibo2") {
         api.set_still_image(handle)?;
     }
     let video_steps = configuration.generation_steps(request.steps)?;

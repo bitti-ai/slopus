@@ -317,3 +317,19 @@ fn inspect_weights_and_edit_generators(scope: AgentScope) {
     if scope == AgentScope::Settings { assert!(!project_file.exists()); }
     else { assert_eq!(fs::read_to_string(project_file).unwrap(), fixture); }
 }
+
+#[test]
+fn fibo_generator_uses_image_defaults_and_needs_no_audio_or_tokenizer() {
+    let dir = tempfile::tempdir().unwrap();
+    let weights = dir.path().join("weights.safetensors");
+    tensor_file(&weights, "weight");
+    let add = command(json!({"op":"generator.add", "id":"fibo", "makeDefault":true,
+        "settings":{"name":"Fibo", "modelType":"fibo2", "paths":{
+            "transformer":weights, "textEncoder":weights, "videoVae":weights
+        }}}));
+    let result = prepare(&GeneratorContext::default(), &[add]).unwrap();
+    assert_eq!(result.settings["defaultTemplateId"], "fibo");
+    let template = &result.settings["templates"][0];
+    assert_eq!(template["defaultSteps"], 4);
+    assert_eq!(template["attention"], "flash2");
+}

@@ -602,7 +602,7 @@ impl Api {
         self.error(unsafe { set(r, scale, negative.as_ptr(), skip_layers.as_ptr(), 1) })
     }
     pub fn set_model_family(&self, r: *mut Request, family: &str) -> Result<(), String> {
-        let set = self.set_model_family.ok_or("MOSS requires SlopFab API 1.30 or newer. Update the runtime on the machine running generation.")?;
+        let set = self.set_model_family.ok_or("This model requires a newer SlopFab runtime. Update the machine running generation.")?;
         let value = CString::new(family).map_err(|_| "Invalid model family.")?;
         self.error(unsafe { set(r, value.as_ptr()) })
     }

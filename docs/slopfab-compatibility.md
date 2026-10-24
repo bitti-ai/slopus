@@ -11,7 +11,7 @@ are omitted from generation requests and video render fingerprints.
 
 Effects are saved with scenes, image drafts and generation snapshots. The
 native core validates ranges and model capabilities before generation. The
-shared model catalog enables LCS for MiniMax H3 and disables it for MOSS.
+shared model catalog enables LCS for MiniMax H3 and disables it for MOSS and Fibo.
 These are sampling effects, separate from timeline postprocessing. They use
 SlopFab's native implementation of the approach described by
 [ComfyUI-LCS](https://github.com/facok/ComfyUI-LCS), without running ComfyUI.
@@ -35,7 +35,7 @@ workers from silently dropping them. Each worker calibrates and caches its
 own VAE. Update workers alongside the desktop app. A runtime missing the LCS
 exports reports an explicit upgrade error.
 
-Both bundled libraries are built from SlopFab commit `274ce2e` (API 1.31.0)
+The original LCS integration used SlopFab commit `274ce2e` (API 1.31.0)
 with FFmpeg disabled. Windows and Linux C API and embedded-tokenizer checks
 pass, including the previously failing malformed LCS settings checks. Slopus
 checks cover UI authoring, project persistence, request snapshots, worker
@@ -45,7 +45,7 @@ with model weights were not evaluated in this integration.
 
 ## MOSS image generation (API 1.30+)
 
-The bundled Windows and Linux libraries now expose SlopFab API 1.31.0, including
+The bundled Windows and Linux libraries expose SlopFab API 1.34.0, including
 the MOSS model-family setter introduced in 1.30. Both builds disable FFmpeg.
 MOSS uses CUDA/Flash attention, the image VAE slot, and a separate Qwen3.5
 tokenizer file. It returns one RGB frame through the existing image save path.
@@ -467,3 +467,35 @@ continuation and still images. Preparation tests use small local fixtures to
 check embedding, idempotence, missing assets, busy model files, older DLLs and
 download-record updates. These tests do not run a full model inference;
 CUDA/Vulkan numerical output and render performance were not revalidated here.
+
+## Fibo 2.0 (API 1.34)
+
+The bundled Windows and Linux libraries are updated to Slopfab commit `782397a`
+(API 1.34.0), built with FFmpeg disabled. LAN protocol 14 requires updated workers.
+
+The `fibo2` model uses the Edit Turbo transformer, Qwen3-VL 4B text encoder and
+Flux2 VAE. The tokenizer is embedded, and no audio VAE is needed. The generator
+uses CUDA with Flash attention and four steps by default.
+
+Use a source image with whole-image, box or lasso edits, or cite one to four image
+references in an image prompt. Source edits pass the source only through the
+image-edit API, without duplicating it as a reference. Plain instructions and
+optional structured edit JSON pass through without H3 prompt sections. Lasso
+outlines use the same native masks as H3, including compound contours.
+
+Shared model capabilities disable video, text-only generation, extra references
+on source edits, Zoom, character sheets, LoRAs/refmods, MotionCache, CFG, LCS and
+H3 sampling overrides. Native request validation enforces the same constraints
+for local and LAN jobs.
+
+Validation includes native whole-image/mask planning on both bundled libraries
+and a Windows CUDA four-step masked generation with the real Fibo weights,
+checking finite RGB output, exact unselected pixels and cancellation.
+
+The Linux build needs to retain Fibo's `render_text` object from the generation
+archive, which is referenced by the CUDA archive later in the link. This bundle
+was relinked with `-Wl,-z,defs` and
+`-Wl,-u,_ZN7slopfab4fibo11render_textERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE`.
+Without that retention, the upstream static archive order leaves an unresolved
+symbol in the shared library. Linux plain instructions work; optional structured
+`text_render` glyph images still require Windows in this Slopfab version.

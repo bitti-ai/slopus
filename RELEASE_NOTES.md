@@ -4,11 +4,13 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## What's new
 
-- **Lasso image edits.** Draw a freehand area beside the existing box tool, give it a prompt in the right panel, and select or move it from the canvas or Scene tree. Saved outlines become antialiased Slopfab masks for local and LAN generation, preserving pixels outside the selection. Bundled runtimes now use API 1.33; LAN workers require the matching update.
+- **Fibo 2.0 image editing.** Added an Edit Turbo generator with transformer, Qwen3-VL encoder and Flux2 VAE downloads. Use whole-image, box or lasso edits, or cite up to four images in a new image prompt. Defaults to four steps on CUDA; unsupported video and H3-only controls are disabled.
+
+- **Lasso image edits.** Draw a freehand area beside the existing box tool, give it a prompt in the right panel, and select or move it from the canvas or Scene tree. Saved outlines become antialiased Slopfab masks for local and LAN generation, preserving pixels outside the selection. Bundled runtimes now use API 1.34; LAN workers require the matching update.
 
 - **FastH3 Omni.** Renamed First/Last Frame Fast and updated its transformer to the FastH3 Omni eight-step model. Existing bundled settings migrate automatically.
 
-- **Generator model pages.** Open MiniMax H3, MOSS or Other from Generator settings. Each model has its own generators and LoRAs; Other contains the existing extra weights. New generators use the selected model.
+- **Generator model pages.** Open MiniMax H3, MOSS, Fibo 2.0 or Other from Generator settings. Each model has its own generators and LoRAs; Other contains the existing extra weights. New generators use the selected model.
 
 - **Image generation count.** Open the arrow beside Generate to queue up to 100 images with different seeds. Count applies to one click, resets afterward and is not saved in the project.
 
@@ -45,4 +47,4 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 - Backdrop prompts describe a flat, constant color field in every shot, limit reference guidance to subject appearance, and use neutral studio styling when no look is specified.
 - Scene type label tooltips now explain each scene type's behavior.
 - Renamed Add reference to Reference browser and centered the agent send and stop buttons.
-- Updated the bundled Windows and Linux SlopFab runtimes to API 1.31 for MOSS, native LCS and earlier Zoom fixes. LAN worker protocol 11 carries generation effects and image CFG; update workers alongside the app.
+- Updated the bundled Windows and Linux SlopFab runtimes to API 1.34 for Fibo, MOSS, native LCS and image masks. LAN worker protocol 14 carries Fibo image-only model configuration; update workers alongside the app.

@@ -4,7 +4,7 @@ import { cancelWeightDownload, downloadLora, prepareLora, removeLora, refreshDow
 import { DMAD_LORA, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
 import { beforeEach, expect, it, vi } from "vitest";
 import { chooseWeightSource, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, updateWeightPath, weightDownloadProgress, type DownloadState } from "./weightDownloads";
-import { ANIMATE_CONDITIONING_URL, mossImageTemplate, engineProviderSetting, createGeneratorTemplate, defaultGeneratorTemplate, isDownloadUrl, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, templateNeedsDownload, type WeightSource } from "./settings";
+import { ANIMATE_CONDITIONING_URL, mossImageTemplate, fiboImageTemplate, engineProviderSetting, createGeneratorTemplate, defaultGeneratorTemplate, isDownloadUrl, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, templateNeedsDownload, type WeightSource } from "./settings";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -12,6 +12,18 @@ vi.mock("./persistence", () => ({ isTauri: () => true }));
 const files = new Set<string>();
 const source = (url: string, gpuModel = "", minVramGb = 0): WeightSource => ({ url, gpuModel, minVramGb });
 const saved = () => loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")!;
+
+it("downloads only Fibo's three image weights and marks the generator ready", async () => {
+  const fibo = fiboImageTemplate();
+  await downloadTemplateWeights(fibo.id);
+  const urls = vi.mocked(invoke).mock.calls.filter(([command]) => command === "download_weight").map(([, args]) => (args as { url: string }).url);
+  expect(urls.sort()).toEqual(Object.values(fibo.paths).filter(Boolean).sort());
+  expect(urls).toHaveLength(3);
+  const downloaded = loadGeneratorTemplateSettings().templates.find(({ id }) => id === fibo.id)!;
+  expect(templateNeedsDownload(downloaded)).toBe(false);
+  expect(downloaded.paths.tokenizer).toBe("");
+  expect(downloaded.paths.audioVae).toBe("");
+});
 
 it("downloads the MOSS weights and tokenizer without audio or adapters", async () => {
   const moss = mossImageTemplate();

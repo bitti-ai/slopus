@@ -77,7 +77,7 @@ describe("the settings screen", () => {
     saveLoras([{ id: "future-adapter", name: "MOSS adapter", modelType: "moss", path: "D:/moss-adapter.safetensors" }]);
     open(null);
     const models = screen.getByRole("list", { name: "Generator models" });
-    expect(within(models).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["MiniMax H3", "MOSS", "Other"]);
+    expect(within(models).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["MiniMax H3", "MOSS", "Fibo 2.0", "Other"]);
     expect(screen.queryByRole("button", { name: "Edit Default generator" })).toBeNull();
     fireEvent.click(within(models).getByRole("button", { name: "MiniMax H3" }));
     expect(screen.getByRole("button", { name: "Edit Default generator" })).toBeTruthy();
@@ -134,6 +134,17 @@ describe("the settings screen", () => {
     view.rerender(<SettingsView {...props} navigation={{ templateId: "other:seedvr2", otherWeightId: "seedvr2" }} />);
     expect(screen.getByRole("heading", { level: 1, name: "Other" })).toBeTruthy();
     expect(screen.getByRole("list", { name: "Other weights" })).toBeTruthy();
+  });
+
+  it("offers Fibo settings with embedded tokenizer and no H3-only controls", () => {
+    open("Fibo 2.0");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Fibo 2.0 Edit Turbo generator" }));
+    expect(combo("Generator model").getAttribute("data-value")).toBe("fibo2");
+    expect(combo("Generator attention").getAttribute("data-value")).toBe("flash2");
+    expect(screen.getByRole("button", { name: "More options for Image VAE weights" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "More options for Audio VAE weights" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Generator mode" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Enable MotionCache" })).toBeNull();
   });
 
   it("groups MOSS under its model and edits its image-only weight setup", () => {

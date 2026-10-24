@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { mossImageTemplate } from "./settings";
+import { mossImageTemplate, fiboImageTemplate } from "./settings";
 import { waitFor } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -432,6 +432,30 @@ describe("image generation work", () => {
     expect(() => queue.enqueueImage(session, template, count)).toThrow("Count must be a whole number");
     expect(session.getSnapshot().config).toBe(before);
     expect(queue.getSnapshot()).toHaveLength(0);
+  });
+
+  it("routes Fibo source edits once without H3 prompt wrappers or duplicate references", async () => {
+    const { queue, first } = setup();
+    const fibo = { ...fiboImageTemplate(), sources: {}, paths: { transformer: "fibo", textEncoder: "qwen", videoVae: "flux", tokenizer: "", audioVae: "" } };
+    expect(() => queue.enqueue(first, [submission(first)], fibo)).toThrow(/supports video/);
+    const session = queue.project(imageProject());
+    expect(() => queue.enqueueImage(session, fibo)).toThrow(/requires one to 4/);
+    session.update((current) => {
+      const scene = createImageEditScene({ name: "Source", relativePath: "media/source.png", width: 512, height: 512 });
+      scene.nodes[0].description = "Make the sky blue";
+      scene.steps = 4;
+      return { ...current, imageScene: scene };
+    });
+    queue.enqueueImage(session, fibo);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const [request, config] = vi.mocked(enqueueSlopfabGeneration).mock.calls[0];
+    expect(request).toMatchObject({ stillImage: true, frames: 1, steps: 4, referencePaths: [],
+      imageEdit: { sourceRelativePath: "media/source.png", edits: [{ prompt: "Make the sky blue.", referencePaths: [], feather: 0 }] } });
+    expect(request.guidanceScale).toBeUndefined();
+    expect(config.providerSettings.slopfab.options).toMatchObject({ modelType: "fibo2", attention: "flash2" });
+    expect(config.providerSettings.slopfab.options).not.toHaveProperty("audioVae");
+    expect(config.providerSettings.slopfab.options).not.toHaveProperty("tokenizer");
+    await queue.cancel(queue.getSnapshot()[0].id);
   });
 
   it("routes MOSS text-to-image requests and refuses video and editing work", async () => {
