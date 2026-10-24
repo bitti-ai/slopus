@@ -38,11 +38,6 @@ it.each(["queued", "generating"] as const)("shows a separate empty %s entry with
   const original = { id: "original", kind: "image" as const, name: "Original", relativePath: "media/original.png", width: 512, height: 512,
     mimeType: "image/png", createdAt: config.createdAt, imageGeneration: imageGenerationSnapshot(config, "Compiled forest", "default") };
   config.assets = [original];
-  // Also cover hiding the source thumbnail while an image edit generates.
-  if (status === "generating") {
-    config.imageScene = createImageEditScene(original);
-    config.imageScene.nodes[0].description = "Add snow";
-  }
   config.imageScene.outputAssetId = original.id;
   const pending = saveImageDraft(config, "default", true, "pending");
   const current = setup(pending, [{ id: "job", imageAssetId: original.id, imageDraftId: "pending", status, progress: 0.25, detail: "Working" } as WorkItem]);
@@ -1173,6 +1168,7 @@ it("draws a lasso, edits its prompt, moves its outline, and saves it independent
   pointer("pointerDown", 100, 80); pointer("pointerMove", 400, 80); pointer("pointerUp", 100, 320);
   expect(screen.getByRole("radio", { name: "Select" })).toHaveAttribute("aria-checked", "true");
   expect(screen.getByRole("button", { name: "Lasso" })).toBeInTheDocument();
+  expect(canvas.querySelector("[data-resize]")).toBeNull();
   const lasso = current().imageScene!.nodes[1];
   expect(lasso).toMatchObject({ name: "Lasso", box: { x: 100, y: 100, width: 300, height: 300 }, lasso: [{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 0, y: 1000 }] });
   typePrompt(screen.getByLabelText("Edit prompt"), "Add a red flower");
@@ -1191,4 +1187,27 @@ it("draws a lasso, edits its prompt, moves its outline, and saves it independent
   expect(current().imageScene!.nodes).toHaveLength(2);
   pointer("pointerDown", 10, 10); pointer("pointerUp", 200, 200);
   expect(current().imageScene!.nodes).toHaveLength(2);
+});
+
+it.each(["queued", "generating", "encoding"] as const)("keeps the edit source visible while %s, then displays the completed image", async (status) => {
+  vi.spyOn(persistence, "readMediaFileUrl").mockImplementation(async (_folder, location) => `blob:${location.relativePath}`);
+  vi.stubGlobal("URL", class extends URL { static revokeObjectURL = vi.fn(); });
+  const config = parseProjectConfig(fixture);
+  const source = { id: "source", kind: "image" as const, name: "Original", relativePath: "media/source.png", width: 512, height: 512, mimeType: "image/png", createdAt: config.createdAt };
+  config.assets = [source];
+  config.imageScene = createImageEditScene(source);
+  config.imageScene.nodes[0].description = "Add snow";
+  const pending = saveImageDraft(config, "default", true, "pending");
+  const work = { id: "job", imageAssetId: source.id, imageDraftId: "pending", status, progress: 0.25, detail: "Working" } as WorkItem;
+  const props = { folderPath: "D:/Images", onChange: vi.fn(), onGenerate: vi.fn(), onCancel: vi.fn() };
+  const { rerender } = render(<ImageEditor {...props} config={pending} workItems={[work]} />);
+  await waitFor(() => expect(document.querySelector(".image-frame img")).toHaveAttribute("src", "blob:media/source.png"));
+  expect(document.querySelector(".image-frame .image-empty")).toBeNull();
+  expect(screen.getByRole("progressbar", { name: "Image generation progress" })).toBeInTheDocument();
+  const result = { ...source, id: "pending", name: "Edited image", relativePath: "media/result.png", imageGeneration: pending.assets[1].imageGeneration };
+  const completed = completeImageDraft(pending, result.id, result);
+  rerender(<ImageEditor {...props} config={completed} workItems={[{ ...work, status: "completed", progress: 1 }]} />);
+  await waitFor(() => expect(document.querySelector(".image-frame img")).toHaveAttribute("src", "blob:media/result.png"));
+  expect(screen.queryByRole("progressbar", { name: "Image generation progress" })).not.toBeInTheDocument();
+  expect(completed.assets[0]).toEqual(source);
 });
