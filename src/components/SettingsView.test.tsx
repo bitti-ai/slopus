@@ -50,8 +50,8 @@ describe("the settings page", () => {
     render(<SettingsView onClose={onClose} />);
     expect(document.activeElement).toBe(screen.getByRole("main", { name: "Settings" }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByRole("heading", { level: 1, name: "Generator" })).toBeTruthy();
-    expect(tab("Generator").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { level: 1, name: "Generators" })).toBeTruthy();
+    expect(tab("Generators").getAttribute("aria-current")).toBe("page");
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(onClose).toHaveBeenCalledOnce();
   });
@@ -285,7 +285,7 @@ describe("the settings screen", () => {
 
   it("opens on the engine, because that is what has to be set before anything renders", async () => {
     open();
-    expect(tab("Generator").getAttribute("aria-current")).toBe("page");
+    expect(tab("Generators").getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("heading", { name: "Generators" })).toBeTruthy();
     expect(screen.queryByRole("group", { name: "Transformer weights" })).toBeNull();
     editDefaultGenerator();
@@ -315,7 +315,7 @@ describe("the settings screen", () => {
     open();
     const items = within(screen.getByRole("navigation", { name: "Settings sections" })).getAllByRole("button").filter((item) => item.id.startsWith("settings-tab-"));
     expect(items.map((item) => item.textContent?.replace(/\d+$/, ""))).toEqual([
-      "Generator", "Workers", "Agents", "Appearance", "Diagnostics", "Updates",
+      "Generators", "Workers", "Agents", "Appearance", "Diagnostics", "Updates",
     ]);
     fireEvent.click(tab("Appearance"));
     expect(combo("App theme")).toBeTruthy();
@@ -327,18 +327,18 @@ describe("the settings screen", () => {
     fireEvent.keyDown(tab("Diagnostics"), { key: "ArrowUp" });
     expect(tab("Appearance").getAttribute("aria-current")).toBe("page");
     fireEvent.keyDown(tab("Appearance"), { key: "Home" });
-    expect(document.activeElement).toBe(tab("Generator"));
-    fireEvent.keyDown(tab("Generator"), { key: "End" });
+    expect(document.activeElement).toBe(tab("Generators"));
+    fireEvent.keyDown(tab("Generators"), { key: "End" });
     expect(document.activeElement).toBe(tab("Updates"));
   });
 
   it("counts the paths still to set on the Generator item, from any section", () => {
     open();
     // Four of the five fields are required and none is set yet.
-    expect(within(tab("Generator")).getByText("4")).toBeTruthy();
-    expect(tab("Generator").getAttribute("aria-label")).toBe("Generator, 4 model paths to set");
+    expect(within(tab("Generators")).getByText("4")).toBeTruthy();
+    expect(tab("Generators").getAttribute("aria-label")).toBe("Generators, 4 model paths to set");
     fireEvent.click(tab("Appearance"));
-    expect(within(tab("Generator")).getByText("4")).toBeTruthy();
+    expect(within(tab("Generators")).getByText("4")).toBeTruthy();
   });
 
   it("keeps the settings copy short", () => {

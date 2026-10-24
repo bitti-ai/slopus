@@ -261,7 +261,7 @@ function DiagnosticsSetting({ desktop, status, onBackendChange }: { desktop: boo
 /* --- The page ------------------------------------------------------------------------ */
 
 const TABS = [
-  { id: "engine", label: "Generator", icon: Video16, selectedIcon: Video16Filled },
+  { id: "engine", label: "Generators", icon: Video16, selectedIcon: Video16Filled },
   { id: "workers", label: "Workers", icon: Worker16, selectedIcon: Worker16Filled },
   { id: "llms", label: "Agents", icon: Agent16, selectedIcon: Agent16Filled },
   { id: "appearance", label: "Appearance", icon: Palette16, selectedIcon: Palette16Filled },

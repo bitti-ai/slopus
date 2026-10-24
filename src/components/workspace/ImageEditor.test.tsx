@@ -19,6 +19,10 @@ import snapshotFixture from "../../../fixtures/image-generation-snapshot.json";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+function enableCompositionTools() {
+  const template = createGeneratorTemplate("MOSS", "moss");
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 14 });
+}
 function setup(initial = parseProjectConfig(fixture), workItems: WorkItem[] = []) {
   let latest: ProjectConfig = initial;
   function Harness() {
@@ -432,7 +436,7 @@ it("hides placement and palette controls by model type while preserving boxes an
   expect(screen.queryByText("Placement (0–1000)")).not.toBeInTheDocument();
   expect(screen.queryByText("Color palette")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Explicit placement")).not.toBeInTheDocument();
-  expect(screen.getByRole("radio", { name: "Draw object" })).toBeEnabled();
+  expect(screen.getByRole("radio", { name: "Draw object" })).toBeDisabled();
   expect(screen.getByLabelText("Image placement canvas").querySelectorAll("rect[data-node]").length).toBeGreaterThan(0);
   choose("Generator", "Future generator");
   expect(screen.getByText("Placement (0–1000)")).toBeInTheDocument();
@@ -771,6 +775,7 @@ it("drags whole hierarchy branches to nest or reorder, preserves placement, and 
 });
 
 it("uses the context menu for creation, inline rename, and independent subtree copy/paste", () => {
+  enableCompositionTools();
   const current = setup();
   const open = (name: string) => fireEvent.contextMenu(screen.getByRole("button", { name }));
   const action = (name: string) => fireEvent.click(screen.getByRole("menuitem", { name: new RegExp(`^${name}(?:$| )`) }));
@@ -813,6 +818,7 @@ it("uses the context menu for creation, inline rename, and independent subtree c
 });
 
 it("supports menu keyboard navigation and tree shortcuts without intercepting name editing", () => {
+  enableCompositionTools();
   const current = setup();
   const rocket = screen.getByRole("button", { name: "Rocket" });
   fireEvent.click(rocket);
@@ -842,6 +848,7 @@ it("supports menu keyboard navigation and tree shortcuts without intercepting na
 });
 
 it("walks the tree with arrow keys as a single tab stop and duplicates with Ctrl+D", () => {
+  enableCompositionTools();
   const current = setup();
   const image = screen.getByRole("button", { name: "Image" });
   expect(image).toHaveAttribute("tabindex", "0");
@@ -897,6 +904,7 @@ it("deletes a box selected on the canvas, supports undo, and leaves text editing
 });
 
 it("undoes and redoes image edits with the keyboard inside the editor only", () => {
+  enableCompositionTools();
   const current = setup();
   const before = current().imageScene!.nodes.length;
   const rocket = screen.getByRole("button", { name: "Rocket" });
@@ -914,6 +922,7 @@ it("undoes and redoes image edits with the keyboard inside the editor only", () 
 });
 
 it("picks canvas tools from a radio group or their letter keys and zooms from the keyboard", () => {
+  enableCompositionTools();
   setup();
   const tools = screen.getByRole("radiogroup", { name: "Canvas tool" });
   expect(within(tools).getByRole("radio", { name: "Select" })).toHaveAttribute("aria-checked", "true");
@@ -1146,6 +1155,8 @@ it("sets a temporary generation count, dismisses its panel and resets after one 
   expect(screen.getByRole("dialog", { name: "Generation options" })).toBeInTheDocument();
   const count = screen.getByRole("spinbutton", { name: "Count" });
   expect(count).toHaveFocus();
+  expect(screen.getByText("Count")).toHaveAttribute("data-tooltip", "Different seeds for each image. Resets after generating.");
+  expect(screen.queryByText("Different seeds for each image. Resets after generating.")).not.toBeInTheDocument();
   expect(count).toHaveValue(1);
   for (const value of ["0", "101", "2.5", ""]) {
     fireEvent.change(count, { target: { value } });
@@ -1282,4 +1293,35 @@ it("combines and subtracts lassos using release-time modifiers and shows matchin
   fireEvent.blur(window);
   expect(canvas).not.toHaveClass("lasso-add");
   expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).imageScene).toEqual(current().imageScene);
+});
+
+it("gates composition creation by model across menus, shortcuts and model switches", () => {
+  const h3 = createGeneratorTemplate("H3"), moss = createGeneratorTemplate("MOSS", "moss"), fibo = createGeneratorTemplate("Fibo", "fibo2");
+  saveGeneratorTemplateSettings({ templates: [h3, moss, fibo], defaultTemplateId: h3.id, catalogVersion: 14 });
+  const current = setup();
+  const before = structuredClone(current().imageScene!.nodes);
+  for (const name of ["Draw object", "Draw text", "Draw group"]) expect(screen.getByRole("radio", { name })).toBeDisabled();
+  const tree = screen.getByRole("tree", { name: "Image nodes" });
+  fireEvent.contextMenu(tree);
+  for (const name of ["New Object", "New Text", "New Group", "New Background"]) expect(screen.getByRole("menuitem", { name })).toBeDisabled();
+  fireEvent.keyDown(window, { key: "Escape" });
+  const canvas = screen.getByLabelText("Image placement canvas");
+  for (const key of ["o", "t", "g"]) fireEvent.keyDown(canvas, { key });
+  expect(screen.getByRole("radio", { name: "Select" })).toHaveAttribute("aria-checked", "true");
+  const rocket = screen.getByRole("button", { name: "Rocket" });
+  fireEvent.click(rocket);
+  fireEvent.keyDown(rocket, { key: "d", ctrlKey: true });
+  expect(current().imageScene!.nodes).toEqual(before);
+  for (const model of ["MOSS", "Fibo"]) {
+    choose("Generator", model);
+    for (const name of ["Draw object", "Draw text", "Draw group"]) expect(screen.getByRole("radio", { name })).toBeEnabled();
+    fireEvent.contextMenu(tree);
+    for (const name of ["New Object", "New Text", "New Group", "New Background"]) expect(screen.getByRole("menuitem", { name })).toBeEnabled();
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(screen.getByRole("radio", { name: "Draw object" }));
+    expect(screen.getByRole("radio", { name: "Draw object" })).toHaveAttribute("aria-checked", "true");
+    choose("Generator", "H3");
+    expect(screen.getByRole("radio", { name: "Select" })).toHaveAttribute("aria-checked", "true");
+  }
+  expect(current().imageScene!.nodes).toEqual(before);
 });

@@ -26,6 +26,8 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## Fixes and improvements
 
+- Renamed the Generator settings section to Generators. Refined the lasso icon and integrated the image Generate arrow into one split control. Count help now appears on the label tooltip. Model capabilities disable Object, Text, Group and Background creation for MiniMax H3 while keeping them available for MOSS and Fibo; existing image edits retain Edit Box and Lasso.
+
 - First/Last Frame now uses Winnougan's FL2VA W4A8 fallback. Saved fallback selections migrate to the correct model; References retains its REF2VA fallback.
 
 - FastH3 Omni always downloads its Omni transformer. Removed its inherited W4A8 fallback and migrate saved selections to Omni, reusing an existing Omni download when available.

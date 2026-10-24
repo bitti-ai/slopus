@@ -114,6 +114,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const effectsBlocked = activeGenerationEffects(scene.generationEffects) && !model.generationEffects ? "This model does not support generation effects. Bypass or remove the effects, or choose another generator." : null;
   const editingBlocked = !model.imageEditing ? `${model.label} does not support image editing. Choose an editing generator.` : null;
   const referencesBlocked = !model.characterSheets ? `${model.label} does not support character sheets. Choose a character sheet generator.` : null;
+  const creationBlocked = !imageRoot && !model.imageCompositionCreation;
   const isMiniMaxH3 = !template || template.modelType === MINIMAX_H3_MODEL_TYPE;
   const onChange = (update: ConfigUpdate) => changeConfig((current) => {
     const next = typeof update === "function" ? update(current) : update;
@@ -124,6 +125,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const [generationCount, setGenerationCount] = useState("1");
   const [generationOptionsOpen, setGenerationOptionsOpen] = useState(false);
   const generationOptionsButton = useRef<HTMLButtonElement>(null);
+  const generationCountInput = useRef<HTMLInputElement>(null);
   const count = Number(generationCount);
   const validCount = Number.isInteger(count) && count >= 1 && count <= MAX_IMAGE_BATCH_COUNT;
   const debugEnabled = useSyncExternalStore(subscribeDebugOptions, loadDebugOptionsEnabled);
@@ -149,6 +151,10 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const redo = useRef<ImageScene[]>([]);
   const [, historyChanged] = useState(0);
   const pointer = useRef<{ x: number; y: number; scene: ImageScene; id?: string; resize: boolean; box?: ImageBox; lasso?: ImagePoint[] } | null>(null);
+  useEffect(() => {
+    if (!creationBlocked) return;
+    pointer.current = null; setDraftBox(null); setDraftLasso(null); setDrawKind(null);
+  }, [creationBlocked]);
   useEffect(() => {
     // Applied edits belong to the old source and must not be resurrected by Undo.
     undo.current = []; redo.current = []; historyChanged((value) => value + 1);
@@ -225,7 +231,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const patchNode = (patch: Partial<ImageNode>) => commit({ ...scene, nodes: scene.nodes.map((node) => node.id === selected.id ? { ...node, ...patch } : node) });
   const insertParent = selected.kind === "object" || selected.kind === "text" ? selected.parentId ?? root.id : selected.id;
   const add = (kind: Exclude<ImageNode["kind"], "root">, box?: ImageBox) => {
-    if (imageRoot && editingBlocked) return;
+    if (creationBlocked || (imageRoot && editingBlocked)) return;
     const parent = imageRoot ? root.id : insertParent;
     const next = addImageNode(scene, parent, imageRoot ? "object" : kind, box);
     if (imageRoot) Object.assign(next.nodes.at(-1)!, { name: "Edit" });
@@ -346,6 +352,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     requestAnimationFrame(() => focusNode(parent));
   };
   const paste = () => {
+    if (creationBlocked) return;
     const result = pasteImageNode(scene, insertParent);
     if (!result) return;
     commit(result.scene); setSelection(result.id);
@@ -353,6 +360,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     requestAnimationFrame(() => focusNode(result.id));
   };
   const duplicate = () => {
+    if (creationBlocked) return;
     if (selected.kind === "root") return;
     const next = duplicateImageNode(scene, selected.id);
     const oldIds = new Set(scene.nodes.map((node) => node.id));
@@ -496,13 +504,13 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       { id: "group", label: "Draw group", key: "G", icon: <Group16 />, onIcon: <Group16Filled /> },
     ] as const),
   ] as const;
-  const chooseTool = (id: typeof drawKind) => { if (extendMode || (imageRoot && editingBlocked && id)) return; pointer.current = null; setDraftBox(null); setDraftLasso(null); setDrawKind(id); if (id) setBoxes(true); };
+  const chooseTool = (id: typeof drawKind) => { if (extendMode || (id && (creationBlocked || (imageRoot && editingBlocked)))) return; pointer.current = null; setDraftBox(null); setDraftLasso(null); setDrawKind(id); if (id) setBoxes(true); };
   useShortcut("V", () => chooseTool(null), { scope: editorRoot });
   useShortcut("E", () => chooseTool("object"), { scope: editorRoot, enabled: imageRoot && !editingBlocked });
   useShortcut("L", () => chooseTool("lasso"), { scope: editorRoot, enabled: imageRoot && !editingBlocked });
-  useShortcut("O", () => chooseTool("object"), { scope: editorRoot, enabled: !imageRoot });
-  useShortcut("T", () => chooseTool("text"), { scope: editorRoot, enabled: !imageRoot });
-  useShortcut("G", () => chooseTool("group"), { scope: editorRoot, enabled: !imageRoot });
+  useShortcut("O", () => chooseTool("object"), { scope: editorRoot, enabled: !imageRoot && !creationBlocked });
+  useShortcut("T", () => chooseTool("text"), { scope: editorRoot, enabled: !imageRoot && !creationBlocked });
+  useShortcut("G", () => chooseTool("group"), { scope: editorRoot, enabled: !imageRoot && !creationBlocked });
   useShortcut("Escape", () => { if (!drawKind) return false; chooseTool(null); }, { scope: editorRoot });
 
   /* Zoom: Fit is the frame fitted to the viewport (100% of the fit); the
@@ -602,12 +610,12 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     {!active && <button ref={generationOptionsButton} type="button" className="primary-button image-generation-options" aria-label="Generation options"
       aria-haspopup="dialog" aria-expanded={generationOptionsOpen} data-tooltip="Generation options" disabled={generateDisabled}
       onClick={() => setGenerationOptionsOpen(!generationOptionsOpen)}><ChevronDown14 aria-hidden="true" /></button>}
-    <Flyout open={generationOptionsOpen && !active} anchor={generationOptionsButton} onClose={() => setGenerationOptionsOpen(false)} placement="top" width={240} aria-label="Generation options" className="image-generation-options-panel">
-      <PropRow label="Count" htmlFor={rootField("generation-count")}>
-        <input id={rootField("generation-count")} className="text-field" type="number" min={1} max={MAX_IMAGE_BATCH_COUNT} step={1}
-          value={generationCount} aria-invalid={!validCount} aria-describedby={rootField("generation-count-help")} onChange={(event) => setGenerationCount(event.target.value)} />
+    <Flyout open={generationOptionsOpen && !active} anchor={generationOptionsButton} initialFocus={generationCountInput} onClose={() => setGenerationOptionsOpen(false)} placement="top" width={240} aria-label="Generation options" className="image-generation-options-panel">
+      <PropRow label="Count" tooltip="Different seeds for each image. Resets after generating." htmlFor={rootField("generation-count")}>
+        <input ref={generationCountInput} id={rootField("generation-count")} className="text-field" type="number" min={1} max={MAX_IMAGE_BATCH_COUNT} step={1}
+          value={generationCount} aria-invalid={!validCount} aria-describedby={!validCount ? rootField("generation-count-help") : undefined} onChange={(event) => setGenerationCount(event.target.value)} />
       </PropRow>
-      <p id={rootField("generation-count-help")}>{validCount ? "Different seeds for each image. Resets after generating." : `Enter a whole number from 1 to ${MAX_IMAGE_BATCH_COUNT}.`}</p>
+      <p hidden={validCount} id={rootField("generation-count-help")}>{`Enter a whole number from 1 to ${MAX_IMAGE_BATCH_COUNT}.`}</p>
     </Flyout>
   </div>;
 
@@ -641,7 +649,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           requestAnimationFrame(() => event.currentTarget.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus());
         }}>
           {TOOLS.map((tool) => <button
-            key={tool.label} disabled={imageRoot && Boolean(editingBlocked) && tool.id !== null}
+            key={tool.label} disabled={tool.id !== null && (creationBlocked || (imageRoot && Boolean(editingBlocked)))}
             type="button"
             role="radio"
             aria-checked={drawKind === tool.id}
@@ -693,15 +701,15 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     <Splitter {...treePane.splitterProps} aria-label="Resize hierarchy" />
     {contextMenu && <HierarchyContextMenu {...contextMenu} onClose={closeContextMenu} items={[
       ...(imageRoot ? [{ label: "New Edit", icon: <Edit16 />, disabled: Boolean(editingBlocked), action: () => attempt(() => add("object")) }] : [
-        { label: "New Object", icon: <Cube16 />, action: () => attempt(() => add("object")) },
-        { label: "New Text", icon: <Text16 />, action: () => attempt(() => add("text")) },
-        { label: "New Group", icon: <FolderAdd16 />, action: () => attempt(() => add("group")) },
-        { label: "New Background", icon: <Image16 />, action: () => attempt(() => add("background")) },
+        { label: "New Object", icon: <Cube16 />, disabled: creationBlocked, action: () => attempt(() => add("object")) },
+        { label: "New Text", icon: <Text16 />, disabled: creationBlocked, action: () => attempt(() => add("text")) },
+        { label: "New Group", icon: <FolderAdd16 />, disabled: creationBlocked, action: () => attempt(() => add("group")) },
+        { label: "New Background", icon: <Image16 />, disabled: creationBlocked, action: () => attempt(() => add("background")) },
       ]),
       { label: "Rename", icon: <Rename16 />, shortcut: "F2", separator: true, action: startRename },
       { label: "Copy", icon: <Copy16 />, shortcut: "Ctrl+C", separator: true, disabled: selected.kind === "root", action: () => copyImageNode(scene, selected.id) },
-      { label: "Paste", icon: <Paste16 />, shortcut: "Ctrl+V", disabled: !clipboard, action: () => attempt(paste) },
-      { label: "Duplicate", icon: <Copy16 />, shortcut: "Ctrl+D", disabled: selected.kind === "root", action: () => attempt(duplicate) },
+      { label: "Paste", icon: <Paste16 />, shortcut: "Ctrl+V", disabled: creationBlocked || !clipboard, action: () => attempt(paste) },
+      { label: "Duplicate", icon: <Copy16 />, shortcut: "Ctrl+D", disabled: creationBlocked || selected.kind === "root", action: () => attempt(duplicate) },
       { label: "Delete", icon: <Delete16 />, shortcut: "Delete", separator: true, danger: true, disabled: selected.kind === "root", action: removeSelected },
     ]} />}
     {imageMenu && <HierarchyContextMenu {...imageMenu} label="Generated image actions" onClose={closeImageMenu} items={[

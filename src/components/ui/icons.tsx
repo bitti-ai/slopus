@@ -112,7 +112,6 @@ import { Filmstrip16Regular, Filmstrip20Regular } from "@fluentui/react-icons/he
 import { FolderOpen16Regular, FolderOpen28Regular } from "@fluentui/react-icons/headless/svg/folder-open";
 import { Group20Filled, Group20Regular } from "@fluentui/react-icons/headless/svg/group";
 import { Image16Regular, Image24Regular } from "@fluentui/react-icons/headless/svg/image";
-import { Lasso20Regular } from "@fluentui/react-icons/headless/svg/lasso";
 import { ImageAdd20Regular } from "@fluentui/react-icons/headless/svg/image-add";
 import { LockClosed16Filled } from "@fluentui/react-icons/headless/svg/lock-closed";
 import { LockOpen16Regular } from "@fluentui/react-icons/headless/svg/lock-open";
@@ -164,7 +163,12 @@ export const Image12 = /*#__PURE__*/ scaled(Image16Regular, 12);
 export const Image22 = /*#__PURE__*/ scaled(Image24Regular, 22);
 export const ImageAdd14 = /*#__PURE__*/ scaled(ImageAdd20Regular, 14);
 export const ImageAdd16 = /*#__PURE__*/ scaled(ImageAdd20Regular, 16);
-export const Lasso16 = /*#__PURE__*/ scaled(Lasso20Regular, 16);
+/** The rope leaves the loop at its lower-right edge on a 45-degree diagonal. */
+export const Lasso16 = ({ className, ...props }: FluentIconsProps) => <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"
+  {...props} className={`ui-icon--16${className ? ` ${className}` : ""}`} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+  <circle cx="6.5" cy="6.5" r="4.75" />
+  <path d="m9.86 9.86 2.39 2.39c1.75 1.75 2.5-.25 1.25-1.5" />
+</svg>;
 export const Lock14Filled = /*#__PURE__*/ scaled(LockClosed16Filled, 14);
 export const More14 = /*#__PURE__*/ scaled(MoreHorizontal16Regular, 14);
 export const Mute14Filled = /*#__PURE__*/ scaled(SpeakerMute16Filled, 14);

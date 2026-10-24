@@ -17,7 +17,8 @@
     "maxImageReferences": 9,
     "refmods": true,
     "sigmaShifts": true,
-    "cudaOnly": false
+    "cudaOnly": false,
+    "imageCompositionCreation": false
   },
   "moss": {
     "label": "MOSS Image",
@@ -39,7 +40,8 @@
     "maxImageReferences": 0,
     "refmods": false,
     "sigmaShifts": true,
-    "cudaOnly": true
+    "cudaOnly": true,
+    "imageCompositionCreation": true
   },
   "fibo2": {
     "label": "Fibo 2.0",
@@ -59,6 +61,7 @@
     "maxImageReferences": 4,
     "refmods": false,
     "sigmaShifts": false,
-    "cudaOnly": true
+    "cudaOnly": true,
+    "imageCompositionCreation": true
   }
 }
