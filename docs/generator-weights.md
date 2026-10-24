@@ -180,8 +180,8 @@ All four text encoder downloads use the original Qwen3-VL 32B encoder on all GPU
 The incompatible 4B INT4 ConvRot option is removed from saved Minimax templates;
 templates using its downloaded file switch back to the original encoder, which
 may need downloading. The old file is left on disk.
-First/Last Frame and References use the hybrid W4A8 transformer at 20 GB or less
-and their respective INT8 transformer above 20 GB; unknown hardware uses the W4A8 fallback.
+First/Last Frame uses Winnougan's `minimax_h3_fl2va_pruned-w4a8_convrot_pruned.safetensors` fallback at 20 GB or less; References uses the hybrid REF2VA W4A8 model.
+Both use their respective INT8 transformer above 20 GB; unknown hardware uses the W4A8 fallback.
 FastH3 Omni uses its Omni transformer on all GPUs, without a W4A8 fallback.
 Saved Fast templates using the old fallback switch to Omni; an existing Omni download is reused when available.
 Other local weights and customized download variants are preserved.

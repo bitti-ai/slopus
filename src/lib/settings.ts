@@ -248,6 +248,9 @@ export function mossImageTemplate(): GeneratorTemplate {
   return { id: "moss-image", name: "MOSS Image", modelType: MOSS_MODEL_TYPE, defaultSteps: 50, attention: "flash2", paths, sources };
 }
 
+const MINIMAX_REF2VA_W4A8_URL = "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors";
+const MINIMAX_FL2VA_W4A8_URL = "https://huggingface.co/Winnougan/MiniMax-H3-INT4_Convrot_ComfyUI/resolve/main/minimax_h3_fl2va_pruned-w4a8_convrot_pruned.safetensors";
+
 export function minimaxOriginalTemplate(): GeneratorTemplate {
   const root = "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/";
   const paths = {
@@ -259,7 +262,7 @@ export function minimaxOriginalTemplate(): GeneratorTemplate {
   const sources: GeneratorTemplate["sources"] = Object.fromEntries(ENGINE_PATH_FIELDS.filter(({ id }) => paths[id]).map(({ id }) => [id, [{ url: paths[id], gpuModel: "", minVramGb: 0 }]]));
   sources.transformer = [
     { url: paths.transformer, gpuModel: "", minVramGb: 21 },
-    { url: "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors", gpuModel: "", minVramGb: 0 },
+    { url: MINIMAX_FL2VA_W4A8_URL, gpuModel: "", minVramGb: 0 },
   ];
   return { id: "minimax-h3-original", name: "First/Last Frame", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: 20, attention: "sage2", paths, sources };
 }
@@ -274,8 +277,12 @@ function minimaxVariantTemplate(id: string, name: string, transformer: string, d
 }
 
 export function minimaxReferencesTemplate(): GeneratorTemplate {
-  return minimaxVariantTemplate("minimax-h3-references", "References",
+  const template = minimaxVariantTemplate("minimax-h3-references", "References",
     "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors");
+  return { ...template, sources: { ...template.sources, transformer: [
+    { url: template.paths.transformer, gpuModel: "", minVramGb: 21 },
+    { url: MINIMAX_REF2VA_W4A8_URL, gpuModel: "", minVramGb: 0 },
+  ] } };
 }
 
 export function minimaxFastTemplate(): GeneratorTemplate {
@@ -314,7 +321,7 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
   templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 12,
+  catalogVersion: 13,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -376,7 +383,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? templates.find(templateUsable)?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -520,7 +527,7 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           const fast = normalized.templates.find(({ id }) => id === "minimax-h3-fast");
           if (fast) {
             const bundled = minimaxFastTemplate();
-            const fallbackUrl = "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors";
+            const fallbackUrl = MINIMAX_REF2VA_W4A8_URL;
             const canonical = (url: string) => url.trim().replace("/blob/", "/resolve/");
             const sources = fast.sources?.transformer ?? [];
             const removed = sources.filter((source) => canonical(source.url) === fallbackUrl);
@@ -539,6 +546,23 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
             if (sources.length || retained.length) fast.sources = { ...fast.sources, transformer: retained };
           }
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 12 })!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
+        if ((normalized.catalogVersion ?? 0) < 13) {
+          const original = normalized.templates.find(({ id }) => id === "minimax-h3-original");
+          if (original) {
+            const isOldFallback = (url: string) => url.trim().replace("/blob/", "/resolve/") === MINIMAX_REF2VA_W4A8_URL;
+            const sources = original.sources?.transformer;
+            if (isOldFallback(original.paths.transformer) || sources?.some((source) => isOldFallback(source.url) && source.downloadedPath === original.paths.transformer)) {
+              original.paths.transformer = sources?.find((source) => source.url === MINIMAX_FL2VA_W4A8_URL)?.downloadedPath || MINIMAX_FL2VA_W4A8_URL;
+            }
+            if (sources) original.sources!.transformer = sources.map((source) => {
+              if (!isOldFallback(source.url)) return source;
+              const { downloadedPath: _downloadedPath, ...updated } = source;
+              return { ...updated, url: MINIMAX_FL2VA_W4A8_URL };
+            });
+          }
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 13 })!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         return normalized;

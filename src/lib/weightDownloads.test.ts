@@ -280,11 +280,11 @@ it.each([8, 11.4, 12, 12.01, 16, 19.4, 20, 20.01, 24, 32])("selects the Minimax 
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
     url: minimaxOriginalTemplate().paths.textEncoder,
   }));
-  const transformer = vram <= 20 ? "minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors" : "minimax_h3_fl2va_pruned_int8_convrot.safetensors";
+  const transformer = vram <= 20 ? "minimax_h3_fl2va_pruned-w4a8_convrot_pruned.safetensors" : "minimax_h3_fl2va_pruned_int8_convrot.safetensors";
   expect(saved().paths.transformer).toBe(`C:/Slopus/weights/${transformer}`);
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
     url: vram <= 20
-      ? "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors"
+      ? "https://huggingface.co/Winnougan/MiniMax-H3-INT4_Convrot_ComfyUI/resolve/main/minimax_h3_fl2va_pruned-w4a8_convrot_pruned.safetensors"
       : minimaxOriginalTemplate().paths.transformer,
   }));
 });
