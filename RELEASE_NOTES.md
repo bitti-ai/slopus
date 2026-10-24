@@ -4,6 +4,8 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## What's new
 
+- **FastH3 Omni.** Renamed First/Last Frame Fast and updated its transformer to the FastH3 Omni eight-step model. Existing bundled settings migrate automatically.
+
 - **Generator model pages.** Open MiniMax H3, MOSS or Other from Generator settings. Each model has its own generators and LoRAs; Other contains the existing extra weights. New generators use the selected model.
 
 - **Image generation count.** Open the arrow beside Generate to queue up to 100 images with different seeds. Count applies to one click, resets afterward and is not saved in the project.

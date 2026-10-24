@@ -279,8 +279,8 @@ export function minimaxReferencesTemplate(): GeneratorTemplate {
 }
 
 export function minimaxFastTemplate(): GeneratorTemplate {
-  const template = minimaxVariantTemplate("minimax-h3-fast", "First/Last Frame Fast",
-    "https://huggingface.co/FastVideo/FastVideo-FastH3-Comfy/resolve/main/diffusion_models/fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors", 8);
+  const template = minimaxVariantTemplate("minimax-h3-fast", "FastH3 Omni",
+    "https://huggingface.co/FastVideo/FastH3-Omni-Comfy/resolve/main/diffusion_models/fasth3_omniref_8step_pruned_int8_convrot.safetensors", 8);
   const videoVae = "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors";
   return { ...template,
     paths: { ...template.paths, videoVae },
@@ -312,7 +312,7 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
   templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 10,
+  catalogVersion: 11,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -374,7 +374,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? templates.find(templateUsable)?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -492,6 +492,26 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           const template = mossImageTemplate();
           if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 10 })!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
+        if ((normalized.catalogVersion ?? 0) < 11) {
+          const fast = normalized.templates.find(({ id }) => id === "minimax-h3-fast");
+          if (fast) {
+            const bundled = minimaxFastTemplate();
+            if (fast.name === "First/Last Frame Fast") fast.name = bundled.name;
+            const oldUrl = "https://huggingface.co/FastVideo/FastVideo-FastH3-Comfy/resolve/main/diffusion_models/fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors";
+            const matchesOldUrl = (url: string) => url.replace("/blob/", "/resolve/") === oldUrl;
+            const sources = fast.sources?.transformer;
+            if (matchesOldUrl(fast.paths.transformer) || sources?.some((source) => matchesOldUrl(source.url) && source.downloadedPath === fast.paths.transformer)) {
+              fast.paths.transformer = bundled.paths.transformer;
+            }
+            if (sources) fast.sources!.transformer = sources.map((source) => {
+              if (!matchesOldUrl(source.url)) return source;
+              const { downloadedPath: _downloadedPath, ...updated } = source;
+              return { ...updated, url: bundled.paths.transformer };
+            });
+          }
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 11 })!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         return normalized;

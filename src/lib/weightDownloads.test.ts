@@ -305,7 +305,7 @@ it("downloads the fast transformer and video VAE and retains its eight-step defa
   await downloadTemplateWeights("minimax-h3-fast");
   expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 4, error: null });
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
-    url: "https://huggingface.co/FastVideo/FastVideo-FastH3-Comfy/resolve/main/diffusion_models/fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors",
+    url: "https://huggingface.co/FastVideo/FastH3-Omni-Comfy/resolve/main/diffusion_models/fasth3_omniref_8step_pruned_int8_convrot.safetensors",
   }));
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
     url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors",
