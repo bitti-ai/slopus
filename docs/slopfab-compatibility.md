@@ -1,5 +1,42 @@
 # Slopfab compatibility
 
+## Generation effects (API 1.31)
+
+Scene and image root inspectors provide **Effects > Add effect** for native
+LCS color steering, tone, experimental sharpness, and self/smooth color
+stabilization. Cards support bypass, reset and removal. A shared inclusive
+step interval (zero-based) and optional percentage rectangle apply to all
+active cards; the rectangle can be inverted. Neutral and bypassed controls
+are omitted from generation requests and video render fingerprints.
+
+Effects are saved with scenes, image drafts and generation snapshots. The
+native core validates ranges and model capabilities before generation. The
+shared model catalog enables LCS for MiniMax H3 and disables it for MOSS.
+These are sampling effects, separate from timeline postprocessing. They use
+SlopFab's native implementation of the approach described by
+[ComfyUI-LCS](https://github.com/facok/ComfyUI-LCS), without running ComfyUI.
+
+The first active request calibrates its VAE automatically using 64 colors at
+256 pixels. Calibration runs on the generation worker, reports progress and
+honors cancellation. Completed archives are cached under `lcs` beside the
+host's diagnostic log, keyed by full VAE SHA-256, calibration format and
+parameters. Corrupt archives are regenerated. Planning never calibrates or
+runs inference. The generation request snapshots the archive before sampling;
+region masks use fractional coverage of the resolved latent patch grid.
+
+LAN worker protocol 10 carries the portable controls and prevents older
+workers from silently dropping them. Each worker calibrates and caches its
+own VAE. Update workers alongside the desktop app. A runtime missing the LCS
+exports reports an explicit upgrade error.
+
+Both bundled libraries are built from SlopFab commit `e3eb8c4` (API 1.31.0)
+with FFmpeg disabled. Windows and Linux C API and embedded-tokenizer checks
+pass, including the previously failing malformed LCS settings checks. Slopus
+checks cover UI authoring, project persistence, request snapshots, worker
+serialization, mask validation, calibration cancellation and callback panic
+containment through the bundled DLL. Full generation and visual LCS quality
+with model weights were not evaluated in this integration.
+
 ## MOSS image generation (API 1.30+)
 
 The bundled Windows and Linux libraries now expose SlopFab API 1.31.0, including
@@ -8,11 +45,6 @@ MOSS uses CUDA/Flash attention, the image VAE slot, and a separate Qwen3.5
 tokenizer file. It returns one RGB frame through the existing image save path.
 Older workers report an explicit runtime-upgrade error for MOSS requests.
 
-The app's native core and agent checks, frontend build, and focused generator,
-download, image, video, and queue tests passed. The Linux runtime's MOSS C API
-and embedded tokenizer tests passed. Its full C API suite reported two failures
-in `capi_lcs_settings_snapshot_and_mask`, for the error codes returned on malformed
-LCS JSON and boolean strength values. Slopus does not use those LCS APIs.
 No full MOSS inference with model weights was run for this integration.
 
 ## Zoom boundary correction (1.28.2)

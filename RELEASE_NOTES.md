@@ -4,6 +4,8 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## What's new
 
+- **Generation effects.** Add LCS color steering, tone, sharpness and color stabilization from the video Scene or image root inspector. Effects run during generation, with bypass, reset, step ranges and optional regions. VAE calibration is automatic, cached and cancellable. MOSS disables these controls through the shared model capabilities.
+
 - **MOSS image generation.** Generator settings group templates by model and include MOSS Image with its model weights and tokenizer downloads. MOSS is available for new images on CUDA; video, image editing, Zoom, and reference-based character sheets are disabled through shared model capabilities.
 - **Prompt video scenes.** New ordinary video scenes default to Prompt, with text and reference guidance but no start- or last-frame selectors. First & last frame remains available for frame conditioning.
 - **Agent image drafts and generation.** Ask the agent to prepare multiple images in the image bar for later, edit a selected draft, or generate it with a chosen generator. Preparation is saved before rendering, and the agent resumes after generation with the saved result.
@@ -23,4 +25,4 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 - Backdrop prompts describe a flat, constant color field in every shot, limit reference guidance to subject appearance, and use neutral studio styling when no look is specified.
 - Scene type label tooltips now explain each scene type's behavior.
 - Renamed Add reference to Reference browser and centered the agent send and stop buttons.
-- Updated the bundled Windows and Linux SlopFab runtimes to 1.28.2 for Zoom refinement, seam fixes and transformer-loading memory recovery. Update LAN workers alongside the app.
+- Updated the bundled Windows and Linux SlopFab runtimes to API 1.31 for MOSS, native LCS and earlier Zoom fixes. LAN worker protocol 10 carries generation effects; update workers alongside the app.
