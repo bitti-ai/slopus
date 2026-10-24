@@ -25,6 +25,7 @@ pub(super) fn new_scene(prompt: &str) -> ImageScene {
     ImageScene {
         generation_effects: None,
         cfg_scales: None,
+        negative_prompts: None,
         root_type: None,
         source_image: None,
         output_size: None,
@@ -156,6 +157,7 @@ pub(super) fn apply(
             scene = ImageScene {
                 generation_effects: scene.generation_effects,
                 cfg_scales: scene.cfg_scales,
+                negative_prompts: scene.negative_prompts,
                 root_type: scene.root_type,
                 source_image: scene.source_image,
                 output_size: scene.output_size,

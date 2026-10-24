@@ -130,9 +130,9 @@ fn older_runtimes_reject_cfg_and_cross_instance_guidance_is_refused() {
     let mut api = Api::load(&path).unwrap();
     api.disable_image_guidance_for_test();
     let request = RequestHandle::new(&api).unwrap();
-    assert!(api.set_image_guidance(&request, 3.0).unwrap_err().contains("API 1.30"));
+    assert!(api.set_image_guidance(&request, 3.0, "watermark").unwrap_err().contains("API 1.30"));
     let other = Api::load(&path).unwrap();
-    assert!(other.set_image_guidance(&request, 3.0).unwrap_err().contains("different runtime"));
+    assert!(other.set_image_guidance(&request, 3.0, "watermark").unwrap_err().contains("different runtime"));
 }
 
 #[test]

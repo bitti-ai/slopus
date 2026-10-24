@@ -284,6 +284,7 @@ export class WorkQueue {
     const { prompt, references } = edit ? edit.edits[0] : compileImagePrompt(current, { modelType: template.modelType });
     const { width, height } = edit ? imageEditOutputSize(scene) : outputDimensions(imageSettings(current).resolution, imageSettings(current).aspectRatio);
     const id = `image-${crypto.randomUUID()}`;
+    const negativePrompt = generatorModel(template.modelType).negativePrompt ? scene.negativePrompts?.[template.modelType] : undefined;
     const guidanceScale = imageCfgScale(template.modelType, scene.cfgScales);
     // Publish and select the job's own entry before generation starts. The
     // finished source stays untouched, and an existing empty draft is reused.
@@ -314,7 +315,7 @@ export class WorkQueue {
         slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
       let finish!: () => void;
       const done = new Promise<void>((resolve) => { finish = resolve; });
-      const request: SlopfabGenerationRequest = { ...(guidanceScale !== undefined ? { guidanceScale } : {}), generationEffects: activeGenerationEffects(scene.generationEffects), jobId: entry.id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
+      const request: SlopfabGenerationRequest = { ...(negativePrompt ? { negativePrompt } : {}), ...(guidanceScale !== undefined ? { guidanceScale } : {}), generationEffects: activeGenerationEffects(scene.generationEffects), jobId: entry.id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
         ...(edit ? { imageEdit: { sourceRelativePath: edit.source.relativePath, edits: edit.edits.map(({ references, ...step }) => ({
           ...step, referencePaths: referencePaths(references), refmods: referenceRefmodInputs(session.record.folderPath, references),
         })) } } : {}),

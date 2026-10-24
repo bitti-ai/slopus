@@ -74,7 +74,7 @@ pub(super) fn configure_request(
     // Sampling presets replace overrides, so apply the audio setting afterward.
     api.set_audio_steps(handle, request.audio_steps.unwrap_or(0))?;
     if let Some(cfg) = &crate::models::generator_features(&configuration.model_type).cfg {
-        api.set_image_guidance(handle, request.guidance_scale.unwrap_or(cfg.default))?;
+        api.set_image_guidance(handle, request.guidance_scale.unwrap_or(cfg.default), request.negative_prompt.as_deref().unwrap_or(""))?;
     }
     api.set_seed(handle, generation_seed(request.seed)?)?;
     if let Some(edit) = &request.image_edit {

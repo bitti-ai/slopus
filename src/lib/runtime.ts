@@ -106,6 +106,7 @@ export interface SlopfabGenerationRequest {
   steps: number;
   audioSteps?: number;
   guidanceScale?: number;
+  negativePrompt?: string;
   generationEffects?: import("./generationEffects").GenerationEffects;
   videoSigmaShift?: number;
   audioSigmaShift?: number;

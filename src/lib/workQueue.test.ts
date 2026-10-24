@@ -480,7 +480,7 @@ describe("image generation work", () => {
   it("captures the selected model CFG for generation and image history", async () => {
     const { queue } = setup();
     const session = queue.project(imageProject());
-    session.update((current) => ({ ...current, imageScene: { ...current.imageScene!, cfgScales: { moss: 4.5, "minimax-h3": 9 } } }));
+    session.update((current) => ({ ...current, imageScene: { ...current.imageScene!, cfgScales: { moss: 4.5, "minimax-h3": 9 }, negativePrompts: { moss: "blurry, watermark", "minimax-h3": "ignored" } } }));
     const moss = { ...mossImageTemplate(), sources: {}, paths: { transformer: "moss", textEncoder: "qwen", videoVae: "flux", tokenizer: "tokenizer.json", audioVae: "" } };
     vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/moss.jpg", width: 768, height: 768 });
     queue.enqueueImage(session, moss);
@@ -488,12 +488,15 @@ describe("image generation work", () => {
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
     const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
     expect(request.guidanceScale).toBe(4.5);
+    expect(request.negativePrompt).toBe("blurry, watermark");
     await finish(queue, request.jobId);
     const result = session.getSnapshot().config.assets.find((asset) => asset.relativePath === "media/generated/moss.jpg");
     expect(result?.imageGeneration?.scene.cfgScales?.moss).toBe(4.5);
+    expect(result?.imageGeneration?.scene.negativePrompts?.moss).toBe("blurry, watermark");
     queue.enqueueImage(session, template);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2));
     expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[1][0].guidanceScale).toBeUndefined();
+    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[1][0].negativePrompt).toBeUndefined();
   });
   it("captures image effects, shows calibration progress and refuses active effects on MOSS", async () => {
     const { queue } = setup();

@@ -1662,3 +1662,23 @@ fn fibo_validates_image_inputs_and_rejects_unsupported_h3_controls() {
     request.image_edit.as_mut().unwrap().edits[0].invert_mask = true;
     assert!(configuration.validate_inputs(&request).unwrap_err().contains("outpainting"));
 }
+
+#[test]
+fn negative_prompts_reach_moss_and_are_rejected_for_other_models() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.model_type = "moss".into();
+    configuration.attention = "flash2";
+    let request = GenerationRequest { still_image: true, frames: 1, steps: 4, prompt: "A red apple".into(),
+        negative_prompt: Some("watermark, blurry details".into()), canvas_width: 512, canvas_height: 512, ..Default::default() };
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+        let handle = RequestHandle::new(&api).unwrap();
+        configure_request(&api, &handle, &request, &configuration, ComputePlatform::Cuda13, purpose, &ReferenceVideos::default()).unwrap();
+        api.resolve(&handle).unwrap();
+        assert!(api.set_image_guidance(&handle, 3.0, "invalid\0prompt").unwrap_err().contains("null characters"));
+    }
+    for model in ["fibo2", "minimax-h3"] {
+        configuration.model_type = model.into();
+        assert!(configuration.validate_inputs(&request).unwrap_err().contains("does not support negative prompts"));
+    }
+}

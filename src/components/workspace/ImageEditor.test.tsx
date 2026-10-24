@@ -1325,3 +1325,22 @@ it("gates composition creation by model across menus, shortcuts and model switch
   }
   expect(current().imageScene!.nodes).toEqual(before);
 });
+
+it("shows model-specific negative prompts, preserves them across model switches and explains Fibo", () => {
+  const h3 = createGeneratorTemplate("H3"), moss = createGeneratorTemplate("MOSS", "moss"), fibo = createGeneratorTemplate("Fibo", "fibo2");
+  saveGeneratorTemplateSettings({ templates: [h3, moss, fibo], defaultTemplateId: h3.id, catalogVersion: 14 });
+  const latest = setup();
+  expect(screen.queryByRole("textbox", { name: "Negative prompt" })).not.toBeInTheDocument();
+  choose("Generator", "MOSS");
+  const field = screen.getByRole("textbox", { name: "Negative prompt" });
+  expect(field).toBeEnabled();
+  fireEvent.change(field, { target: { value: "Watermarks, blurry details" } });
+  expect(parseProjectConfig(JSON.parse(JSON.stringify(latest()))).imageScene?.negativePrompts?.moss).toBe("Watermarks, blurry details");
+  expect(screen.getByRole("textbox", { name: "Negative prompt" }).compareDocumentPosition(screen.getByText("Image generation")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  choose("Generator", "Fibo");
+  expect(screen.getByRole("textbox", { name: "Negative prompt" })).toBeDisabled();
+  expect(screen.getByText("Negative prompt")).toHaveAttribute("data-tooltip", expect.stringContaining("does not support negative prompts"));
+  choose("Generator", "MOSS");
+  expect(screen.getByRole("textbox", { name: "Negative prompt" })).toHaveValue("Watermarks, blurry details");
+  expect(screen.queryByText("Background (environment)")).not.toBeInTheDocument();
+});

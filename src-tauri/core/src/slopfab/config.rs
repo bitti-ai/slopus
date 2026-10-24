@@ -122,6 +122,12 @@ impl Configuration {
 
     pub(super) fn validate_inputs(&self, request: &GenerationRequest) -> Result<(), String> {
         let features = crate::models::generator_features(&self.model_type);
+        if let Some(negative) = &request.negative_prompt {
+            if negative.contains('\0') { return Err("Negative prompt cannot contain null characters.".into()); }
+            if !negative.is_empty() && (!features.negative_prompt || !request.still_image) {
+                return Err(format!("{} does not support negative prompts for this generation.", features.label));
+            }
+        }
         if let Some(scale) = request.guidance_scale {
             crate::models::validate_cfg_scale(f64::from(scale))?;
             if features.cfg.is_none() || !request.still_image { return Err(format!("{} does not support configurable CFG for this generation.", features.label)); }

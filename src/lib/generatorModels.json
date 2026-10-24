@@ -18,7 +18,9 @@
     "refmods": true,
     "sigmaShifts": true,
     "cudaOnly": false,
-    "imageCompositionCreation": false
+    "imageCompositionCreation": false,
+    "negativePrompt": false,
+    "negativePromptDisabledReason": null
   },
   "moss": {
     "label": "MOSS Image",
@@ -41,7 +43,9 @@
     "refmods": false,
     "sigmaShifts": true,
     "cudaOnly": true,
-    "imageCompositionCreation": true
+    "imageCompositionCreation": true,
+    "negativePrompt": true,
+    "negativePromptDisabledReason": null
   },
   "fibo2": {
     "label": "Fibo 2.0",
@@ -62,6 +66,8 @@
     "refmods": false,
     "sigmaShifts": false,
     "cudaOnly": true,
-    "imageCompositionCreation": true
+    "imageCompositionCreation": true,
+    "negativePrompt": false,
+    "negativePromptDisabledReason": "Fibo 2.0 Turbo uses only the positive prompt. Slopfab does not support negative prompts for this model."
   }
 }

@@ -4,6 +4,7 @@
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GeneratorFeatures {
+    pub negative_prompt: bool,
     pub label: String,
     pub image_generation: bool,
     pub video_generation: bool,

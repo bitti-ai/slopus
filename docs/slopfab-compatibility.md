@@ -60,7 +60,7 @@ including an explicitly captured default. Native validation rejects unsupported
 models, negative/non-finite values and values outside the float32 range.
 
 Slopus calls API 1.30's `slopfab_request_set_image_guidance` for planning and
-generation, preserving MOSS's empty negative prompt and skip layer 22. CFG 1
+generation, passing the image's saved negative prompt and preserving skip layer 22. CFG 1
 uses only the positive branch. Worker protocol 11 prevents an older worker
 from ignoring CFG. Tests verify the value in the bundled runtime's plan,
 project persistence, queue isolation and saved output settings.
@@ -499,3 +499,16 @@ was relinked with `-Wl,-z,defs` and
 Without that retention, the upstream static archive order leaves an unresolved
 symbol in the shared library. Linux plain instructions work; optional structured
 `text_render` glyph images still require Windows in this Slopfab version.
+
+## Negative prompts
+
+The image root stores `negativePrompts` by model ID. MOSS sends the selected
+text with CFG through `slopfab_request_set_image_guidance`; CFG 1 bypasses the
+negative branch. Drafts and generation snapshots retain the authored text.
+Worker protocol 15 prevents older workers from silently discarding it.
+
+The shared catalog's `negativePrompt` flag enables authoring and generation.
+An optional `negativePromptDisabledReason` displays a disabled field with help;
+Fibo Turbo uses this because it has no negative prediction branch. H3 hides the
+field. Requests with nonempty negative prompts for unsupported models are
+rejected at the native boundary.

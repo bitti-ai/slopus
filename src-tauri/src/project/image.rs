@@ -66,6 +66,8 @@ impl ImageTemplateSnapshot {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageScene {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub negative_prompts: Option<std::collections::BTreeMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cfg_scales: Option<std::collections::BTreeMap<String, f64>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generation_effects: Option<slopus_core::generation_effects::GenerationEffects>,

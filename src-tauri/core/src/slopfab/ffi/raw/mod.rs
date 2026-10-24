@@ -594,10 +594,10 @@ impl Api {
     }
     #[cfg(test)]
     pub fn disable_image_guidance_for_test(&mut self) { self.set_image_guidance = None; }
-    pub fn set_image_guidance(&self, r: *mut Request, scale: f32) -> Result<(), String> {
+    pub fn set_image_guidance(&self, r: *mut Request, scale: f32, negative_prompt: &str) -> Result<(), String> {
         let set = self.set_image_guidance.ok_or("Configurable CFG requires SlopFab API 1.30 or newer. Update the runtime on the machine running generation.")?;
-        // Keep MOSS's default empty negative prompt and negative-branch skip layer.
-        let negative = CString::new("").unwrap();
+        // Preserve MOSS's default negative-branch skip layer.
+        let negative = CString::new(negative_prompt).map_err(|_| "Negative prompt cannot contain null characters.")?;
         let skip_layers = [22_i32];
         self.error(unsafe { set(r, scale, negative.as_ptr(), skip_layers.as_ptr(), 1) })
     }

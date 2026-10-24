@@ -820,6 +820,13 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         <div className="image-inspector__area"><span id={rootField("prompt-label")} tabIndex={selected.kind === "root" && imageRoot ? 0 : undefined} data-tooltip={selected.kind === "root" && imageRoot ? "Applies to the whole image before the individual edits." : undefined}>{promptLabel}</span><PromptTextField key={selected.id} aria-labelledby={rootField("prompt-label")} value={selected.description} references={promptReferences} missingLabel={missingReference} onChange={(description) => patchNode({ description })} /></div>
         {selected.kind === "text" && <PropRow label="Text to render" htmlFor={rootField("text")}><input id={rootField("text")} className="text-field" value={selected.text} onChange={(event) => patchNode({ text: event.target.value })} /></PropRow>}
         {selected.kind === "root" && <>
+          {(model.negativePrompt || model.negativePromptDisabledReason) && <div className="image-inspector__area">
+            <label htmlFor={rootField("negative-prompt")} tabIndex={0} data-tooltip={model.negativePromptDisabledReason ?? "Describe what to avoid. MOSS uses this with CFG; CFG 1 uses only the positive prompt."}>Negative prompt</label>
+            <textarea id={rootField("negative-prompt")} className="text-field" rows={3} disabled={!model.negativePrompt}
+              placeholder={model.negativePromptDisabledReason ? "Not supported by Fibo 2.0 Turbo" : undefined}
+              value={scene.negativePrompts?.[template?.modelType ?? ""] ?? ""}
+              onChange={(event) => { if (template) commit({ ...scene, negativePrompts: { ...scene.negativePrompts, [template.modelType]: event.target.value } }); }} />
+          </div>}
           <PropSection title="Image generation" persistKey="image.generation" summary={`${generationStepsForTemplate(scene.steps, template)} steps`}>
             <PropRow label="Steps" htmlFor={rootField("steps")}><input id={rootField("steps")} className="text-field" type="number" min="2" max="1000" value={scene.steps} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 2 && value <= 1000) commit({ ...scene, steps: value }); }} /></PropRow>
             {model.cfg && template && <PropRow label="CFG" htmlFor={rootField("cfg")} tooltip="Classifier-free guidance. 1 uses only the positive prompt; higher values strengthen guidance." value={scene.cfgScales?.[template.modelType] ?? model.cfg.default} defaultValue={model.cfg.default} onReset={active ? undefined : () => commit({ ...scene, cfgScales: { ...scene.cfgScales, [template.modelType]: model.cfg!.default } })}>
