@@ -284,7 +284,9 @@ export function minimaxFastTemplate(): GeneratorTemplate {
   const videoVae = "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors";
   return { ...template,
     paths: { ...template.paths, videoVae },
-    sources: { ...template.sources, videoVae: [{ url: videoVae, gpuModel: "", minVramGb: 0 }] },
+    sources: { ...template.sources,
+      transformer: [{ url: template.paths.transformer, gpuModel: "", minVramGb: 0 }],
+      videoVae: [{ url: videoVae, gpuModel: "", minVramGb: 0 }] },
   };
 }
 
@@ -312,7 +314,7 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
   templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 11,
+  catalogVersion: 12,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -374,7 +376,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? templates.find(templateUsable)?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -512,6 +514,31 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
             });
           }
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 11 })!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
+        if ((normalized.catalogVersion ?? 0) < 12) {
+          const fast = normalized.templates.find(({ id }) => id === "minimax-h3-fast");
+          if (fast) {
+            const bundled = minimaxFastTemplate();
+            const fallbackUrl = "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors";
+            const canonical = (url: string) => url.trim().replace("/blob/", "/resolve/");
+            const sources = fast.sources?.transformer ?? [];
+            const removed = sources.filter((source) => canonical(source.url) === fallbackUrl);
+            const retained = sources.filter((source) => canonical(source.url) !== fallbackUrl).map((source) =>
+              canonical(source.url) === bundled.paths.transformer && !source.gpuModel.trim() && source.minVramGb === 21
+                ? { ...source, minVramGb: 0 } : source);
+            const usedFallback = canonical(fast.paths.transformer) === fallbackUrl
+              || removed.some((source) => source.downloadedPath && source.downloadedPath === fast.paths.transformer);
+            if ((removed.length || usedFallback) && !retained.some((source) => canonical(source.url) === bundled.paths.transformer)) {
+              retained.push({ ...bundled.sources!.transformer![0] });
+            }
+            if (usedFallback) {
+              const omni = retained.find((source) => canonical(source.url) === bundled.paths.transformer)!;
+              fast.paths.transformer = omni.downloadedPath || omni.url;
+            }
+            if (sources.length || retained.length) fast.sources = { ...fast.sources, transformer: retained };
+          }
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 12 })!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         return normalized;

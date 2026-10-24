@@ -163,10 +163,10 @@ at most 2 consecutive skips, active range 0.15–0.95, and subsampling stride 8.
 In Settings → Generator, edit a template and enter local paths or HTTP/HTTPS
 download URLs. Hugging Face `blob` links are converted to direct file downloads.
 The bundled **First/Last Frame** (formerly **Minimax H3 Original**),
-**References**, **First/Last Frame Fast**, and **Singularity** templates each download four model files. References has the same
+**References**, **FastH3 Omni**, and **Singularity** templates each download four model files. References has the same
 settings, with the `minimax_h3_ref2va_pruned_int8_convrot.safetensors` transformer
 in place of the First/Last Frame `minimax_h3_fl2va_pruned_int8_convrot.safetensors`.
-First/Last Frame Fast uses `fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors`
+FastH3 Omni uses `fasth3_omniref_8step_pruned_int8_convrot.safetensors`
 and `minimax_h3_video_vae_int8_convrot.safetensors`, and defaults to **8 steps**.
 Existing Fast templates receive the updated URLs and step default once, preserving custom settings.
 First/Last Frame and
@@ -180,8 +180,10 @@ All four text encoder downloads use the original Qwen3-VL 32B encoder on all GPU
 The incompatible 4B INT4 ConvRot option is removed from saved Minimax templates;
 templates using its downloaded file switch back to the original encoder, which
 may need downloading. The old file is left on disk.
-First/Last Frame, References, and First/Last Frame Fast use the hybrid W4A8 transformer at 20 GB or less
+First/Last Frame and References use the hybrid W4A8 transformer at 20 GB or less
 and their respective INT8 transformer above 20 GB; unknown hardware uses the W4A8 fallback.
+FastH3 Omni uses its Omni transformer on all GPUs, without a W4A8 fallback.
+Saved Fast templates using the old fallback switch to Omni; an existing Omni download is reused when available.
 Other local weights and customized download variants are preserved.
 
 Templates awaiting downloads appear under **Download**. Once their

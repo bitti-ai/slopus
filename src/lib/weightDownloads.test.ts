@@ -301,7 +301,10 @@ it.each([12, 20, 24])("downloads the References transformer for %s GiB of VRAM",
   expect(templateNeedsDownload(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "minimax-h3-references")!)).toBe(false);
 });
 
-it("downloads the fast transformer and video VAE and retains its eight-step default", async () => {
+it.each([0, 12, 20, 24])("downloads only the FastH3 Omni transformer for %s GiB and retains its eight-step default", async (vram) => {
+  const original = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (command, args) => command === "weight_download_hardware"
+    ? vram ? [{ name: "GPU", memoryBytes: vram * 1024 ** 3 }] : [] : original(command, args));
   await downloadTemplateWeights("minimax-h3-fast");
   expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 4, error: null });
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
