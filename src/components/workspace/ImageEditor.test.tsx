@@ -65,7 +65,7 @@ it.each(["queued", "generating"] as const)("shows a separate empty %s entry with
   expect(current().assets[0]).toEqual(original);
 });
 
-it("requires image input for Fibo, enables editing tools and disables unsupported templates", () => {
+it("allows Fibo text-to-image and editing while disabling unsupported templates", () => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   const fibo = { ...fiboImageTemplate(), sources: {}, paths: { transformer: "fibo", textEncoder: "qwen", videoVae: "flux", tokenizer: "", audioVae: "" } };
   saveGeneratorTemplateSettings({ templates: [fibo], defaultTemplateId: fibo.id, catalogVersion: 14 });
@@ -73,8 +73,7 @@ it("requires image input for Fibo, enables editing tools and disables unsupporte
   initial.imageScene = createImageScene("Make the sky blue");
   setup(initial);
   expect(screen.getByRole("combobox", { name: "Generator" })).toHaveTextContent("Fibo 2.0 Edit Turbo");
-  expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
-  expect(screen.getByRole("status")).toHaveTextContent("requires one to 4 image references");
+  expect(screen.getByRole("button", { name: "Generate" })).toBeEnabled();
   cleanup();
   const source = { id: "source", kind: "image" as const, name: "Source", relativePath: "media/source.png", width: 512, height: 512, mimeType: "image/png", createdAt: initial.createdAt };
   initial.assets = [source];

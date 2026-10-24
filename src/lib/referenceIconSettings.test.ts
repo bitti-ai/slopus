@@ -47,7 +47,7 @@ it("honors a disabled choice for the session when storage cannot be written", ()
   }
 });
 
-it("excludes image-editing-only Fibo from automatic text reference icons", () => {
+it("allows Fibo for automatic text reference icons", () => {
   const fibo = createGeneratorTemplate("Fibo", "fibo2");
-  expect(referenceIconGenerator({ templates: [fibo], defaultTemplateId: fibo.id })).toBeUndefined();
+  expect(referenceIconGenerator({ templates: [fibo], defaultTemplateId: fibo.id })?.id).toBe(fibo.id);
 });

@@ -170,15 +170,17 @@ describe("MiniMax H3 still-image prompts", () => {
   });
 });
 
- it("compiles Fibo reference instructions without H3 wrappers and requires one to four images", () => {
+ it("compiles Fibo text-only prompts and up to four image references without H3 wrappers", () => {
   const config = photo();
   const compile = () => compileImagePrompt(config, { modelType: "fibo2" });
-  expect(compile).toThrow(/requires one to 4 image references/);
+  expect(compile().prompt).toContain("A runner suspended mid-stride");
+  expect(compile().references).toEqual([]);
+  expect(compile().prompt).not.toMatch(/Shot|Picture|overall_soundscape/);
   config.references = Array.from({ length: 5 }, (_, i) => ({ id: `ref${i}`, name: `Photo ${i}`, kind: "image" as const, description: "", relativePath: `references/${i}.png`, intendedUse: [], createdAt: config.createdAt }));
   config.imageScene!.nodes[0].description = "Put @[ref:ref1] beside @[ref:ref0]";
   expect(compile().references.map(({ id }) => id)).toEqual(["ref1", "ref0"]);
   expect(compile().prompt).toContain("Photo 1 (image 1) beside Photo 0 (image 2)");
   expect(compile().prompt).not.toMatch(/Shot|Picture|overall_soundscape|subject_definitions/);
   config.imageScene!.nodes[0].description = config.references.map(({ id }) => `@[ref:${id}]`).join(" ");
-  expect(compile).toThrow(/requires one to 4/);
+  expect(compile).toThrow(/at most 4/);
 });

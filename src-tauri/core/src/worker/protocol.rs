@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 
 pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 /// Bumped on any incompatible change to the routes or bodies below.
+// v16 enables Fibo text-to-image; older workers require source images.
 // v15 carries image negative prompts; older workers would silently discard them.
 // v14 adds Fibo model routing, validation and image-only weights.
 // v13 carries compound lasso masks; older workers would discard holes and splits.
@@ -21,7 +22,7 @@ pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 // v6 added custom upscale weights.
 // v5 added overlap locking.
 // v4 added SeedVR2 export streams. v3 added inverted image masks.
-pub const PROTOCOL_VERSION: u32 = 15;
+pub const PROTOCOL_VERSION: u32 = 16;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]

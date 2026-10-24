@@ -1635,7 +1635,7 @@ fn fibo_validates_image_inputs_and_rejects_unsupported_h3_controls() {
     configuration.model_type = "fibo2".into();
     configuration.attention = "flash2";
     let mut request = GenerationRequest { still_image: true, frames: 1, steps: 4, prompt: "Make it blue".into(), canvas_width: 512, canvas_height: 512, ..Default::default() };
-    assert!(configuration.validate_inputs(&request).unwrap_err().contains("requires a source image"));
+    configuration.validate_inputs(&request).unwrap();
     request.reference_paths = vec!["image.png".into(); 4];
     configuration.validate_inputs(&request).unwrap();
     request.reference_paths.push("extra.png".into());
@@ -1680,5 +1680,21 @@ fn negative_prompts_reach_moss_and_are_rejected_for_other_models() {
     for model in ["fibo2", "minimax-h3"] {
         configuration.model_type = model.into();
         assert!(configuration.validate_inputs(&request).unwrap_err().contains("does not support negative prompts"));
+    }
+}
+
+#[test]
+fn fibo_text_only_requests_resolve_without_source_images() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.model_type = "fibo2".into();
+    configuration.attention = "flash2";
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    let request = GenerationRequest { still_image: true, frames: 1, steps: 4, prompt: "A blue vase".into(),
+        canvas_width: 256, canvas_height: 384, ..Default::default() };
+    for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+        let handle = RequestHandle::new(&api).unwrap();
+        configure_request(&api, &handle, &request, &configuration, ComputePlatform::Cuda13, purpose, &ReferenceVideos::default()).unwrap();
+        let plan = api.resolve(&handle).unwrap();
+        assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames, plan.num_model_evaluations), (256, 384, 1, 4));
     }
 }

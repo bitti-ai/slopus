@@ -4,11 +4,11 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## What's new
 
-- **Image negative prompts.** MOSS exposes a Negative prompt field below the image root prompt, saved per model with drafts and generated images and applied during local or LAN generation. Fibo Turbo shows the field disabled because its single positive prediction does not support negative prompts. Visibility and support are controlled by model settings. Update LAN workers to protocol 15.
+- **Image negative prompts.** MOSS exposes a Negative prompt field below the image root prompt, saved per model with drafts and generated images and applied during local or LAN generation. Fibo Turbo shows the field disabled because its single positive prediction does not support negative prompts. Visibility and support are controlled by model settings. Update LAN workers to protocol 16.
 
-- **Fibo 2.0 image editing.** Added an Edit Turbo generator with transformer, Qwen3-VL encoder and Flux2 VAE downloads. Use whole-image, box or lasso edits, or cite up to four images in a new image prompt. Defaults to four steps on CUDA; unsupported video and H3-only controls are disabled.
+- **Fibo 2.0 image editing.** Added an Edit Turbo generator with transformer, Qwen3-VL encoder and Flux2 VAE downloads. Generate directly from a text prompt, use whole-image, box or lasso edits, or cite up to four images in a new image prompt. Defaults to four steps on CUDA; unsupported video and H3-only controls are disabled.
 
-- **Lasso image edits.** Draw a freehand area beside the existing box tool, give it a prompt in the right panel, and select or move it from the canvas or Scene tree. Saved outlines become antialiased Slopfab masks for local and LAN generation, preserving pixels outside the selection. Bundled runtimes now use API 1.34; LAN workers require the matching update.
+- **Lasso image edits.** Draw a freehand area beside the existing box tool, give it a prompt in the right panel, and select or move it from the canvas or Scene tree. Saved outlines become antialiased Slopfab masks for local and LAN generation, preserving pixels outside the selection. Bundled runtimes now use API 1.36; LAN workers require the matching update.
 
 - **FastH3 Omni.** Renamed First/Last Frame Fast and updated its transformer to the FastH3 Omni eight-step model. Existing bundled settings migrate automatically.
 
@@ -51,4 +51,4 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 - Backdrop prompts describe a flat, constant color field in every shot, limit reference guidance to subject appearance, and use neutral studio styling when no look is specified.
 - Scene type label tooltips now explain each scene type's behavior.
 - Renamed Add reference to Reference browser and centered the agent send and stop buttons.
-- Updated the bundled Windows and Linux SlopFab runtimes to API 1.34 for Fibo, MOSS, native LCS and image masks. LAN worker protocol 14 carries Fibo image-only model configuration; update workers alongside the app.
+- Updated the bundled Windows and Linux SlopFab runtimes to API 1.36 for Fibo, MOSS, native LCS and image masks. LAN worker protocol 16 supports Fibo text-to-image and MOSS negative prompts; update workers alongside the app.

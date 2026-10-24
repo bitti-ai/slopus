@@ -27,7 +27,7 @@ export function referenceIconPrompt(reference: ProjectReference, modelType?: str
     reference.subcategory ? `Subcategory: ${reference.subcategory}` : "",
     `Reference description:\n${description}`,
   ].filter(Boolean).join("\n");
-  if (modelType === "moss") return visual;
+  if (modelType === "moss" || modelType === "fibo2") return visual;
   // H3's base three-field format also applies to text-only still-image jobs.
   // Icons have no audio, so both audio fields explicitly use N/A.
   return [

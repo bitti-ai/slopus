@@ -49,7 +49,7 @@
   },
   "fibo2": {
     "label": "Fibo 2.0",
-    "description": "Image editing with source or reference images on CUDA",
+    "description": "Text-to-image generation and image editing on CUDA",
     "imageGeneration": true,
     "videoGeneration": false,
     "imageEditing": true,
@@ -60,7 +60,7 @@
     "cfg": null,
     "imageOutpainting": false,
     "characterSheets": false,
-    "requiresImageInput": true,
+    "requiresImageInput": false,
     "editImageReferences": false,
     "maxImageReferences": 4,
     "refmods": false,

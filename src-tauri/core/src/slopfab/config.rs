@@ -168,7 +168,7 @@ impl Configuration {
         if self.model_type == "fibo2" && (self.animate || request.latent_upscale || request.latent_bridge.is_some()
             || request.continuation_path.is_some() || request.continuation_relative_path.is_some() || request.save_latents_path.is_some()
             || self.attention != "flash2") {
-            return Err("Fibo requires Flash attention and image inputs, without H3 video or latent features.".into());
+            return Err("Fibo requires Flash attention, without H3 video or latent features.".into());
         }
         if !features.image_references && (!request.reference_paths.is_empty() || !request.refmods.is_empty()) {
             return Err(format!("{} does not support image references or refmods.", features.label));

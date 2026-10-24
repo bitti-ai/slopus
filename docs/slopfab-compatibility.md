@@ -45,7 +45,7 @@ with model weights were not evaluated in this integration.
 
 ## MOSS image generation (API 1.30+)
 
-The bundled Windows and Linux libraries expose SlopFab API 1.34.0, including
+The bundled Windows and Linux libraries expose SlopFab API 1.36.0, including
 the MOSS model-family setter introduced in 1.30. Both builds disable FFmpeg.
 MOSS uses CUDA/Flash attention, the image VAE slot, and a separate Qwen3.5
 tokenizer file. It returns one RGB frame through the existing image save path.
@@ -470,20 +470,20 @@ CUDA/Vulkan numerical output and render performance were not revalidated here.
 
 ## Fibo 2.0 (API 1.34)
 
-The bundled Windows and Linux libraries are updated to Slopfab commit `782397a`
-(API 1.34.0), built with FFmpeg disabled. LAN protocol 14 requires updated workers.
+The bundled Windows and Linux libraries are updated to Slopfab commit `0a902eb`
+(API 1.36.0), built with FFmpeg disabled. LAN protocol 16 requires updated workers.
 
 The `fibo2` model uses the Edit Turbo transformer, Qwen3-VL 4B text encoder and
 Flux2 VAE. The tokenizer is embedded, and no audio VAE is needed. The generator
 uses CUDA with Flash attention and four steps by default.
 
-Use a source image with whole-image, box or lasso edits, or cite one to four image
-references in an image prompt. Source edits pass the source only through the
+Generate from text alone, use a source image with whole-image, box or lasso
+edits, or cite up to four image references in a prompt. Source edits pass the source only through the
 image-edit API, without duplicating it as a reference. Plain instructions and
 optional structured edit JSON pass through without H3 prompt sections. Lasso
 outlines use the same native masks as H3, including compound contours.
 
-Shared model capabilities disable video, text-only generation, extra references
+Shared model capabilities disable video, extra references
 on source edits, Zoom, character sheets, LoRAs/refmods, MotionCache, CFG, LCS and
 H3 sampling overrides. Native request validation enforces the same constraints
 for local and LAN jobs.
@@ -512,3 +512,10 @@ An optional `negativePromptDisabledReason` displays a disabled field with help;
 Fibo Turbo uses this because it has no negative prediction branch. H3 hides the
 field. Requests with nonempty negative prompts for unsupported models are
 rejected at the native boundary.
+
+Fibo text-to-image is enabled in Slopus and the bundled runtime. The runtime
+accepts zero reference images, formats image-free prompts as valid JSON and
+skips vision feature injection when there are no image tokens. Verification
+includes a real Windows CUDA four-step text-only generation, finite RGB output,
+cancellation, and Linux text-only planning. LAN protocol 16 requires workers
+with the same source-free Fibo support.

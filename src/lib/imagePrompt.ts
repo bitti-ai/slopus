@@ -24,7 +24,7 @@ export function compileImagePrompt(config: ProjectConfig, options: { modelType?:
     const pictures = references.flatMap(referenceImages);
     if (references.some((reference) => activeReferenceRefmods(reference).length)) throw new Error("Fibo 2.0 does not support refmods.");
     if (scene.rootType === "image" && pictures.length) throw new Error("Fibo edits use the source image only. Remove additional image references from this edit prompt.");
-    if (scene.rootType !== "image" && (!pictures.length || pictures.length > model.maxImageReferences)) throw new Error(`Fibo 2.0 requires one to ${model.maxImageReferences} image references. Cite them in the prompt or open an image to edit.`);
+    if (pictures.length > model.maxImageReferences) throw new Error(`Fibo 2.0 supports at most ${model.maxImageReferences} image references.`);
     const parts = imageScenePromptParts(scene);
     const rootPrompt = scene.nodes.find((node) => node.kind === "root")?.description.trim() ?? "";
     // Preserve optional structured edit JSON verbatim instead of adding prose punctuation.
