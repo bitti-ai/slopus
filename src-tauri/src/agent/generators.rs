@@ -342,7 +342,9 @@ pub(crate) fn prepare(
             {
                 return Err("Download the generator's weights and additional files before making it the default.".into());
             }
-            for role in ["transformer", "textEncoder", "videoVae", "audioVae"] {
+            for role in ["transformer", "textEncoder", "videoVae", "audioVae", "tokenizer"] {
+                let moss = template["modelType"] == "moss";
+                if (moss && role == "audioVae") || (!moss && role == "tokenizer") { continue; }
                 if role == "textEncoder" && template["mode"] == "animate" {
                     continue;
                 }

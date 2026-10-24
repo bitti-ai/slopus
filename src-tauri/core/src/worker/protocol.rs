@@ -183,9 +183,12 @@ pub fn visit_paths(
                 }
             }
         }
+        let tokenizer_kind = if matches!(slopfab.options.get("modelType"), Some(ProviderOption::String(model)) if model == "moss") {
+            PathKind::Model
+        } else { PathKind::Folder };
         if let Some(ProviderOption::String(value)) = slopfab.options.get_mut("tokenizer") {
             if !value.trim().is_empty() {
-                visit(PathKind::Folder, value)?;
+                visit(tokenizer_kind, value)?;
             }
         }
         if let Some(ProviderOption::String(value)) = slopfab.options.get_mut("loras") {
@@ -306,6 +309,19 @@ mod tests {
                 assert_eq!(settings["slopfab"].options["latentUpscaler"], ProviderOption::String("/worker/upscaler.safetensors".into()));
             }
         }
+    }
+
+    #[test]
+    fn moss_tokenizer_is_transferred_as_a_file_instead_of_a_folder() {
+        let mut settings = settings(&[("modelType", "moss"), ("tokenizer", "C:/weights/tokenizer.json")]);
+        let mut request = GenerationRequest::default();
+        visit_paths(&mut request, &mut settings, |kind, path| {
+            assert_eq!(kind, PathKind::Model);
+            assert_eq!(path, "C:/weights/tokenizer.json");
+            *path = file_token(0);
+            Ok(())
+        }).unwrap();
+        assert_eq!(settings["slopfab"].options["modelType"], ProviderOption::String("moss".into()));
     }
 
     #[test]

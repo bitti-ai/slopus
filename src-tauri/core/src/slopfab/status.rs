@@ -6,6 +6,7 @@ fn model_statuses(configuration: &Configuration, available: impl Fn(&Path) -> bo
     let mut models = configuration
         .models
         .iter()
+        .filter(|(id, _, _)| configuration.model_type != "moss" || *id != 4)
         .filter(|(id, _, _)| !configuration.animate || (*id != 1 && *id != 2))
         .map(|(_, id, path)| ModelStatus {
             id,
@@ -44,7 +45,7 @@ pub fn status(settings: &BTreeMap<String, ProviderSetting>) -> SlopfabStatus {
                 let platform = configuration.platform(detected);
                 let missing = models
                     .iter()
-                    .filter(|model| !model.available && model.id != "tokenizer")
+                    .filter(|model| !model.available && (model.id != "tokenizer" || configuration.model_type == "moss"))
                     .count();
                 SlopfabStatus {
                     state: if missing == 0 {
@@ -102,7 +103,7 @@ pub fn worker_status(
         let value = path.to_string_lossy();
         value.starts_with("https://") || value.starts_with("http://") || path.exists()
     });
-    let missing = models.iter().filter(|model| !model.available && model.id != "tokenizer").count();
+    let missing = models.iter().filter(|model| !model.available && (model.id != "tokenizer" || configuration.model_type == "moss")).count();
     let state = match runtime.state.as_str() {
         "ready" if missing == 0 => "ready",
         "ready" => "modelsMissing",

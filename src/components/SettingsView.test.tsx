@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { middleEllipsis, SettingsView } from "./SettingsView";
-import { createGeneratorTemplate, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings } from "../lib/settings";
+import { createGeneratorTemplate, mossImageTemplate, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings } from "../lib/settings";
 import { loadReferenceIconGeneratorId } from "../lib/referenceIconSettings";
 import { loadLoras } from "../lib/loras";
 
@@ -69,6 +69,22 @@ describe("the settings page", () => {
 });
 
 describe("the settings screen", () => {
+  it("groups MOSS under its model and edits its image-only weight setup", () => {
+    open();
+    expect(screen.getByRole("group", { name: "MOSS Image" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit MOSS Image generator" }));
+    expect(combo("Generator model").getAttribute("data-value")).toBe("moss");
+    expect(screen.queryByRole("combobox", { name: "Generator mode" })).toBeNull();
+    expect(screen.getByRole("button", { name: "More options for Image VAE weights" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "More options for Audio VAE weights" })).toBeNull();
+    expect(combo("Generator attention").getAttribute("data-value")).toBe("flash2");
+    expect(screen.queryByRole("switch", { name: "Enable MotionCache" })).toBeNull();
+    expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "moss-image")).toEqual(mossImageTemplate());
+    fireEvent.click(combo("Generator model"));
+    fireEvent.click(screen.getByRole("option", { name: /^MiniMax H3/ }));
+    expect(screen.getByRole("combobox", { name: "Generator mode" })).toBeTruthy();
+    expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "moss-image")?.modelType).toBe("minimax-h3");
+  });
   it("remembers MotionCache per generator and disables it in Animate mode", () => {
     const view = open();
     editDefaultGenerator();

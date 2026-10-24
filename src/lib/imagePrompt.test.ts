@@ -6,6 +6,17 @@ import fixture from "../../fixtures/project-v1-image.json";
 
 const photo = () => createProjectConfig({ name: "Portrait", generationType: "image", prompt: "A runner suspended mid-stride", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 });
 describe("MiniMax H3 still-image prompts", () => {
+  it("compiles MOSS as image text and rejects image-reference and editing inputs", () => {
+    const config = photo();
+    const compiled = compileImagePrompt(config, { modelType: "moss" });
+    expect(compiled.prompt).toContain("A runner suspended mid-stride");
+    expect(compiled.prompt).not.toMatch(/overall_soundscape|non_diegetic_music|Shot 1/);
+    config.references = [{ id: "runner", kind: "image", name: "Runner", description: "Blue uniform", relativePath: "references/runner.png", intendedUse: ["character"], createdAt: config.createdAt }];
+    config.imageScene!.nodes[0].description = "Show @[ref:runner].";
+    expect(() => compileImagePrompt(config, { modelType: "moss" })).toThrow(/does not support reference images/);
+    config.imageScene!.rootType = "image";
+    expect(() => compileImagePrompt(config, { modelType: "moss" })).toThrow(/does not support image editing/);
+  });
   it("limits a pose transformation to its named reference and preserves ordinary retention by default", () => {
     const config = photo();
     config.references = [

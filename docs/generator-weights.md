@@ -133,6 +133,22 @@ are injected into runtime requests and are not saved into portable project files
 
 ## Model weights
 
+Generator templates are grouped by model in Settings. The **Model** selector in
+each template chooses its model family independently of its name.
+
+**MOSS Image** generates new images from text on CUDA with Flash attention and
+defaults to 50 steps. Its download includes the MOSS SFT INT8 transformer,
+Qwen3.5 9B INT8 text encoder, FLUX.2 small image VAE, and Qwen3.5 tokenizer JSON.
+It needs no audio VAE. Downloaded MOSS templates appear in the image generator
+picker and are excluded from video generation. Image editing, Zoom, reference
+images, character sheets, LoRAs, and MotionCache are unavailable for this model.
+
+The internal capability switches live in `src/lib/generatorModels.json`, shared
+by the UI and native request validation. Each model declares `imageGeneration`,
+`videoGeneration`, `imageEditing`, `imageReferences`, `loras`, and `motionCache`.
+Change these switches when a model gains support, or add a model entry to define
+its available operations. Legacy templates without a model family remain MiniMax H3.
+
 Generator templates also offer **Enable MotionCache**, off by default. It uses
 SlopFab's default motion-aware denoising reuse settings on CUDA and Vulkan.
 Reuse can reduce transformer calls but may change detail and motion; short

@@ -21,6 +21,10 @@ pub(super) fn validate(
             if !config.generation_jobs.iter().any(|job| &job.id == scene) {
                 return Err(format!("Unknown scene '{scene}'. Create the scene before generating it."));
             }
+            if generators.settings["templates"].as_array().is_some_and(|templates| templates.iter().any(|item|
+                item["id"].as_str() == Some(template) && !slopus_core::models::generator_features(item["modelType"].as_str().unwrap_or("minimax-h3")).video_generation)) {
+                return Err("Choose a generator that supports video generation.".into());
+            }
             template
         }
         GenerationCommand::Image { image, template } => {

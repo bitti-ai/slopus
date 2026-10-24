@@ -1,6 +1,24 @@
 //! What each generation model can do. The desktop app adds authoring rules
 //! (shot vocabulary, agent instructions) on top of these limits.
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratorFeatures {
+    pub label: String,
+    pub image_generation: bool,
+    pub video_generation: bool,
+    pub image_editing: bool,
+    pub image_references: bool,
+    pub loras: bool,
+    pub motion_cache: bool,
+}
+
+pub fn generator_features(model_type: &str) -> &'static GeneratorFeatures {
+    static MODELS: std::sync::OnceLock<std::collections::BTreeMap<String, GeneratorFeatures>> = std::sync::OnceLock::new();
+    let models = MODELS.get_or_init(|| serde_json::from_str(include_str!("../../../src/lib/generatorModels.json")).expect("valid generator model catalog"));
+    models.get(model_type).unwrap_or(&models["minimax-h3"])
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ModelCapabilities {
     pub max_scene_seconds: f64,

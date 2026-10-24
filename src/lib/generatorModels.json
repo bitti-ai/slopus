@@ -1,0 +1,22 @@
+{
+  "minimax-h3": {
+    "label": "MiniMax H3",
+    "description": "Image and video generation",
+    "imageGeneration": true,
+    "videoGeneration": true,
+    "imageEditing": true,
+    "imageReferences": true,
+    "loras": true,
+    "motionCache": true
+  },
+  "moss": {
+    "label": "MOSS Image",
+    "description": "Text-to-image generation on CUDA",
+    "imageGeneration": true,
+    "videoGeneration": false,
+    "imageEditing": false,
+    "imageReferences": false,
+    "loras": false,
+    "motionCache": false
+  }
+}

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { mossImageTemplate } from "./settings";
 import { waitFor } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -353,6 +354,24 @@ describe("agent scene generation", () => {
 describe("image generation work", () => {
   const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
   const imageProject = (): ProjectRecord => ({ folderPath: "C:/Image", config: createProjectConfig({ name: "Poster", prompt: "An ocean poster", generationType: "image", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 }) });
+  it("routes MOSS text-to-image requests and refuses video and editing work", async () => {
+    const { queue, first } = setup();
+    const moss = { ...mossImageTemplate(), sources: {}, paths: { transformer: "moss", textEncoder: "qwen", videoVae: "flux", tokenizer: "tokenizer.json", audioVae: "" } };
+    expect(() => queue.enqueue(first, [submission(first)], moss)).toThrow(/supports video/);
+    const session = queue.project(imageProject());
+    queue.enqueueImage(session, moss);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const [request, config] = vi.mocked(enqueueSlopfabGeneration).mock.calls[0];
+    expect(request).toMatchObject({ stillImage: true, frames: 1, referencePaths: [] });
+    expect(request.prompt).toContain("An ocean poster");
+    expect(request.prompt).not.toContain("overall_soundscape");
+    expect(config.providerSettings.slopfab.options).toMatchObject({ modelType: "moss", attention: "flash2", tokenizer: "tokenizer.json" });
+    expect(config.providerSettings.slopfab.options).not.toHaveProperty("audioVae");
+    await queue.cancel(queue.getSnapshot()[0].id);
+    session.update((current) => ({ ...current, imageScene: createImageEditScene({ name: "Source", relativePath: "media/source.png", width: 512, height: 512 }, current.imageScene!) }));
+    expect(() => queue.enqueueImage(session, moss)).toThrow(/does not support image editing/);
+    expect(() => queue.enqueueExtendImage(session, moss, "source", { bounds: { x: 0, y: 0, width: 512, height: 512 }, prompt: "", steps: 50, seed: 1 })).toThrow(/supports image editing/);
+  });
   it("generates an image at its own resolution and preserves the video generation canvas after reopening", async () => {
     const { queue, first } = setup();
     const original = first.getSnapshot().config;

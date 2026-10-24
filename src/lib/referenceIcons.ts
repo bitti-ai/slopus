@@ -16,7 +16,7 @@ const COMPOSITIONS = {
   custom: "A clear visual representation of the reference's defining subject, appearance, and atmosphere.",
 };
 
-export function referenceIconPrompt(reference: ProjectReference): string {
+export function referenceIconPrompt(reference: ProjectReference, modelType?: string): string {
   const description = reference.description.trim();
   const visual = [
     `${deriveH3Style(description)}, square composition.`,
@@ -27,6 +27,7 @@ export function referenceIconPrompt(reference: ProjectReference): string {
     reference.subcategory ? `Subcategory: ${reference.subcategory}` : "",
     `Reference description:\n${description}`,
   ].filter(Boolean).join("\n");
+  if (modelType === "moss") return visual;
   // H3's base three-field format also applies to text-only still-image jobs.
   // Icons have no audio, so both audio fields explicitly use N/A.
   return [

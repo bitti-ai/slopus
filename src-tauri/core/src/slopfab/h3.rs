@@ -18,6 +18,12 @@ pub(super) fn configure_request(
     references: &ReferenceVideos,
 ) -> Result<(), String> {
     configuration.validate_inputs(request)?;
+    if configuration.model_type == "moss" {
+        if platform == ComputePlatform::Vulkan {
+            return Err("MOSS requires CUDA. Select a CUDA backend or worker.".into());
+        }
+        api.set_model_family(handle, "moss")?;
+    }
     if configuration.attention == "sol" && platform == ComputePlatform::Vulkan {
         return Err("Sol attention requires CUDA. Select a CUDA GPU or worker, or choose another attention mode in Settings.".into());
     }
@@ -52,7 +58,7 @@ pub(super) fn configure_request(
         request.frames
     };
     api.set_frames(handle, frames)?;
-    if request.still_image {
+    if request.still_image && configuration.model_type != "moss" {
         api.set_still_image(handle)?;
     }
     let video_steps = configuration.generation_steps(request.steps)?;

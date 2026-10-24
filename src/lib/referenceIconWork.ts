@@ -253,14 +253,14 @@ export class ReferenceIconWork {
       if (task.preset && !task.replaceIcon && hasPresetIcon(task.preset)) { task.status = "skipped"; return; }
       const reference = this.referenceFor(task);
       if (!reference || !this.shouldGenerate(reference, task)) { task.status = "skipped"; return; }
-      task.prompt = referenceIconPrompt(reference);
       task.refmodsSnapshot = JSON.stringify(activeReferenceRefmods(reference));
       task.name = reference.name;
       const template = referenceIconGenerator();
       if (!template) throw new Error("Choose an available text-prompt generator for reference icons in Settings.");
+      task.prompt = referenceIconPrompt(reference, template.modelType);
       const config = task.session.getSnapshot().config;
       const runtimeConfig = { ...config, providerSettings: { ...config.providerSettings,
-        slopfab: engineProviderSetting(template.paths, config.providerSettings.slopfab, template.attention, template.loras ?? [], "prompt", template.additionalSafetensors ?? [], template.motionCache ?? false, template.sources),
+        slopfab: engineProviderSetting(template.paths, config.providerSettings.slopfab, template.attention, template.loras ?? [], "prompt", template.additionalSafetensors ?? [], template.motionCache ?? false, template.sources, template),
       } };
       const steps = generationStepsWithLoras(template.defaultSteps, runtimeConfig);
       if (this.item) { this.item = { ...this.item, settings: { ...this.item.settings, steps } }; this.publish(); }

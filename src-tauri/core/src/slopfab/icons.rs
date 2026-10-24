@@ -109,6 +109,7 @@ pub fn generate_reference_icon_batch(
         value => return Err(format!("Unsupported icon generation backend '{value}'.")),
     };
     let configuration = Configuration {
+        model_type: "minimax-h3".into(),
         dll_path: batch.dll_path.clone(),
         loras: Ok(Vec::new()),
         step_override: Ok(None),

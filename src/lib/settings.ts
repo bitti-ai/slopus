@@ -13,6 +13,8 @@
  * silently drops that path.
  */
 import { isSigmaShift, type SigmaShifts } from "./sampling";
+import { generatorModel } from "./generatorModels";
+export { generatorModel, GENERATOR_MODELS } from "./generatorModels";
 import { latentUpscalerPath } from "./upscalers";
 import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
@@ -71,6 +73,9 @@ function migratedStorageItem(key: string, legacyKey: string): string | null {
 }
 
 export const MINIMAX_H3_MODEL_TYPE = "minimax-h3";
+export const MOSS_MODEL_TYPE = "moss";
+export const templateSupportsVideo = (template: Pick<GeneratorTemplate, "modelType">): boolean => generatorModel(template.modelType).videoGeneration;
+export const templateSupportsImages = (template: Pick<GeneratorTemplate, "modelType" | "mode">): boolean => generatorModel(template.modelType).imageGeneration && template.mode !== "animate";
 
 export interface GeneratorTemplate extends SigmaShifts {
   id: string;
@@ -105,7 +110,13 @@ export interface WeightSource {
   downloadedPath?: string;
 }
 
-export function generatorPathFields(template: Pick<GeneratorTemplate, "mode">): EnginePathField[] {
+export function generatorPathFields(template: Pick<GeneratorTemplate, "mode"> & { modelType?: string }): EnginePathField[] {
+  if (template.modelType === MOSS_MODEL_TYPE) return ENGINE_PATH_FIELDS.filter(({ id }) => id !== "audioVae").map((field) => {
+    if (field.id === "transformer") return { ...field, hint: "The main model that turns your description into an image." };
+    if (field.id === "videoVae") return { ...field, label: "Image VAE weights", hint: "Decodes the model's internal picture into an image." };
+    if (field.id === "tokenizer") return { ...field, required: true, directory: false, extensions: ["json"], hint: "The Qwen3.5 tokenizer JSON used by MOSS." };
+    return field;
+  });
   return template.mode === "animate"
     ? ENGINE_PATH_FIELDS.filter(({ id }) => id !== "textEncoder" && id !== "tokenizer")
     : ENGINE_PATH_FIELDS;
@@ -218,10 +229,23 @@ export function createGeneratorTemplate(name = "New template", modelType = MINIM
     id: `generator-template-${crypto.randomUUID()}`,
     name,
     modelType,
-    defaultSteps: DEFAULT_GENERATION_STEPS,
-    attention: "sage2",
+    defaultSteps: modelType === MOSS_MODEL_TYPE ? 50 : DEFAULT_GENERATION_STEPS,
+    attention: modelType === MOSS_MODEL_TYPE ? "flash2" : "sage2",
     paths: copyPaths(EMPTY_ENGINE_SETTINGS),
   };
+}
+
+export function mossImageTemplate(): GeneratorTemplate {
+  const root = "https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/";
+  const paths: EngineSettings = {
+    transformer: `${root}diffusion_models/moss_image_sft_int8_convrot.safetensors`,
+    textEncoder: `${root}text_encoders/qwen3.5_9b_int8_convrot.safetensors`,
+    videoVae: `${root}vae/flux2-vae_small.safetensors`,
+    tokenizer: "https://huggingface.co/OpenMOSS-Team/MOSS-Image-SFT/resolve/main/tokenizer/tokenizer.json",
+    audioVae: "",
+  };
+  const sources = Object.fromEntries(Object.entries(paths).filter(([, url]) => url).map(([id, url]) => [id, [{ url, gpuModel: "", minVramGb: 0 }]]));
+  return { id: "moss-image", name: "MOSS Image", modelType: MOSS_MODEL_TYPE, defaultSteps: 50, attention: "flash2", paths, sources };
 }
 
 export function minimaxOriginalTemplate(): GeneratorTemplate {
@@ -286,9 +310,9 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 }
 
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
-  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate()],
+  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 9,
+  catalogVersion: 10,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -350,7 +374,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? templates.find(templateUsable)?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -464,6 +488,12 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 9 })!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
+        if ((normalized.catalogVersion ?? 0) < 10) {
+          const template = mossImageTemplate();
+          if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 10 })!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
         return normalized;
       }
     }
@@ -485,9 +515,10 @@ export function saveGeneratorTemplateSettings(settings: GeneratorTemplateSetting
   queueMicrotask(() => window.dispatchEvent(new Event(GENERATOR_TEMPLATES_EVENT)));
 }
 
-export function defaultGeneratorTemplate(settings = loadGeneratorTemplateSettings()): GeneratorTemplate {
-  return settings.templates.find((template) => template.id === settings.defaultTemplateId && templateUsable(template))
-    ?? settings.templates.find(templateUsable)
+export function defaultGeneratorTemplate(settings = loadGeneratorTemplateSettings(), medium?: "video"): GeneratorTemplate {
+  const eligible = settings.templates.filter((template) => medium !== "video" || templateSupportsVideo(template));
+  return eligible.find((template) => template.id === settings.defaultTemplateId && templateUsable(template))
+    ?? eligible.find(templateUsable)
     ?? { id: "", name: "No downloaded generators", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(EMPTY_ENGINE_SETTINGS) };
 }
 
@@ -514,10 +545,12 @@ export function saveEngineSettings(settings: EngineSettings): void {
 /** The `slopfab` provider setting these paths describe, with blanks dropped so
  *  an unset field falls through to whatever the project (or the Rust default)
  *  already had rather than overwriting it with "". */
-export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false, sources = defaultGeneratorTemplate().sources, shifts: SigmaShifts = defaultGeneratorTemplate()): ProviderSetting {
+export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false, sources = defaultGeneratorTemplate().sources, shifts: SigmaShifts & { modelType?: string } = defaultGeneratorTemplate()): ProviderSetting {
   // A LAN worker receives URLs for weights it should download itself.
   const remote = remoteWorkerSelected();
   const options: ProviderSetting["options"] = { ...(base?.options ?? {}), attention, inferenceBackend: loadInferenceBackend() };
+  const moss = shifts.modelType === MOSS_MODEL_TYPE;
+  options.modelType = shifts.modelType ?? MINIMAX_H3_MODEL_TYPE;
   // Always replace project-carried adapter paths with this machine's selection.
   delete options.loras;
   delete options.schedule;
@@ -537,7 +570,7 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   if (latentUpscaler) options.latentUpscaler = latentUpscaler;
   if (remote && sources) {
     options.workerWeightSources = JSON.stringify(Object.fromEntries(Object.entries(sources)
-      .filter(([role, entries]) => entries?.length && !(mode === "animate" && (role === "textEncoder" || role === "tokenizer")))
+      .filter(([role, entries]) => entries?.length && !(moss && role === "audioVae") && !(mode === "animate" && (role === "textEncoder" || role === "tokenizer")))
       .map(([role, entries]) => [role, entries!.map(({ url, gpuModel, minVramGb }) => ({ url, gpuModel, minVramGb }))])));
   }
   if (motionCache && mode !== "animate") options.motionCache = true;
@@ -560,7 +593,7 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
     delete options.motionCache;
   }
   for (const field of ENGINE_PATH_FIELDS) {
-    if (mode === "animate" && (field.id === "textEncoder" || field.id === "tokenizer")) {
+    if ((moss && field.id === "audioVae") || (mode === "animate" && (field.id === "textEncoder" || field.id === "tokenizer"))) {
       delete options[field.id];
       continue;
     }

@@ -8,7 +8,7 @@ import { ImageEditor } from "./ImageEditor";
 import { choose, comboValue } from "./comboTestUtils";
 import { imageGenerationSnapshotSchema, parseProjectConfig, referenceImages, sceneFrameInputs, type ProjectConfig } from "../../lib/project";
 import { completeImageDraft, createTemplateImageDraft, imageGenerationSnapshot, restoreGeneratedImage } from "../../lib/imageHistory";
-import { createGeneratorTemplate, defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
+import { createGeneratorTemplate, mossImageTemplate, defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "../../lib/imageScene";
 import type { WorkItem } from "../../lib/workQueue";
 import { compileImageEdits } from "../../lib/imageEditing";
@@ -29,6 +29,28 @@ function setup(initial = parseProjectConfig(fixture), workItems: WorkItem[] = []
   render(<Harness />);
   return () => latest;
 }
+
+it("offers MOSS for new images and disables editing and reference templates", () => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  const moss = { ...mossImageTemplate(), sources: {}, paths: { transformer: "moss", textEncoder: "qwen", videoVae: "flux", tokenizer: "tokenizer.json", audioVae: "" } };
+  saveGeneratorTemplateSettings({ templates: [moss], defaultTemplateId: moss.id, catalogVersion: 10 });
+  const initial = parseProjectConfig(fixture);
+  initial.imageScene = createImageScene("A red apple");
+  setup(initial);
+  expect(screen.getByRole("combobox", { name: "Generator" })).toHaveTextContent("MOSS Image");
+  expect(screen.getByRole("button", { name: "Generate" })).toBeEnabled();
+  cleanup();
+  const source = { id: "source", kind: "image" as const, name: "Apple", mimeType: "image/png", relativePath: "media/apple.png", width: 512, height: 512, createdAt: initial.createdAt };
+  initial.assets = [source];
+  initial.imageScene = { ...createImageEditScene(source, initial.imageScene), outputAssetId: source.id };
+  setup(initial);
+  expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
+  expect(screen.getByRole("radio", { name: "Draw edit" })).toBeDisabled();
+  expect(screen.getByRole("status")).toHaveTextContent("MOSS Image does not support image editing");
+  fireEvent.click(screen.getByRole("button", { name: "Template" }));
+  expect(screen.getByRole("menuitem", { name: "Zoom" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Character sheet" })).toBeDisabled();
+});
 
 it.each([
   ["extend", true], ["extend", false], ["character-sheet", true], ["character-sheet", false],

@@ -6,6 +6,60 @@ use crate::settings::{ProviderOption, ProviderSetting};
 use std::collections::BTreeMap;
 
 #[test]
+fn moss_capabilities_reject_video_edits_and_references() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.model_type = "moss".into();
+    let mut request = GenerationRequest { still_image: true, frames: 1, steps: 50, prompt: "A red apple".into(), canvas_width: 512, canvas_height: 512, ..Default::default() };
+    configuration.validate_inputs(&request).unwrap();
+    request.still_image = false;
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("video generation"));
+    request.still_image = true;
+    request.image_edit = Some(serde_json::from_value(serde_json::json!({"sourceRelativePath":"media/apple.png", "edits":[]})).unwrap());
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("image editing"));
+    request.image_edit = None;
+    request.reference_paths.push("apple.png".into());
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("image references"));
+}
+
+#[test]
+fn moss_status_requires_tokenizer_but_no_audio_vae() {
+    let folder = tempfile::tempdir().unwrap();
+    let weights = folder.path().join("weights");
+    std::fs::write(&weights, b"status only").unwrap();
+    let dll = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
+    let mut settings = BTreeMap::from([("slopfab".into(), ProviderSetting {
+        enabled: true, model: None, options: BTreeMap::from([
+            ("modelType".into(), ProviderOption::String("moss".into())),
+            ("dllPath".into(), ProviderOption::String(dll.to_string_lossy().into_owned())),
+        ]),
+    })]);
+    for id in ["transformer", "textEncoder", "videoVae"] {
+        settings.get_mut("slopfab").unwrap().options.insert(id.into(), ProviderOption::String(weights.to_string_lossy().into_owned()));
+    }
+    let missing = status(&settings);
+    assert_eq!(missing.state, "modelsMissing");
+    assert!(!missing.models.iter().any(|model| model.id == "audioVae"));
+    settings.get_mut("slopfab").unwrap().options.insert("tokenizer".into(), ProviderOption::String(weights.to_string_lossy().into_owned()));
+    assert_eq!(status(&settings).state, "ready");
+}
+
+#[test]
+fn moss_planning_uses_image_family_and_shared_request_pipeline() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
+    let api = ffi::Api::load(&path).unwrap();
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.model_type = "moss".into();
+    configuration.attention = "flash2";
+    let request = GenerationRequest { still_image: true, frames: 1, steps: 50, prompt: "A red apple".into(), canvas_width: 512, canvas_height: 512, ..Default::default() };
+    let handle = RequestHandle::new(&api).unwrap();
+    configure_request(&api, &handle, &request, &configuration, ComputePlatform::Cuda13, RequestPurpose::Plan, &ReferenceVideos::default()).unwrap();
+    let plan = api.resolve(&handle).unwrap();
+    assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames), (512, 512, 1));
+    assert!(api.describe(&handle).unwrap().contains("MOSS"));
+    assert!(configure_request(&api, &handle, &request, &configuration, ComputePlatform::Vulkan, RequestPurpose::Plan, &ReferenceVideos::default()).unwrap_err().contains("requires CUDA"));
+}
+
+#[test]
 fn audio_steps_override_and_reset_reach_planning_and_execution() {
     let mut configuration = Configuration::from_settings(&BTreeMap::new());
     configuration.motion_cache = true;

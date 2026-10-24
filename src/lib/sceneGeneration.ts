@@ -8,7 +8,7 @@ import {
   usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneType,
 } from "./project";
 import type { SlopfabGenerationRequest } from "./runtime";
-import { generationSigmaShifts, type GeneratorTemplate } from "./settings";
+import { generationSigmaShifts, templateSupportsVideo, type GeneratorTemplate } from "./settings";
 
 export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig, folderPath: string, defaultGenerationSteps: number, template?: GeneratorTemplate): SlopfabGenerationRequest {
   // Only the references actually bound to this scene, in list order. The same
@@ -103,6 +103,7 @@ export function sendBlocker(job: GenerationJob, references: ProjectReference[]):
 }
 
 export function templateSceneBlocker(type: SceneType, template: GeneratorTemplate): string | null {
+  if (!templateSupportsVideo(template)) return "This model supports image generation only. Select a video generator.";
   if (type === "animate" && template.mode !== "animate") return "Select an Animate generator for this scene.";
   if (type !== "animate" && template.mode === "animate") return "Select a MiniMax prompt generator for this scene.";
   if ((type === "pose" || type === "character-replace" || type === "extend" || type === "bridge") && /fl2v/i.test(template.paths.transformer)) return `Select a References or Singularity generator for ${type === "pose" ? "Pose" : type === "character-replace" ? "Character Replace" : type === "extend" ? "Extend" : "Bridge"}.`;

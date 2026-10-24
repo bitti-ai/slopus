@@ -25,7 +25,7 @@ import { retryWeightDownload } from "../lib/weightDownloads";
 import { getQueuedWeightDownloads, cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress, type DownloadState } from "../lib/weightDownloads";
 import { CHECKING_PROVIDERS, chooseEnginePath, getAgentModels, getEngineStatus, type ProviderStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
 import {
-  EMPTY_ENGINE_SETTINGS, generatorPathFields,
+  EMPTY_ENGINE_SETTINGS, generatorPathFields, generatorModel, GENERATOR_MODELS, MOSS_MODEL_TYPE,
   createGeneratorTemplate, defaultGeneratorTemplate,
   isEndpointProviderConfigured, loadAgentEndpointSettings,
   loadGeneratorTemplateSettings, saveAgentEndpointSettings, saveGeneratorTemplateSettings,
@@ -359,12 +359,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
 
   const probe = useCallback((paths?: EngineSettings) => {
     const revision = ++probeRevision.current;
-    void getEngineStatus(paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt", selectedTemplate.additionalSafetensors ?? [], selectedTemplate.motionCache ?? false, selectedTemplate.sources).then((next) => {
+    void getEngineStatus(paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt", selectedTemplate.additionalSafetensors ?? [], selectedTemplate.motionCache ?? false, selectedTemplate.sources, selectedTemplate.modelType).then((next) => {
       if (revision === probeRevision.current) setStatus(next);
     }).catch(() => {
       if (revision === probeRevision.current) setStatus(null);
     });
-  }, [selectedTemplate.attention, selectedTemplate.loras, selectedTemplate.mode, selectedTemplate.additionalSafetensors, selectedTemplate.motionCache]);
+  }, [selectedTemplate.modelType, selectedTemplate.attention, selectedTemplate.loras, selectedTemplate.mode, selectedTemplate.additionalSafetensors, selectedTemplate.motionCache]);
 
   /* Saved on every keystroke — there is no Save button here, so a half-typed
      path must never be the reason generation is still broken after a restart.
@@ -441,7 +441,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     probe({ ...EMPTY_ENGINE_SETTINGS });
   };
 
-  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "name" | "defaultSteps" | "videoSigmaShift" | "audioSigmaShift" | "attention" | "motionCache" | "loras" | "mode" | "additionalSafetensors">>) => {
+  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "modelType" | "name" | "defaultSteps" | "videoSigmaShift" | "audioSigmaShift" | "attention" | "motionCache" | "loras" | "mode" | "additionalSafetensors">>) => {
     setTemplateSettings((current) => {
       const next = {
         ...current,
@@ -565,10 +565,16 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
       <SettingsCard icon={<Rename20 />} header="Name">
         <input ref={nameField} className="text-field settings-field" aria-label="Generator name" value={selectedTemplate.name} onChange={(event) => updateTemplate({ name: event.target.value })} onBlur={() => { if (!selectedTemplate.name.trim()) updateTemplate({ name: "Untitled generator" }); }} />
       </SettingsCard>
-      <SettingsCard icon={<Video20 />} header="Mode">
+      <SettingsCard icon={<Video20 />} header="Model" description={generatorModel(selectedTemplate.modelType).description}>
+        <ComboBox aria-label="Generator model" value={selectedTemplate.modelType} options={[
+          ...GENERATOR_MODELS,
+          ...(!GENERATOR_MODELS.some(({ value }) => value === selectedTemplate.modelType) ? [{ value: selectedTemplate.modelType, label: selectedTemplate.modelType }] : []),
+        ]} onChange={(modelType) => updateTemplate({ modelType, ...(modelType === MOSS_MODEL_TYPE ? { mode: "prompt", attention: "flash2", defaultSteps: 50, motionCache: false, loras: [], audioSigmaShift: undefined } : {}) })} />
+      </SettingsCard>
+      {generatorModel(selectedTemplate.modelType).videoGeneration && <SettingsCard icon={<Video20 />} header="Mode">
         <ComboBox aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"} onChange={(value) => updateTemplate({ mode: value === "animate" ? "animate" : "prompt" })}
           options={[{ value: "prompt", label: "Text prompt" }, { value: "animate", label: "Animate (reference video)" }]} />
-      </SettingsCard>
+      </SettingsCard>}
       <SettingsCard icon={<Steps20 />} header="Default steps">
         <input className="text-field settings-field settings-field--number" aria-label="Generator default steps" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={selectedTemplate.defaultSteps} onChange={(event) => {
           const value = Number(event.target.value);
@@ -578,9 +584,9 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     </SettingsGroup>
 
     <SettingsGroup heading="Sampling">
-      {(["videoSigmaShift", "audioSigmaShift"] as const).map((key) => {
-        const label = `${key === "videoSigmaShift" ? "Video" : "Audio"} sigma shift`;
-        const fallback = key === "audioSigmaShift" ? DEFAULT_AUDIO_SIGMA_SHIFT : selectedTemplate.mode === "animate" ? 3 : DEFAULT_VIDEO_SIGMA_SHIFT;
+      {(["videoSigmaShift", "audioSigmaShift"] as const).filter((key) => selectedTemplate.modelType !== MOSS_MODEL_TYPE || key !== "audioSigmaShift").map((key) => {
+        const label = `${key === "videoSigmaShift" ? selectedTemplate.modelType === MOSS_MODEL_TYPE ? "Image" : "Video" : "Audio"} sigma shift`;
+        const fallback = selectedTemplate.modelType === MOSS_MODEL_TYPE ? 5 : key === "audioSigmaShift" ? DEFAULT_AUDIO_SIGMA_SHIFT : selectedTemplate.mode === "animate" ? 3 : DEFAULT_VIDEO_SIGMA_SHIFT;
         return <SettingsCard key={key} icon={<Steps20 />} header={label} description="Default for this generator. Scene values and active LoRA overrides take priority. Leave blank for the model default.">
           <input className="text-field settings-field settings-field--number" aria-label={`Generator ${label.toLowerCase()}`} type="number" min={MIN_SIGMA_SHIFT} max={MAX_SIGMA_SHIFT} step={0.1}
             placeholder={String(fallback)} value={selectedTemplate[key] ?? ""} onChange={(event) => {
@@ -594,13 +600,13 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     <SettingsGroup heading="Performance">
       <SettingsCard icon={<Gauge20 />} header="Attention" description={selectedTemplate.attention === "sol" ? "Sol attention requires a CUDA GPU on the machine running generation." : undefined}>
         <ComboBox aria-label="Generator attention" value={selectedTemplate.attention} onChange={(value) => updateTemplate({ attention: value as AttentionMode })}
-          options={[{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }, { value: "sol", label: "Sol attention" }]} />
+          options={selectedTemplate.modelType === MOSS_MODEL_TYPE ? [{ value: "flash2", label: "Flash attention" }] : [{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }, { value: "sol", label: "Sol attention" }]} />
       </SettingsCard>
-      <SettingsCard icon={<Flash20 />} header="Enable MotionCache" description={<span id="motion-cache-help">{selectedTemplate.mode === "animate" ? "Unavailable in Animate mode" : "Reuses similar denoising results to reduce computation. May affect detail and motion."}</span>}>
+      {generatorModel(selectedTemplate.modelType).motionCache && <SettingsCard icon={<Flash20 />} header="Enable MotionCache" description={<span id="motion-cache-help">{selectedTemplate.mode === "animate" ? "Unavailable in Animate mode" : "Reuses similar denoising results to reduce computation. May affect detail and motion."}</span>}>
         <ToggleSwitch aria-label="Enable MotionCache" aria-describedby="motion-cache-help"
           checked={selectedTemplate.mode !== "animate" && Boolean(selectedTemplate.motionCache)} disabled={selectedTemplate.mode === "animate"}
           onChange={(on) => updateTemplate({ motionCache: on })} />
-      </SettingsCard>
+      </SettingsCard>}
     </SettingsGroup>
 
     <SettingsGroup heading="Model files">
@@ -608,7 +614,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     </SettingsGroup>
 
     <AdditionalSafetensorsEditor key={selectedTemplate.id} value={selectedTemplate.additionalSafetensors ?? []} disabled={Boolean(downloading)} animate={selectedTemplate.mode === "animate"} onChange={(additionalSafetensors) => updateTemplate({ additionalSafetensors })} />
-    <TemplateLorasEditor value={selectedTemplate.loras ?? []} onChange={(loras) => updateTemplate({ loras })} />
+    {generatorModel(selectedTemplate.modelType).loras && <TemplateLorasEditor value={selectedTemplate.loras ?? []} onChange={(loras) => updateTemplate({ loras })} />}
 
     <SettingsGroup heading="Advanced">
       <SettingsCard icon={<Options20 />} header="Show advanced options" description="Per-GPU download sources for each model file">
@@ -630,7 +636,9 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
         <button type="button" className="secondary-button" onClick={addTemplate}>New generator</button>
       </SettingsCard>}</GeneratorSharing>}
       <div className="settings-card-list" role="list" aria-label={section.title}>
-        {section.templates.map((template) => {
+        {[...new Set(section.templates.map((template) => template.modelType))].map((modelType) => <div key={modelType} className="settings-card-list" role="group" aria-label={GENERATOR_MODELS.find((model) => model.value === modelType)?.label ?? modelType}>
+        <h3 className="settings-caption">{GENERATOR_MODELS.find((model) => model.value === modelType)?.label ?? modelType}</h3>
+        {section.templates.filter((template) => template.modelType === modelType).map((template) => {
           const needsDownload = templateNeedsDownload(template);
           const isDefault = template.id === templateSettings.defaultTemplateId;
           const active = downloadState?.active && downloadState.templateId === template.id;
@@ -651,7 +659,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
                   aria-label={weights ? `Remove downloaded weights for ${template.name}` : `Remove generator ${template.name}`}
                   data-tooltip={weights ? "Remove weights and keep the template" : "Remove generator"}><Delete16 /></button>
               </>} />;
-        })}
+        })}</div>)}
       </div>
     </SettingsGroup>)}
     <LoraLibrary onAdd={() => setEditingLoraId(`lora-${crypto.randomUUID()}`)} onEdit={setEditingLoraId} />

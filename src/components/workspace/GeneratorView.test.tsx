@@ -12,7 +12,7 @@ import { ReferencesView } from "./ReferencesView";
 import { choose, chooseOption, comboValue, optionNames } from "./comboTestUtils";
 import { chooseReference, changePromptChip, insertPromptReference, placePromptCaret, typePrompt } from "./promptTestUtils";
 import { saveLoras } from "../../lib/loras";
-import { createGeneratorTemplate, saveGeneratorTemplateSettings, minimaxOriginalTemplate, viggleAnimateTemplate, saveDebugOptionsEnabled } from "../../lib/settings";
+import { createGeneratorTemplate, mossImageTemplate, saveGeneratorTemplateSettings, minimaxOriginalTemplate, viggleAnimateTemplate, saveDebugOptionsEnabled } from "../../lib/settings";
 
 vi.mock("../../lib/nativeShell", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../lib/nativeShell")>(),
@@ -31,6 +31,18 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 afterEach(cleanup);
+
+it("excludes MOSS from the video picker even when it is the saved default", () => {
+  const moss = { ...mossImageTemplate(), sources: {}, paths: { transformer: "moss", textEncoder: "qwen", videoVae: "flux", tokenizer: "tokenizer.json", audioVae: "" } };
+  const video = createGeneratorTemplate("Video model");
+  saveGeneratorTemplateSettings({ templates: [moss, video], defaultTemplateId: moss.id, catalogVersion: 10 });
+  setup();
+  const picker = screen.getByRole("combobox", { name: /Video generator template/ });
+  expect(picker).toHaveTextContent("Video model");
+  fireEvent.click(picker);
+  expect(screen.queryByRole("option", { name: "MOSS Image" })).toBeNull();
+  expect(templateSceneBlocker("prompt", moss)).toMatch(/image generation only/);
+});
 
 it.each(["scene", "shot"])("generates only the selected scene from the %s inspector", (view) => {
   const state = setup();
@@ -931,7 +943,7 @@ describe("Generator scene controls", () => {
     fireEvent.click(screen.getByRole("option", { name: "Fast draft" }));
 
     await waitFor(() => expect(document.querySelector(".generator-runtime--modelsMissing > i")).not.toBeNull());
-    expect(getEngineStatus).toHaveBeenCalledWith(expect.objectContaining({ transformer: "draft.safetensors" }), "sage2", [], "prompt", [], true, expect.anything());
+    expect(getEngineStatus).toHaveBeenCalledWith(expect.objectContaining({ transformer: "draft.safetensors" }), "sage2", [], "prompt", [], true, expect.anything(), "minimax-h3");
     expect(JSON.parse(localStorage.getItem("slopus.generator-templates.v1")!).defaultTemplateId).toBe("draft");
     expect(within(screen.getByRole("region", { name: "Generator status" })).getByText("Video model files missing")).toBeInTheDocument();
     expect(template.closest(".generator-runtime--modelsMissing")).not.toBeNull();

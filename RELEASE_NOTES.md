@@ -4,6 +4,7 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## What's new
 
+- **MOSS image generation.** Generator settings group templates by model and include MOSS Image with its model weights and tokenizer downloads. MOSS is available for new images on CUDA; video, image editing, Zoom, and reference-based character sheets are disabled through shared model capabilities.
 - **Prompt video scenes.** New ordinary video scenes default to Prompt, with text and reference guidance but no start- or last-frame selectors. First & last frame remains available for frame conditioning.
 - **Agent image drafts and generation.** Ask the agent to prepare multiple images in the image bar for later, edit a selected draft, or generate it with a chosen generator. Preparation is saved before rendering, and the agent resumes after generation with the saved result.
 - **Sol attention in Settings.** Choose Sol attention under a generator's Performance settings for generation on CUDA GPUs. The selection is saved per generator and included in shared generator files.

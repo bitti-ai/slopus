@@ -10,7 +10,7 @@ import { completeImageDraft, createTemplateImageDraft, imageFamilyRoot, imageGen
 import type { ImageGenerationSnapshot, ProjectAsset } from "./project";
 import { outputDimensions } from "./export";
 import { projectItemPath, referenceDefinition, referenceImages, referenceRefmodInputs } from "./project";
-import { generationSigmaShiftsWithLoras, engineProviderSetting, type GeneratorTemplate } from "./settings";
+import { generationSigmaShiftsWithLoras, engineProviderSetting, generatorModel, templateSupportsImages, templateSupportsVideo, type GeneratorTemplate } from "./settings";
 import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
@@ -210,6 +210,7 @@ export class WorkQueue {
   };
 
   enqueue(session: ProjectSession, submissions: GenerationSubmission[], template?: GeneratorTemplate): string[] {
+    if (template && !templateSupportsVideo(template)) throw new Error("Choose a generator that supports video generation.");
     const projectKey = projectQueueKey(session.record);
     // Take every setting before the first await, including the selected engine
     // template. Planning and native submission consume this same private copy.
@@ -266,18 +267,19 @@ export class WorkQueue {
   }
 
   enqueueImage(session: ProjectSession, template: GeneratorTemplate) {
-    if (!isTauri()) throw new Error("Image generation requires the desktop app and MiniMax H3 weights.");
-    if (template.mode === "animate") throw new Error("Choose a MiniMax H3 prompt template for images.");
+    if (!isTauri()) throw new Error("Image generation requires the desktop app and downloaded model weights.");
+    if (!templateSupportsImages(template)) throw new Error("Choose a prompt generator for images.");
     session.update((config) => saveImageDraft(config, template.id, true));
     const current = session.getSnapshot().config;
     const scene = current.imageScene ?? createImageScene(current.brief.prompt);
+    if (!generatorModel(template.modelType).imageEditing && scene.rootType === "image") throw new Error(`${generatorModel(template.modelType).label} does not support image editing. Choose an editing generator.`);
     const edit = scene.rootType === "image" ? compileImageEdits(current) : null;
     if (!imageScenePrompt(scene)) throw new Error("Describe the image or add an object before generating.");
     const projectKey = projectQueueKey(session.record);
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === scene.outputAssetId && isWorkActive(item))) return;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
       slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
-    const { prompt, references } = edit ? edit.edits[0] : compileImagePrompt(current);
+    const { prompt, references } = edit ? edit.edits[0] : compileImagePrompt(current, { modelType: template.modelType });
     const referencePaths = (selected: typeof references) => [
       ...(edit ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
       ...selected.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
@@ -306,6 +308,7 @@ export class WorkQueue {
   }
   enqueueExtendImage(session: ProjectSession, template: GeneratorTemplate, sourceId: string, options: ExtendOptions) {
     if (!isTauri()) throw new Error("Zoom requires the desktop app.");
+    if (!generatorModel(template.modelType).imageEditing) throw new Error("Choose a generator that supports image editing for Zoom.");
     if (template.mode === "animate") throw new Error("Choose a prompt generator for Zoom.");
     const current = session.getSnapshot().config;
     const source = current.assets.find((asset) => asset.id === sourceId && asset.kind === "image" && !asset.imageDraft);
@@ -346,6 +349,7 @@ export class WorkQueue {
   }
   enqueueCharacterSheet(session: ProjectSession, template: GeneratorTemplate, sourceId: string, options?: CharacterSheetOptions) {
     if (!isTauri()) throw new Error("Character sheet generation requires the desktop app.");
+    if (!generatorModel(template.modelType).imageReferences) throw new Error("Choose a generator that supports image references for character sheets.");
     if (template.mode === "animate") throw new Error("Choose a prompt generator for the character sheet.");
     const current = session.getSnapshot().config;
     const source = current.assets.find((asset) => asset.id === sourceId && asset.kind === "image");

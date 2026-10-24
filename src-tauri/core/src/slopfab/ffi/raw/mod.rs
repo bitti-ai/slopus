@@ -108,6 +108,7 @@ pub struct Api {
     set_sampling_settings: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_seed: unsafe extern "C" fn(*mut Request, u64) -> i32,
     set_model: unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32,
+    set_model_family: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     add_lora: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32) -> i32>,
     prepare_lora_grid: Option<unsafe extern "C" fn(*const c_char, i32, i32) -> i32>,
     add_refmod: Option<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>,
@@ -239,6 +240,9 @@ impl Api {
                     "slopfab_request_set_seed",
                     unsafe extern "C" fn(*mut Request, u64) -> i32
                 ),
+                set_model_family: library
+                    .get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(b"slopfab_request_set_model_family\0")
+                    .ok().map(|symbol| *symbol),
                 set_model: symbol!(
                     "slopfab_request_set_model_path",
                     unsafe extern "C" fn(*mut Request, i32, *const c_char) -> i32
@@ -571,6 +575,11 @@ impl Api {
     pub fn set_model(&self, r: *mut Request, id: i32, path: &Path) -> Result<(), String> {
         let v = path_cstring(path)?;
         self.error(unsafe { (self.set_model)(r, id, v.as_ptr()) })
+    }
+    pub fn set_model_family(&self, r: *mut Request, family: &str) -> Result<(), String> {
+        let set = self.set_model_family.ok_or("MOSS requires SlopFab API 1.30 or newer. Update the runtime on the machine running generation.")?;
+        let value = CString::new(family).map_err(|_| "Invalid model family.")?;
+        self.error(unsafe { set(r, value.as_ptr()) })
     }
     pub fn add_reference(&self, r: *mut Request, path: &Path) -> Result<(), String> {
         let v = path_cstring(path)?;

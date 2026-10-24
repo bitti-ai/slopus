@@ -209,6 +209,10 @@ impl Api {
         self.check(r)?;
         self.inner.set_model(r.pointer.as_ptr(), id, path)
     }
+    pub fn set_model_family(&self, r: &RequestHandle, family: &str) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_model_family(r.pointer.as_ptr(), family)
+    }
     pub fn add_reference(&self, r: &RequestHandle, path: &Path) -> Result<(), String> {
         self.check(r)?;
         self.inner.add_reference(r.pointer.as_ptr(), path)

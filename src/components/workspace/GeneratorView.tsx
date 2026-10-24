@@ -21,7 +21,7 @@ import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./Scene
 import { STATUS_BADGE, type SceneIndicatorStatus } from "./sceneStatus";
 import { forgetShotPosters } from "./ShotThumbnail";
 import { purgeTimelineThumbnails } from "../../lib/timelineThumbnails";
-import { defaultGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable } from "../../lib/settings";
+import { defaultGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateSupportsVideo, templateUsable } from "../../lib/settings";
 import { refreshDownloadedWeights } from "../../lib/weightDownloads";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 
@@ -62,14 +62,14 @@ const readDensity = (): BoardDensity => {
 export function GeneratorView({ config, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId, onSelectedJobChange, onRuntimeChange, onGenerate, onCancelGeneration, cancellingJobIds = new Set() }: GeneratorViewProps) {
   const jobs = config.generationJobs;
   const [templateSettings, setTemplateSettings] = useState(loadGeneratorTemplateSettings);
-  const selectedTemplate = defaultGeneratorTemplate(templateSettings);
+  const selectedTemplate = defaultGeneratorTemplate(templateSettings, "video");
   const defaultGenerationSteps = selectedTemplate.defaultSteps;
   const [generatorRuntime, setGeneratorRuntime] = useState<SlopfabStatus | null>(runtime);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const runtimeProbe = useRef(0);
   const [loraLibrary, setLoraLibrary] = useState(loadLoras);
   useEffect(() => subscribeLoras(() => setLoraLibrary(loadLoras())), []);
-  const templateKey = JSON.stringify([selectedTemplate.id, selectedTemplate.mode, selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.motionCache, selectedTemplate.loras, selectedTemplate.additionalSafetensors, loraLibrary, selectedWorker()?.id ?? null]);
+  const templateKey = JSON.stringify([selectedTemplate.id, selectedTemplate.modelType, selectedTemplate.mode, selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.motionCache, selectedTemplate.loras, selectedTemplate.additionalSafetensors, loraLibrary, selectedWorker()?.id ?? null]);
   const probedTemplate = useRef(templateKey);
   const configRef = useRef(config);
   configRef.current = config;
@@ -111,7 +111,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
 
   const chooseGeneratorTemplate = (templateId: string) => {
     const template = templateSettings.templates.find((candidate) => candidate.id === templateId);
-    if (!template || !templateUsable(template) || template.id === templateSettings.defaultTemplateId) return;
+    if (!template || !(templateSupportsVideo(template) && templateUsable(template)) || template.id === templateSettings.defaultTemplateId) return;
     const next = { ...templateSettings, defaultTemplateId: template.id };
     saveGeneratorTemplateSettings(next);
     setTemplateSettings(next);
@@ -124,7 +124,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     setRuntimeError(null);
     const probe = ++runtimeProbe.current;
     if (!selectedTemplate.id) return;
-    void getEngineStatus(selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt", selectedTemplate.additionalSafetensors ?? [], selectedTemplate.motionCache ?? false, selectedTemplate.sources).then((status) => {
+    void getEngineStatus(selectedTemplate.paths, selectedTemplate.attention, selectedTemplate.loras ?? [], selectedTemplate.mode ?? "prompt", selectedTemplate.additionalSafetensors ?? [], selectedTemplate.motionCache ?? false, selectedTemplate.sources, selectedTemplate.modelType).then((status) => {
       if (probe !== runtimeProbe.current) return;
       setGeneratorRuntime(status);
       onRuntimeChange?.(status);
@@ -189,7 +189,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const changeSceneSettings = (job: GenerationJob, updates: Partial<GenerationJob>) => {
     updateScene(job, updates);
     if (updates.sceneType && templateSceneBlocker(updates.sceneType, selectedTemplate)) {
-      const candidates = templateSettings.templates.filter((template) => templateUsable(template)
+      const candidates = templateSettings.templates.filter((template) => (templateSupportsVideo(template) && templateUsable(template))
         && !templateSceneBlocker(updates.sceneType!, template));
       const compatible = (updates.sceneType === "character-replace" || updates.sceneType === "pose" || isVideoTransition(updates)
         ? candidates.find((template) => /ref2v/i.test(template.paths.transformer)) : undefined) ?? candidates[0];
@@ -484,7 +484,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
           ? "Every fixed-seed scene is already up to date."
           : `Generate ${batchScenesReady.length} ${batchScenesReady.length === 1 ? "scene" : "scenes"}`;
   const runtimeLabel = runtimeError ? "Video generator unavailable" : runtimeHeadline(generatorRuntime);
-  const availableTemplates = templateSettings.templates.filter((template) => templateUsable(template));
+  const availableTemplates = templateSettings.templates.filter((template) => (templateSupportsVideo(template) && templateUsable(template)));
 
   return <div ref={root} className={`generator-view ${selected ? "" : "generator-view--empty"}`} style={inspectorPane.style}>
     <main className="generator-main">

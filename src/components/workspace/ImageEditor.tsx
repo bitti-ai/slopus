@@ -9,7 +9,7 @@ import { compileImagePrompt } from "../../lib/imagePrompt";
 import { createEmptyImage, imageEditingSnapshot, imageFamily, imageFamilyRoot, makeImagePrimary, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { createDraftGenerationJob, isVideoReference, PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig, type ProjectReference } from "../../lib/project";
-import { defaultGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
+import { defaultGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, generatorModel, templateSupportsImages, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
 import { ReferenceImage } from "./ReferenceImage";
@@ -98,8 +98,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const clipboard = useSyncExternalStore(subscribeImageNodeClipboard, getImageNodeClipboard);
   const [templates, setTemplates] = useState(loadGeneratorTemplateSettings);
   const [templateId, setTemplateId] = useState(() => localStorage.getItem("slopus.image-generator-template.v1") ?? defaultGeneratorTemplate().id);
-  const imageTemplates = templates.templates.filter((template) => template.mode !== "animate");
+  const imageTemplates = templates.templates.filter(templateSupportsImages);
   const template = imageTemplates.find((candidate) => candidate.id === templateId) ?? imageTemplates.find(templateUsable) ?? imageTemplates[0];
+  const model = generatorModel(template?.modelType);
+  const editingBlocked = !model.imageEditing ? `${model.label} does not support image editing. Choose an editing generator.` : null;
+  const referencesBlocked = !model.imageReferences ? `${model.label} does not support reference images. Choose a reference generator.` : null;
   const isMiniMaxH3 = !template || template.modelType === MINIMAX_H3_MODEL_TYPE;
   const onChange = (update: ConfigUpdate) => changeConfig((current) => {
     const next = typeof update === "function" ? update(current) : update;
@@ -197,6 +200,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const patchNode = (patch: Partial<ImageNode>) => commit({ ...scene, nodes: scene.nodes.map((node) => node.id === selected.id ? { ...node, ...patch } : node) });
   const insertParent = selected.kind === "object" || selected.kind === "text" ? selected.parentId ?? root.id : selected.id;
   const add = (kind: Exclude<ImageNode["kind"], "root">, box?: ImageBox) => {
+    if (imageRoot && editingBlocked) return;
     const parent = imageRoot ? root.id : insertParent;
     const next = addImageNode(scene, parent, imageRoot ? "object" : kind, box);
     if (imageRoot) Object.assign(next.nodes.at(-1)!, { name: "Edit" });
@@ -337,7 +341,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     return { x: Math.round(Math.max(0, Math.min(1000, (event.clientX - bounds.left) / bounds.width * 1000))), y: Math.round(Math.max(0, Math.min(1000, (event.clientY - bounds.top) / bounds.height * 1000))) };
   };
   const pointerDown = (event: PointerEvent<SVGSVGElement>) => {
-    if (event.button !== 0 || !boxes) return;
+    if (event.button !== 0 || !boxes || (imageRoot && editingBlocked)) return;
     viewport.current?.focus({ preventScroll: true });
     const target = event.target as SVGElement;
     const id = drawKind ? undefined : target.dataset.node;
@@ -439,9 +443,9 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       { id: "group", label: "Draw group", key: "G", icon: <Group16 />, onIcon: <Group16Filled /> },
     ] as const),
   ] as const;
-  const chooseTool = (id: typeof drawKind) => { if (extendMode) return; setDrawKind(id); if (id) setBoxes(true); };
+  const chooseTool = (id: typeof drawKind) => { if (extendMode || (imageRoot && editingBlocked && id)) return; setDrawKind(id); if (id) setBoxes(true); };
   useShortcut("V", () => chooseTool(null), { scope: editorRoot });
-  useShortcut("E", () => chooseTool("object"), { scope: editorRoot, enabled: imageRoot });
+  useShortcut("E", () => chooseTool("object"), { scope: editorRoot, enabled: imageRoot && !editingBlocked });
   useShortcut("O", () => chooseTool("object"), { scope: editorRoot, enabled: !imageRoot });
   useShortcut("T", () => chooseTool("text"), { scope: editorRoot, enabled: !imageRoot });
   useShortcut("G", () => chooseTool("group"), { scope: editorRoot, enabled: !imageRoot });
@@ -533,7 +537,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   // A chip for a video or audio reference names it; one deleted says so.
   const missingReference = (id: string) => config.references.find((reference) => reference.id === id)?.name ?? "Deleted reference";
   const templateInspector = Boolean((extendMode && output && extendOptions) || (output && templateSourceId === output.id) || (runningTemplate && templateSource));
-  const generateButton = <button type="button" className="primary-button image-generate-button" data-tooltip={editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : Boolean(templateSnapshot && output?.imageDraft) || !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>;
+  const generateButton = <button type="button" className="primary-button image-generate-button" data-tooltip={(imageRoot ? editingBlocked : null) ?? editPlan?.error ?? undefined} disabled={active ? work.cancelling || work.status === "encoding" : Boolean(templateSnapshot && output?.imageDraft) || !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editingBlocked || editPlan?.error) : !imageScenePrompt(scene))} onClick={() => attempt(() => active ? onCancel(work.id) : onGenerate(template!))}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling…" : "Cancel" : "Generate"}</button>;
 
   return <div ref={editorRoot} className="image-editor" style={{ ...treePane.style, ...inspectorPane.style }}>
     <div className="image-canvas-tools" role="toolbar" aria-label="Image tools">
@@ -548,8 +552,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             data-tooltip={template?.name ?? "Generator"}
             value={template?.id ?? ""}
             disabled={Boolean(active) || !imageTemplates.length}
-            placeholder="No MiniMax H3 templates"
-            options={imageTemplates.map((item) => ({ value: item.id, label: item.name, disabled: !templateUsable(item), description: !templateUsable(item) ? "Download in Settings" : undefined }))}
+            placeholder="No image generators"
+            options={imageTemplates.map((item) => ({ value: item.id, label: item.name, disabled: !templateUsable(item) || (imageRoot && !generatorModel(item.modelType).imageEditing), description: imageRoot && !generatorModel(item.modelType).imageEditing ? "Does not support editing" : !templateUsable(item) ? "Download in Settings" : undefined }))}
             onChange={(id) => { setTemplateId(id); localStorage.setItem("slopus.image-generator-template.v1", id); const next = imageTemplates.find((candidate) => candidate.id === id); if (next) commit({ ...scene, steps: next.defaultSteps }); }}
           />
         </span>
@@ -565,7 +569,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           requestAnimationFrame(() => event.currentTarget.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus());
         }}>
           {TOOLS.map((tool) => <button
-            key={tool.label}
+            key={tool.label} disabled={imageRoot && Boolean(editingBlocked) && tool.id !== null}
             type="button"
             role="radio"
             aria-checked={drawKind === tool.id}
@@ -595,9 +599,9 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       <div className="image-tools__end">
         <button type="button" className="secondary-button" aria-haspopup="menu" aria-expanded={templateMenu.isOpen}
           disabled={!output || (!output.relativePath && !output.sourcePath)}
-          onClick={(event) => templateMenu.open(event.currentTarget, [{ label: "Character sheet", icon: <Image16 />,
+          onClick={(event) => templateMenu.open(event.currentTarget, [{ label: "Character sheet", icon: <Image16 />, disabled: Boolean(referencesBlocked),
             onSelect: () => { setExtendSourceId(null); setTemplateSourceId(output!.id); },
-          }, { label: "Zoom", icon: <Boxes16 />, disabled: !output?.width || !output?.height || Boolean(active),
+          }, { label: "Zoom", icon: <Boxes16 />, disabled: Boolean(editingBlocked) || !output?.width || !output?.height || Boolean(active),
             onSelect: () => {
               setTemplateSourceId(null); setExtendSourceId(output!.id);
               setExtendOptions({ bounds: initialExtendBounds(output!.width!, output!.height!), prompt: "", steps: template?.defaultSteps ?? 20, seed: -1 });
@@ -616,7 +620,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     </aside>
     <Splitter {...treePane.splitterProps} aria-label="Resize hierarchy" />
     {contextMenu && <HierarchyContextMenu {...contextMenu} onClose={closeContextMenu} items={[
-      ...(imageRoot ? [{ label: "New Edit", icon: <Edit16 />, action: () => attempt(() => add("object")) }] : [
+      ...(imageRoot ? [{ label: "New Edit", icon: <Edit16 />, disabled: Boolean(editingBlocked), action: () => attempt(() => add("object")) }] : [
         { label: "New Object", icon: <Cube16 />, action: () => attempt(() => add("object")) },
         { label: "New Text", icon: <Text16 />, action: () => attempt(() => add("text")) },
         { label: "New Group", icon: <FolderAdd16 />, action: () => attempt(() => add("group")) },
@@ -642,7 +646,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       ...(imageMenu.id ? [
         ...(imageMenu.inFamily ? [{ label: "Make Primary", icon: <Image16 />, disabled: !canUseMenuImage || imageFamilyRoot(images, imageMenu.id) === imageMenu.id,
           action: () => onChange((current) => ({ ...current, assets: makeImagePrimary(current.assets, imageMenu.id!) })) }] : []),
-        { label: "Edit", icon: <Edit16 />, separator: true, action: () => attempt(() => menuImage?.imageDraft || !menuImage?.width || !menuImage?.height ? selectImage(imageMenu.id!) : replaceScene(editGeneratedImage(config, imageMenu.id!).imageScene!)) },
+        { label: "Edit", icon: <Edit16 />, separator: true, disabled: Boolean(editingBlocked), action: () => attempt(() => menuImage?.imageDraft || !menuImage?.width || !menuImage?.height ? selectImage(imageMenu.id!) : replaceScene(editGeneratedImage(config, imageMenu.id!).imageScene!)) },
         { label: "Create Scene", icon: <Film16 />, separator: true, disabled: !canUseMenuImage, action: () => attempt(() => createFromImage(imageMenu.id!, true)) },
         { label: "Create Reference", icon: <References16 />, disabled: !canUseMenuImage, action: () => attempt(() => createFromImage(imageMenu.id!, false)) },
         { label: "Remove", icon: <Delete16 />, danger: true,
@@ -691,7 +695,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         {boxes && scene.nodes.filter((node) => node.box).map((node) => { const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!; return <span key={node.id} className="image-box-label" style={{ left: `${box.x / 10}%`, top: `${box.y / 10}%` }}>{node.name}</span>; })}
       </div></div>}
       {(error || work?.error) && <InfoBar className="image-error" severity="error" title="Couldn’t update the image" message={error ?? work?.error ?? ""} onClose={error ? () => setError(null) : undefined} />}
-      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : extendMode && extendOptions ? `Zoom: ${extendSize?.width ?? "-"} \u00d7 ${extendSize?.height ?? "-"} px` : templateSnapshot ? `${templateSnapshot.kind === "extend" ? "Zoom" : "Character sheet"} · ${width} × ${height} px` : imageRoot ? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
+      <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : extendMode && extendOptions ? `Zoom: ${extendSize?.width ?? "-"} \u00d7 ${extendSize?.height ?? "-"} px` : templateSnapshot ? `${templateSnapshot.kind === "extend" ? "Zoom" : "Character sheet"} · ${width} × ${height} px` : imageRoot ? editingBlocked ?? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
       <ImageBar ref={imageResults} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
         onMenu={(id, x, y, inFamily) => { setContextMenu(null); setImageMenu({ id, x, y, inFamily, source: "bar" }); }} />
     </section>
@@ -699,11 +703,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     {extendMode && output && extendOptions ? <ExtendSettings config={config} source={output} options={extendOptions} onChange={setExtendOptions}
       onResolutionChange={(resolution) => onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), resolution } }))}
       references={promptReferences} missingLabel={missingReference} busy={Boolean(active)}
-      disabledReason={!isTauri() ? "Template execution is available in the desktop app." : !onGenerateExtend || !template || !templateUsable(template) ? "Choose a downloaded generator to execute this template." : null}
+      disabledReason={editingBlocked ?? (!isTauri() ? "Template execution is available in the desktop app." : !onGenerateExtend || !template || !templateUsable(template) ? "Choose a downloaded generator to execute this template." : null)}
       onExecute={() => attempt(() => onGenerateExtend?.(template!, output.id, extendOptions))} onClose={() => setExtendSourceId(null)}
     /> : output && templateSourceId === output.id ? <CharacterSheetSettings
       config={config} source={output} references={promptReferences} missingLabel={missingReference} defaultSteps={template?.defaultSteps ?? 20} busy={Boolean(active)}
-      disabledReason={!isTauri() ? "Template execution is available in the desktop app." : !onGenerateCharacterSheet || !template || !templateUsable(template) ? "Choose a downloaded generator to execute this template." : null}
+      disabledReason={referencesBlocked ?? (!isTauri() ? "Template execution is available in the desktop app." : !onGenerateCharacterSheet || !template || !templateUsable(template) ? "Choose a downloaded generator to execute this template." : null)}
       onExecute={(options) => onGenerateCharacterSheet?.(template!, output.id, options)} onClose={() => setTemplateSourceId(null)}
     /> : runningTemplate && templateSource ? runningTemplate.kind === "extend" ? <ExtendSettings
       config={config} source={templateSource} options={runningTemplate} onChange={() => {}}
@@ -764,7 +768,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         </PropSection>}
       </div>
       <div className="inspector-actions">
-        {debugEnabled && <button type="button" className="secondary-button debug-prompt__toggle" aria-haspopup="dialog" onClick={() => attempt(() => setDebugPrompt(imageRoot ? imageEditDebugPrompt(compileImageEdits(config).edits) : compileImagePrompt(config).prompt))}>Debug prompt</button>}
+        {debugEnabled && <button type="button" className="secondary-button debug-prompt__toggle" aria-haspopup="dialog" onClick={() => attempt(() => setDebugPrompt(imageRoot ? imageEditDebugPrompt(compileImageEdits(config).edits) : compileImagePrompt(config, { modelType: template?.modelType }).prompt))}>Debug prompt</button>}
         {(!extendMode || active) && generateButton}
       </div>
     </aside>}

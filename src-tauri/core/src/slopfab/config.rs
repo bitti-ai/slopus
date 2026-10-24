@@ -24,6 +24,7 @@ pub(super) struct SigmaShifts {
 
 #[derive(Clone)]
 pub(super) struct Configuration {
+    pub(super) model_type: String,
     pub(super) dll_path: PathBuf,
     pub(super) vulkan: bool,
     pub(super) attention: &'static str,
@@ -63,6 +64,7 @@ impl Configuration {
             }
         };
         Self {
+            model_type: string_option("modelType").unwrap_or("minimax-h3").to_owned(),
             sigma_shifts: (|| Ok(SigmaShifts { video: shift("videoSigmaShift")?, audio: shift("audioSigmaShift")?,
                 video_override: shift("videoSigmaShiftOverride")?, audio_override: shift("audioSigmaShiftOverride")? }))(),
             // `dllPath` is no longer written by the app and has no settings UI.
@@ -119,6 +121,26 @@ impl Configuration {
     }
 
     pub(super) fn validate_inputs(&self, request: &GenerationRequest) -> Result<(), String> {
+        let features = crate::models::generator_features(&self.model_type);
+        if request.still_image && !features.image_generation || !request.still_image && !features.video_generation {
+            return Err(format!("{} does not support {} generation.", features.label, if request.still_image { "image" } else { "video" }));
+        }
+        if !features.image_editing && request.image_edit.is_some() {
+            return Err(format!("{} does not support image editing.", features.label));
+        }
+        if !features.image_references && (!request.reference_paths.is_empty() || !request.refmods.is_empty()) {
+            return Err(format!("{} does not support image references or refmods.", features.label));
+        }
+        if !features.loras && self.loras.as_ref().map_err(Clone::clone)?.iter().any(|lora| lora.strength != 0.0) {
+            return Err(format!("{} does not support LoRAs.", features.label));
+        }
+        if !features.motion_cache && self.motion_cache {
+            return Err(format!("{} does not support MotionCache.", features.label));
+        }
+        if self.model_type == "moss" && (self.animate || request.latent_upscale || request.latent_bridge.is_some()
+            || request.continuation_path.is_some() || request.continuation_relative_path.is_some()) {
+            return Err("MOSS supports text-to-image generation only.".into());
+        }
         if let Some(mode) = request.video_transition.as_deref() {
             let expected = match mode {
                 "extend" => 1,

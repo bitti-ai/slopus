@@ -1,12 +1,19 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { importGeneratorSlop, MAX_SLOP_BYTES, mergeGeneratorSlop, parseGeneratorSlop, portableGenerator, serializeGeneratorSlop } from "./slop";
-import { createGeneratorTemplate, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, viggleAnimateTemplate } from "./settings";
+import { createGeneratorTemplate, mossImageTemplate, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, viggleAnimateTemplate } from "./settings";
 import { loadLoras, saveLoras, TURBO_LORA } from "./loras";
 
 beforeEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
 
 describe("portable generator bundles", () => {
+  it("round trips MOSS with its three weights and required tokenizer, without audio", () => {
+    const data = parseGeneratorSlop(serializeGeneratorSlop([mossImageTemplate()])).items[0].data;
+    expect(data.modelType).toBe("moss");
+    expect(Object.keys(data.sources).sort()).toEqual(["textEncoder", "tokenizer", "transformer", "videoVae"]);
+    delete data.sources.tokenizer;
+    expect(() => parseGeneratorSlop(JSON.stringify({ format: "slop", version: 1, items: [{ type: "generator-template", version: 1, data }] }))).toThrow(/Tokenizer/);
+  });
   it("exports downloaded weights as URL variants, keeping metadata and dropping all machine state", () => {
     const template = minimaxOriginalTemplate();
     template.paths.transformer = "C:/private/person/model.safetensors";

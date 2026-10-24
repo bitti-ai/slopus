@@ -1,3 +1,4 @@
+import { MOSS_MODEL_TYPE, generatorModel } from "./settings";
 import { imageSettings } from "./imageSettings";
 import { createImageScene, imageScenePromptParts, imageScenePromptText } from "./imageScene";
 import { actionReferenceIds, activeReferenceRefmods, isVideoReference, referenceDefinition, referenceImages, splitActionText, type ProjectConfig } from "./project";
@@ -5,7 +6,7 @@ import { SHOT_TAG_GROUPS } from "./shot-tags";
 
 /** Shared by generation and Debug Prompt. H3's base three-field / reference
  * six-section contracts still apply to a single silent image. */
-export function compileImagePrompt(config: ProjectConfig, options: { referenceTransformations?: Readonly<Record<string, string>>; sourceTreatment?: "outpaint" } = {}) {
+export function compileImagePrompt(config: ProjectConfig, options: { modelType?: string; referenceTransformations?: Readonly<Record<string, string>>; sourceTreatment?: "outpaint" } = {}) {
   const scene = config.imageScene ?? createImageScene(config.brief.prompt);
   // Only the references the prompt cites as @[ref:<id>] go to the generation.
   const references = actionReferenceIds(imageScenePromptText(scene)).map((id) => {
@@ -14,6 +15,21 @@ export function compileImagePrompt(config: ProjectConfig, options: { referenceTr
     if (isVideoReference(reference) || reference.kind === "audio") throw new Error(`Still images accept image and text references; the prompt cites the ${reference.kind} reference '${reference.name}'.`);
     return reference;
   });
+  const model = generatorModel(options.modelType);
+  if (!model.imageEditing && scene.rootType === "image") throw new Error(`${model.label} does not support image editing.`);
+  if (!model.imageReferences && references.some((reference) => referenceImages(reference).length || activeReferenceRefmods(reference).length)) {
+    throw new Error(`${model.label} does not support reference images or refmods. Choose a reference generator.`);
+  }
+  if (options.modelType === MOSS_MODEL_TYPE) {
+    const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")?.options.find((option) => option.id === imageSettings(config).defaultLook)?.label;
+    const parts = imageScenePromptParts(scene, look);
+    const prompt = parts ? [parts.style, parts.composition].filter(Boolean).join("\n") : "";
+    return { prompt: splitActionText(prompt).map((part) => {
+      if (part.kind === "text") return part.value;
+      const reference = references.find((entry) => entry.id === part.value)!;
+      return `${reference.name}: ${referenceDefinition(reference) || reference.name}`;
+    }).join(""), references };
+  }
   // Ordinary edits submit the source before the selected reference pictures.
   // The runtime supplies the preserved outpaint crop to Qwen as "Source scene"
   // and its positioned canvas to denoising; it does not consume a Picture slot.
