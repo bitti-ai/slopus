@@ -1,3 +1,4 @@
+import { imageCfgScale } from "./generatorModels";
 import { activeGenerationEffects } from "./generationEffects";
 import { imageSettings } from "./imageSettings";
 import { listen } from "@tauri-apps/api/event";
@@ -281,6 +282,8 @@ export class WorkQueue {
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === scene.outputAssetId && isWorkActive(item))) return;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
       slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
+    const guidanceScale = imageCfgScale(template.modelType, scene.cfgScales);
+    if (guidanceScale !== undefined) config.imageScene = { ...structuredClone(scene), cfgScales: { ...scene.cfgScales, [template.modelType]: guidanceScale } };
     const { prompt, references } = edit ? edit.edits[0] : compileImagePrompt(current, { modelType: template.modelType });
     const referencePaths = (selected: typeof references) => [
       ...(edit ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
@@ -293,7 +296,7 @@ export class WorkQueue {
     const imageParentId = imageDraftId ? undefined : imageFamilyRoot(current.assets, scene.outputAssetId);
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
-    const request: SlopfabGenerationRequest = { generationEffects: activeGenerationEffects(scene.generationEffects), jobId: id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
+    const request: SlopfabGenerationRequest = { ...(guidanceScale !== undefined ? { guidanceScale } : {}), generationEffects: activeGenerationEffects(scene.generationEffects), jobId: id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
       ...(edit ? { imageEdit: { sourceRelativePath: edit.source.relativePath, edits: edit.edits.map(({ references, ...step }) => ({
         ...step, referencePaths: referencePaths(references), refmods: referenceRefmodInputs(session.record.folderPath, references),
       })) } } : {}),

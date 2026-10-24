@@ -24,7 +24,7 @@ parameters. Corrupt archives are regenerated. Planning never calibrates or
 runs inference. The generation request snapshots the archive before sampling;
 region masks use fractional coverage of the resolved latent patch grid.
 
-LAN worker protocol 10 carries the portable controls and prevents older
+LAN worker protocol 11 carries the portable controls and prevents older
 workers from silently dropping them. Each worker calibrates and caches its
 own VAE. Update workers alongside the desktop app. A runtime missing the LCS
 exports reports an explicit upgrade error.
@@ -44,6 +44,20 @@ the MOSS model-family setter introduced in 1.30. Both builds disable FFmpeg.
 MOSS uses CUDA/Flash attention, the image VAE slot, and a separate Qwen3.5
 tokenizer file. It returns one RGB frame through the existing image save path.
 Older workers report an explicit runtime-upgrade error for MOSS requests.
+
+The shared model catalog declares CFG support and its default per model
+(`cfg: null` for H3, `cfg: { "default": 3 }` for MOSS). The image inspector
+shows CFG before Seed only for supported models. Image drafts and snapshots
+store separate values in `cfgScales`, keyed by model ID; switching models
+preserves these values. The queued request carries the selected `guidanceScale`,
+including an explicitly captured default. Native validation rejects unsupported
+models, negative/non-finite values and values outside the float32 range.
+
+Slopus calls API 1.30's `slopfab_request_set_image_guidance` for planning and
+generation, preserving MOSS's empty negative prompt and skip layer 22. CFG 1
+uses only the positive branch. Worker protocol 11 prevents an older worker
+from ignoring CFG. Tests verify the value in the bundled runtime's plan,
+project persistence, queue isolation and saved output settings.
 
 No full MOSS inference with model weights was run for this integration.
 

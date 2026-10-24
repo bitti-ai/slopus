@@ -12,6 +12,16 @@ pub struct GeneratorFeatures {
     pub loras: bool,
     pub motion_cache: bool,
     pub generation_effects: bool,
+    pub cfg: Option<CfgSettings>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct CfgSettings {
+    pub default: f32,
+}
+
+pub fn validate_cfg_scale(value: f64) -> Result<(), String> {
+    if !value.is_finite() || value < 0.0 || value > f32::MAX as f64 { Err("CFG must be a finite, non-negative number within the runtime range.".into()) } else { Ok(()) }
 }
 
 pub fn generator_features(model_type: &str) -> &'static GeneratorFeatures {

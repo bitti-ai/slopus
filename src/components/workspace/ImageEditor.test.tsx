@@ -1043,3 +1043,27 @@ it("saves generation effects from the image root inspector and blocks them on MO
   expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
   expect(screen.getByRole("checkbox", { name: "Enable Tone" })).toBeEnabled();
 });
+
+it("shows CFG before Seed for MOSS and preserves its value when switching models", () => {
+  const paths = { transformer: "model", textEncoder: "encoder", videoVae: "vae", tokenizer: "tokenizer.json", audioVae: "audio" };
+  const moss = { ...mossImageTemplate(), sources: {}, paths };
+  const h3 = { ...createGeneratorTemplate("H3"), sources: {}, paths };
+  saveGeneratorTemplateSettings({ templates: [moss, h3], defaultTemplateId: moss.id, catalogVersion: 10 });
+  const initial = parseProjectConfig(fixture);
+  initial.imageScene = createImageScene("An apple");
+  const latest = setup(initial);
+  const cfg = screen.getByRole("spinbutton", { name: "CFG" });
+  expect(cfg).toHaveValue(3);
+  expect(cfg.compareDocumentPosition(screen.getByRole("spinbutton", { name: "Seed" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.change(cfg, { target: { value: "4.5" } });
+  expect(latest().imageScene?.cfgScales).toEqual({ moss: 4.5 });
+  fireEvent.change(cfg, { target: { value: "-1" } });
+  expect(latest().imageScene?.cfgScales?.moss).toBe(4.5);
+  choose("Generator", "H3");
+  expect(screen.queryByRole("spinbutton", { name: "CFG" })).toBeNull();
+  choose("Generator", "MOSS Image");
+  expect(screen.getByRole("spinbutton", { name: "CFG" })).toHaveValue(4.5);
+  const saved = parseProjectConfig(JSON.parse(JSON.stringify(latest())));
+  cleanup(); setup(saved);
+  expect(screen.getByRole("spinbutton", { name: "CFG" })).toHaveValue(4.5);
+});

@@ -122,6 +122,10 @@ impl Configuration {
 
     pub(super) fn validate_inputs(&self, request: &GenerationRequest) -> Result<(), String> {
         let features = crate::models::generator_features(&self.model_type);
+        if let Some(scale) = request.guidance_scale {
+            crate::models::validate_cfg_scale(f64::from(scale))?;
+            if features.cfg.is_none() || !request.still_image { return Err(format!("{} does not support configurable CFG for this generation.", features.label)); }
+        }
         if let Some(effects) = &request.generation_effects {
             if effects.native_settings()?.is_some() && !features.generation_effects { return Err(format!("{} does not support generation effects.", features.label)); }
         }

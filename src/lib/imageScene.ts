@@ -17,6 +17,7 @@ export const imageSourceSchema = z.object({
 export type ImageSource = z.infer<typeof imageSourceSchema>;
 export const imageSceneSchema = z.object({
   generationEffects: generationEffectsSchema.optional(),
+  cfgScales: z.record(z.string().min(1), z.number().finite().min(0).max(3.4028234663852886e38)).optional(),
   rootType: z.enum(["prompt", "image"]).optional(),
   sourceImage: imageSourceSchema.nullish(),
   outputSize: z.object({ width: z.number().int().min(32).max(8192).multipleOf(32), height: z.number().int().min(32).max(8192).multipleOf(32) }).optional(),
@@ -58,6 +59,7 @@ export function createImageScene(prompt = ""): ImageScene {
 }
 export function createImageEditScene(sourceImage: ImageSource | null, previous?: ImageScene): ImageScene {
   return { ...createImageScene(), rootType: "image", sourceImage,
+    ...(previous?.cfgScales ? { cfgScales: { ...previous.cfgScales } } : {}),
     ...(previous?.generationEffects ? { generationEffects: structuredClone(previous.generationEffects) } : {}),
     steps: previous?.steps ?? 20, seed: previous?.seed ?? -1, referenceIds: previous?.referenceIds ?? [] };
 }

@@ -1530,3 +1530,26 @@ fn sigma_provider_settings_validate_float32_bounds() {
         }
     }
 }
+
+#[test]
+fn moss_cfg_reaches_planning_and_generation_and_h3_rejects_it() {
+    let api = ffi::Api::load(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME)).unwrap();
+    let mut config = Configuration::from_settings(&BTreeMap::new());
+    config.model_type = "moss".into();
+    config.attention = "flash2";
+    let mut request = GenerationRequest { still_image: true, frames: 1, steps: 50, prompt: "Apple".into(), canvas_width: 512, canvas_height: 512, ..Default::default() };
+    for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+        for (scale, expected) in [(None, "3"), (Some(0.0), "0"), (Some(1.0), "1"), (Some(4.5), "4.5")] {
+            request.guidance_scale = scale;
+            let handle = RequestHandle::new(&api).unwrap();
+            configure_request(&api, &handle, &request, &config, ComputePlatform::Cuda13, purpose, &ReferenceVideos::default()).unwrap();
+            assert!(api.describe(&handle).unwrap().contains(&format!("guidance    {expected}\n")));
+        }
+    }
+    for scale in [-1.0, f32::NAN, f32::INFINITY] {
+        request.guidance_scale = Some(scale);
+        assert!(config.validate_inputs(&request).is_err());
+    }
+    config.model_type = "minimax-h3".into(); request.guidance_scale = Some(3.0);
+    assert!(config.validate_inputs(&request).unwrap_err().contains("CFG"));
+}

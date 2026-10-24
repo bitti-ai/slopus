@@ -221,6 +221,14 @@ impl Api {
         self.check(r)?;
         self.inner.set_model(r.pointer.as_ptr(), id, path)
     }
+    #[cfg(test)]
+    pub fn disable_image_guidance_for_test(&mut self) {
+        Arc::get_mut(&mut self.inner).expect("configure API before creating handles").disable_image_guidance_for_test();
+    }
+    pub fn set_image_guidance(&self, r: &RequestHandle, scale: f32) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_image_guidance(r.pointer.as_ptr(), scale)
+    }
     pub fn set_model_family(&self, r: &RequestHandle, family: &str) -> Result<(), String> {
         self.check(r)?;
         self.inner.set_model_family(r.pointer.as_ptr(), family)

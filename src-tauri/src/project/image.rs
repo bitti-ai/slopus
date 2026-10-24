@@ -66,6 +66,8 @@ impl ImageTemplateSnapshot {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageScene {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cfg_scales: Option<std::collections::BTreeMap<String, f64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generation_effects: Option<slopus_core::generation_effects::GenerationEffects>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root_type: Option<String>,
@@ -143,6 +145,12 @@ impl ImageScene {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if let Some(scales) = &self.cfg_scales {
+            for (model, scale) in scales {
+                if model.is_empty() { return Err("CFG settings require a model ID.".into()); }
+                slopus_core::models::validate_cfg_scale(*scale)?;
+            }
+        }
         if let Some(effects) = &self.generation_effects { effects.validate()?; }
         if self.output_size.as_ref().is_some_and(|size| [size.width, size.height].iter().any(|value|
             !(32..=8192).contains(value) || value % 32 != 0)) {

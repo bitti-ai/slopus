@@ -362,7 +362,8 @@ describe("image generation work", () => {
     queue.enqueueImage(session, moss);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
     const [request, config] = vi.mocked(enqueueSlopfabGeneration).mock.calls[0];
-    expect(request).toMatchObject({ stillImage: true, frames: 1, referencePaths: [] });
+    expect(request).toMatchObject({ stillImage: true, frames: 1, referencePaths: [], guidanceScale: 3 });
+    expect(config.imageScene?.cfgScales?.moss).toBe(3);
     expect(request.prompt).toContain("An ocean poster");
     expect(request.prompt).not.toContain("overall_soundscape");
     expect(config.providerSettings.slopfab.options).toMatchObject({ modelType: "moss", attention: "flash2", tokenizer: "tokenizer.json" });
@@ -371,6 +372,24 @@ describe("image generation work", () => {
     session.update((current) => ({ ...current, imageScene: createImageEditScene({ name: "Source", relativePath: "media/source.png", width: 512, height: 512 }, current.imageScene!) }));
     expect(() => queue.enqueueImage(session, moss)).toThrow(/does not support image editing/);
     expect(() => queue.enqueueExtendImage(session, moss, "source", { bounds: { x: 0, y: 0, width: 512, height: 512 }, prompt: "", steps: 50, seed: 1 })).toThrow(/supports image editing/);
+  });
+  it("captures the selected model CFG for generation and image history", async () => {
+    const { queue } = setup();
+    const session = queue.project(imageProject());
+    session.update((current) => ({ ...current, imageScene: { ...current.imageScene!, cfgScales: { moss: 4.5, "minimax-h3": 9 } } }));
+    const moss = { ...mossImageTemplate(), sources: {}, paths: { transformer: "moss", textEncoder: "qwen", videoVae: "flux", tokenizer: "tokenizer.json", audioVae: "" } };
+    vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/moss.jpg", width: 768, height: 768 });
+    queue.enqueueImage(session, moss);
+    session.update((current) => ({ ...current, imageScene: { ...current.imageScene!, cfgScales: { moss: 7 } } }));
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+    expect(request.guidanceScale).toBe(4.5);
+    await finish(queue, request.jobId);
+    const result = session.getSnapshot().config.assets.find((asset) => asset.relativePath === "media/generated/moss.jpg");
+    expect(result?.imageGeneration?.scene.cfgScales?.moss).toBe(4.5);
+    queue.enqueueImage(session, template);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[1][0].guidanceScale).toBeUndefined();
   });
   it("captures image effects, shows calibration progress and refuses active effects on MOSS", async () => {
     const { queue } = setup();

@@ -77,7 +77,10 @@ type SetImageEditPath = unsafe extern "C" fn(*mut Request, *const c_char, i32, i
 type SetImageEditRgb = unsafe extern "C" fn(*mut Request, *const u8, usize, i32, i32, usize, i32, i32, i32, i32, f32, i32) -> i32;
 type ExportRefmod = unsafe extern "C" fn(*const Request, *const c_char, *const c_char, *const c_char, i32) -> i32;
 
+type SetImageGuidance = unsafe extern "C" fn(*mut Request, f32, *const c_char, *const i32, i32) -> i32;
+
 pub struct Api {
+    set_image_guidance: Option<SetImageGuidance>,
     _library: Library,
     capi_version: unsafe extern "C" fn() -> u32,
     version_string: unsafe extern "C" fn() -> *const c_char,
@@ -241,6 +244,7 @@ impl Api {
                     "slopfab_request_set_seed",
                     unsafe extern "C" fn(*mut Request, u64) -> i32
                 ),
+                set_image_guidance: library.get::<SetImageGuidance>(b"slopfab_request_set_image_guidance\0").ok().map(|symbol| *symbol),
                 set_model_family: library
                     .get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(b"slopfab_request_set_model_family\0")
                     .ok().map(|symbol| *symbol),
@@ -576,6 +580,15 @@ impl Api {
     pub fn set_model(&self, r: *mut Request, id: i32, path: &Path) -> Result<(), String> {
         let v = path_cstring(path)?;
         self.error(unsafe { (self.set_model)(r, id, v.as_ptr()) })
+    }
+    #[cfg(test)]
+    pub fn disable_image_guidance_for_test(&mut self) { self.set_image_guidance = None; }
+    pub fn set_image_guidance(&self, r: *mut Request, scale: f32) -> Result<(), String> {
+        let set = self.set_image_guidance.ok_or("Configurable CFG requires SlopFab API 1.30 or newer. Update the runtime on the machine running generation.")?;
+        // Keep MOSS's default empty negative prompt and negative-branch skip layer.
+        let negative = CString::new("").unwrap();
+        let skip_layers = [22_i32];
+        self.error(unsafe { set(r, scale, negative.as_ptr(), skip_layers.as_ptr(), 1) })
     }
     pub fn set_model_family(&self, r: *mut Request, family: &str) -> Result<(), String> {
         let set = self.set_model_family.ok_or("MOSS requires SlopFab API 1.30 or newer. Update the runtime on the machine running generation.")?;

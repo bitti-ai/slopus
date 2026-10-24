@@ -123,3 +123,14 @@ fn older_runtimes_reject_latent_upscale_but_allow_normal_generation() {
     api.set_resolution(&request, 64, 32).unwrap();
     assert!(api.resolve(&request).is_ok());
 }
+
+#[test]
+fn older_runtimes_reject_cfg_and_cross_instance_guidance_is_refused() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(crate::slopfab::DLL_FILE_NAME);
+    let mut api = Api::load(&path).unwrap();
+    api.disable_image_guidance_for_test();
+    let request = RequestHandle::new(&api).unwrap();
+    assert!(api.set_image_guidance(&request, 3.0).unwrap_err().contains("API 1.30"));
+    let other = Api::load(&path).unwrap();
+    assert!(other.set_image_guidance(&request, 3.0).unwrap_err().contains("different runtime"));
+}
