@@ -4,7 +4,7 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## What's new
 
-- **Lasso image edits.** Draw a freehand area beside the existing box tool, give it a prompt in the right panel, and select or move it from the canvas or Scene tree. Saved outlines become antialiased Slopfab masks for local and LAN generation, preserving pixels outside the selection. Bundled runtimes now use API 1.32; LAN workers require the matching update.
+- **Lasso image edits.** Draw a freehand area beside the existing box tool, give it a prompt in the right panel, and select or move it from the canvas or Scene tree. Saved outlines become antialiased Slopfab masks for local and LAN generation, preserving pixels outside the selection. Bundled runtimes now use API 1.33; LAN workers require the matching update.
 
 - **FastH3 Omni.** Renamed First/Last Frame Fast and updated its transformer to the FastH3 Omni eight-step model. Existing bundled settings migrate automatically.
 
