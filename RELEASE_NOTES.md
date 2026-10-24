@@ -19,7 +19,8 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 - Generation effects reuse VAE fingerprints between jobs, removing repeated full-file calibration checks for unchanged VAEs. Changed or replaced VAEs are verified again; saved calibrations remain reusable after restarting.
 
 - Renamed image roots on the still image creation page now retain their names when switching images and reopening projects.
-- Image edits keep the original as the parent with its saved prompt and settings. Child results open as normal images ready for further edits; selecting images does not create editing copies.
+- Image edits keep their prompts and settings separate from the original. Child results open as normal images ready for further edits; selecting images does not create editing copies.
+- Image generation immediately selects a separate empty entry showing Queued or Generating. Progress stays on that entry, and the result replaces it when ready.
 - Whole-image edits disable feathering at the native generation boundary, including requests with missing or previously saved feather settings.
 - Imported still images now have steps, seed and resolution controls. Resolution defaults to the source dimensions rounded down to multiples of 32, with additional sizes matching the source aspect ratio.
 - Fixed CUDA transformer-loading memory failures with bounded upload buffers, more accurate memory budgeting and automatic retries with more CPU offloading, while preserving precision and output settings.

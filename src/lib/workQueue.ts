@@ -271,29 +271,32 @@ export class WorkQueue {
   enqueueImage(session: ProjectSession, template: GeneratorTemplate) {
     if (!isTauri()) throw new Error("Image generation requires the desktop app and downloaded model weights.");
     if (!templateSupportsImages(template)) throw new Error("Choose a prompt generator for images.");
-    session.update((config) => saveImageDraft(config, template.id, true));
-    const current = session.getSnapshot().config;
+    let current = session.getSnapshot().config;
     const scene = current.imageScene ?? createImageScene(current.brief.prompt);
     if (!generatorModel(template.modelType).imageEditing && scene.rootType === "image") throw new Error(`${generatorModel(template.modelType).label} does not support image editing. Choose an editing generator.`);
     if (activeGenerationEffects(scene.generationEffects) && !generatorModel(template.modelType).generationEffects) throw new Error("This model does not support generation effects. Bypass or remove the effects, or choose another generator.");
     const edit = scene.rootType === "image" ? compileImageEdits(current) : null;
     if (!imageScenePrompt(scene)) throw new Error("Describe the image or add an object before generating.");
     const projectKey = projectQueueKey(session.record);
-    if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === scene.outputAssetId && isWorkActive(item))) return;
+    if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && (item.imageDraftId ?? item.imageAssetId) === scene.outputAssetId && isWorkActive(item))) return;
+    const { prompt, references } = edit ? edit.edits[0] : compileImagePrompt(current, { modelType: template.modelType });
+    const { width, height } = edit ? imageEditOutputSize(scene) : outputDimensions(imageSettings(current).resolution, imageSettings(current).aspectRatio);
+    const id = `image-${crypto.randomUUID()}`;
+    const guidanceScale = imageCfgScale(template.modelType, scene.cfgScales);
+    // Publish and select the job's own entry before generation starts. The
+    // finished source stays untouched, and an existing empty draft is reused.
+    session.update((config) => saveImageDraft({ ...config, imageScene: {
+      ...(config.imageScene ?? scene),
+      ...(guidanceScale !== undefined ? { cfgScales: { ...(config.imageScene ?? scene).cfgScales, [template.modelType]: guidanceScale } } : {}),
+    } }, template.id, true, id));
+    current = session.getSnapshot().config;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
       slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
-    const guidanceScale = imageCfgScale(template.modelType, scene.cfgScales);
-    if (guidanceScale !== undefined) config.imageScene = { ...structuredClone(scene), cfgScales: { ...scene.cfgScales, [template.modelType]: guidanceScale } };
-    const { prompt, references } = edit ? edit.edits[0] : compileImagePrompt(current, { modelType: template.modelType });
     const referencePaths = (selected: typeof references) => [
       ...(edit ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
       ...selected.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
     ];
-    const { width, height } = edit ? imageEditOutputSize(scene) : outputDimensions(imageSettings(current).resolution, imageSettings(current).aspectRatio);
-    const id = `image-${crypto.randomUUID()}`;
-    const imageDraftId = current.assets.find((asset) => asset.id === scene.outputAssetId && asset.imageDraft)?.id;
-    // Generating again from a finished image makes a new image in its family.
-    const imageParentId = imageDraftId ? undefined : imageFamilyRoot(current.assets, scene.outputAssetId);
+    const imageDraftId = current.imageScene!.outputAssetId!;
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
     const request: SlopfabGenerationRequest = { ...(guidanceScale !== undefined ? { guidanceScale } : {}), generationEffects: activeGenerationEffects(scene.generationEffects), jobId: id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
@@ -304,8 +307,8 @@ export class WorkQueue {
       referencePaths: referencePaths(references),
       refmods: referenceRefmodInputs(session.record.folderPath, references),
     };
-    this.work.set(id, { id, image: true, imageDraftId, imageParentId, imageGeneration: { ...imageGenerationSnapshot(config, edit ? imageEditDebugPrompt(edit.edits) : prompt, template.id), usedSeed: request.seed }, session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(scene), request, submitted: false, cancelled: false, done, finish });
-    this.items = [...this.items, { id, kind: "image", imageAssetId: scene.outputAssetId, imageDraftId, projectKey, folderPath: session.record.folderPath, projectName: config.name, sceneId: scene.nodes.find((node) => node.kind === "root")!.id,
+    this.work.set(id, { id, image: true, imageDraftId, imageGeneration: { ...imageGenerationSnapshot(config, edit ? imageEditDebugPrompt(edit.edits) : prompt, template.id), usedSeed: request.seed }, session, sceneId: scene.nodes.find((node) => node.kind === "root")!.id, config, snapshot: JSON.stringify(config.imageScene), request, submitted: false, cancelled: false, done, finish });
+    this.items = [...this.items, { id, kind: "image", imageAssetId: imageDraftId, imageDraftId, projectKey, folderPath: session.record.folderPath, projectName: config.name, sceneId: scene.nodes.find((node) => node.kind === "root")!.id,
       title: "Image · " + config.name, submittedAt: new Date().toISOString(), status: "queued", progress: 0, detail: "Waiting to generate image", error: null, completionAt: null, cancelling: false, needsSave: false,
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: width, canvasHeight: height } }];
     this.publish(); this.icons.yieldToVideo(); void this.pump();

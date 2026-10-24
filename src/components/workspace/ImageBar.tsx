@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { imageFamily, imageFamilyRoot } from "../../lib/imageHistory";
 import type { ProjectAsset } from "../../lib/project";
+import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import { ChevronLeft16, Edit11, Image24 } from "../ui/icons";
 import { ReferenceImage } from "./ReferenceImage";
 import "../../styles/image-editor.css";
@@ -20,9 +21,10 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
   images: ProjectAsset[];
   selectedId: string | null | undefined;
   folderPath: string;
+  workItems?: readonly WorkItem[];
   onSelect: (id: string) => void;
   onMenu?: (id: string | null, x: number, y: number, inFamily: boolean) => void;
-}>(function ImageBar({ images, selectedId, folderPath, onSelect, onMenu }, ref) {
+}>(function ImageBar({ images, selectedId, folderPath, workItems = [], onSelect, onMenu }, ref) {
   const bar = useRef<HTMLDivElement>(null);
   useImperativeHandle(ref, () => bar.current as HTMLDivElement);
 
@@ -37,6 +39,7 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
   const shown = inFamily ? family : primaries;
   const pressed = inFamily ? selectedId : root;
   const childCount = (id: string) => images.filter((asset) => asset.id !== id && imageFamilyRoot(images, asset.id) === id).length;
+  const pending = new Map(workItems.filter(isWorkActive).map((work) => [work.imageDraftId ?? work.imageAssetId ?? work.id, work.status === "queued" ? "Queued" : "Generating"]));
 
   const previousCount = useRef(shown.length);
   useLayoutEffect(() => {
@@ -113,7 +116,7 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
     {inFamily && <button type="button" className="image-results__back" aria-label="Back to all images" data-tooltip="All images"
       onClick={() => { setShowAll(true); bar.current?.focus(); }}><ChevronLeft16 aria-hidden="true" /></button>}
     {shown.map((asset) => <button key={asset.id} type="button" data-image-asset={asset.id} data-tooltip={asset.name}
-      aria-label={`View ${asset.name}${!inFamily && childCount(asset.id) ? `, ${childCount(asset.id) + 1} versions` : ""}`} aria-pressed={asset.id === pressed}
+      aria-label={`View ${asset.name}${!inFamily && childCount(asset.id) ? `, ${childCount(asset.id) + 1} versions` : ""}`} aria-pressed={asset.id === pressed} aria-busy={pending.has(asset.id)}
       onContextMenu={onMenu && ((event) => { event.preventDefault(); event.stopPropagation(); onMenu(asset.id, event.clientX, event.clientY, inFamily); })}
       onKeyDown={onMenu && ((event) => {
         if (!menuKey(event)) return;
@@ -122,9 +125,9 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
         onMenu(asset.id, bounds.left, bounds.bottom, inFamily);
       })}
       onClick={() => { setShowAll(false); onSelect(asset.id); }}>
-      {asset.relativePath || asset.sourcePath ? <ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /> : <Image24 aria-hidden="true" />}
+      {!pending.has(asset.id) && (asset.relativePath || asset.sourcePath) ? <ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /> : <Image24 aria-hidden="true" />}
       {!inFamily && childCount(asset.id) > 0 && <span className="image-family-badge" aria-hidden="true">{childCount(asset.id) + 1}</span>}
-      {asset.imageDraft && <span className="image-draft-badge"><Edit11 aria-hidden="true" />{asset.imageGeneration?.scene.rootType === "image" ? "Editing" : "Draft"}</span>}
+      {pending.has(asset.id) ? <span className="image-draft-badge">{pending.get(asset.id)}</span> : asset.imageDraft && <span className="image-draft-badge"><Edit11 aria-hidden="true" />{asset.imageGeneration?.scene.rootType === "image" ? "Editing" : "Draft"}</span>}
     </button>)}
   </div>;
 });

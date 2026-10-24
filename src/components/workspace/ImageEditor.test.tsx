@@ -7,7 +7,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { ImageEditor } from "./ImageEditor";
 import { choose, comboValue } from "./comboTestUtils";
 import { imageGenerationSnapshotSchema, parseProjectConfig, referenceImages, sceneFrameInputs, type ProjectConfig } from "../../lib/project";
-import { completeImageDraft, createTemplateImageDraft, imageGenerationSnapshot, restoreGeneratedImage } from "../../lib/imageHistory";
+import { completeImageDraft, createTemplateImageDraft, imageGenerationSnapshot, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { createGeneratorTemplate, mossImageTemplate, defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "../../lib/imageScene";
 import type { WorkItem } from "../../lib/workQueue";
@@ -29,6 +29,42 @@ function setup(initial = parseProjectConfig(fixture), workItems: WorkItem[] = []
   render(<Harness />);
   return () => latest;
 }
+
+it.each(["queued", "generating"] as const)("shows a separate empty %s entry without progress on the original", async (status) => {
+  vi.spyOn(persistence, "readMediaFileUrl").mockImplementation(async (_folder, location) => `blob:${location.relativePath}`);
+  vi.stubGlobal("URL", class extends URL { static revokeObjectURL = vi.fn(); });
+  const config = parseProjectConfig(fixture);
+  config.imageScene = createImageScene("A forest");
+  const original = { id: "original", kind: "image" as const, name: "Original", relativePath: "media/original.png", width: 512, height: 512,
+    mimeType: "image/png", createdAt: config.createdAt, imageGeneration: imageGenerationSnapshot(config, "Compiled forest", "default") };
+  config.assets = [original];
+  // Also cover hiding the source thumbnail while an image edit generates.
+  if (status === "generating") {
+    config.imageScene = createImageEditScene(original);
+    config.imageScene.nodes[0].description = "Add snow";
+  }
+  config.imageScene.outputAssetId = original.id;
+  const pending = saveImageDraft(config, "default", true, "pending");
+  const current = setup(pending, [{ id: "job", imageAssetId: original.id, imageDraftId: "pending", status, progress: 0.25, detail: "Working" } as WorkItem]);
+  const draftName = pending.assets[1].name;
+  const draft = screen.getByRole("button", { name: `View ${draftName}` });
+  expect(draft).toHaveAttribute("aria-pressed", "true");
+  expect(draft).toHaveAttribute("aria-busy", "true");
+  expect(draft).toHaveTextContent(status === "queued" ? "Queued" : "Generating");
+  expect(within(draft).queryByRole("img")).not.toBeInTheDocument();
+  expect(document.querySelector(".image-frame img")).toBeNull();
+  expect(document.querySelector(".image-frame")).toHaveTextContent(status === "queued" ? "Queued" : "Generating");
+  const source = screen.getByRole("button", { name: "View Original" });
+  expect(source).toHaveAttribute("aria-busy", "false");
+  fireEvent.click(source);
+  expect(screen.queryByRole("progressbar", { name: "Image generation progress" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+  expect(current().imageScene!.nodes[0].description).toBe("A forest");
+  await waitFor(() => expect(document.querySelector(".image-frame img")).toHaveAttribute("src", "blob:media/original.png"));
+  fireEvent.click(screen.getByRole("button", { name: `View ${draftName}` }));
+  expect(document.querySelector(".image-frame img")).toBeNull();
+  expect(current().assets[0]).toEqual(original);
+});
 
 it("offers MOSS for new images and disables editing and reference templates", () => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
@@ -130,7 +166,7 @@ it.each(["extend", "character-sheet"] as const)("returns from %s settings to nor
 /* Undo lives in the title bar; inside the editor it is Ctrl+Z. */
 const undoImageEdit = () => fireEvent.keyDown(screen.getByRole("tree", { name: "Image nodes" }), { key: "z", code: "KeyZ", ctrlKey: true });
 
-it("keeps the prompt on the parent, opens children without drafts, and edits a child's own pixels", async () => {
+it("keeps prompts independent, opens children without drafts, and edits a child's own pixels", async () => {
   vi.spyOn(persistence, "readMediaFileUrl").mockImplementation(async (_folder, location) => `blob:${location.relativePath}`);
   vi.stubGlobal("URL", class extends URL { static revokeObjectURL = vi.fn(); });
   const initial = parseProjectConfig(fixture);
@@ -149,7 +185,7 @@ it("keeps the prompt on the parent, opens children without drafts, and edits a c
   await waitFor(() => expect(preview()).toHaveAttribute("src", "blob:media/edited.png"));
   expect(preview()!.parentElement!.style.getPropertyValue("--image-ratio")).toBe(String(672 / 544));
   fireEvent.click(screen.getByRole("button", { name: "View Original" }));
-  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Warm up the lighting");
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
   fireEvent.click(screen.getByRole("button", { name: "View Edited" }));
   fireEvent.click(screen.getByRole("button", { name: "View Edited" }));
   expect(current().assets).toEqual([original, result]);
@@ -161,9 +197,11 @@ it("keeps the prompt on the parent, opens children without drafts, and edits a c
     scene: { sourceImage: { relativePath: "media/edited.png" }, nodes: [{ description: "Make it moonlit" }] } } });
   await waitFor(() => expect(preview()).toHaveAttribute("src", "blob:media/edited.png"));
   fireEvent.click(screen.getByRole("button", { name: "View Edited" }));
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
+  fireEvent.click(screen.getByRole("button", { name: "View Editing Edited" }));
   expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Make it moonlit");
   fireEvent.click(screen.getByRole("button", { name: "View Original" }));
-  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Warm up the lighting");
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
   expect(current().assets).toHaveLength(3);
 });
 
@@ -183,7 +221,9 @@ it("edits imported-image generation settings and restores them with the draft", 
   const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
   expect(reopened.imageScene).toEqual(current().imageScene);
   fireEvent.click(screen.getByRole("button", { name: "View Imported" }));
-  expect(comboValue(screen.getByLabelText("Resolution"))).toBe("672x544");
+  expect(comboValue(screen.getByLabelText("Resolution"))).toBe("992x800");
+  expect(screen.getByLabelText("Steps")).toHaveValue(20);
+  expect(screen.getByLabelText("Seed")).toHaveValue(-1);
   fireEvent.click(screen.getByRole("button", { name: "View Editing Imported" }));
   expect(screen.getByLabelText("Steps")).toHaveValue(32);
   expect(screen.getByLabelText("Seed")).toHaveValue(123456);
@@ -217,7 +257,9 @@ it.each(["media/photo.png", "references/photo.webp", "references/frames/frame.pn
   const draftId = current().assets[1].id;
   fireEvent.click(screen.getByRole("button", { name: "View Imported" }));
   expect(current().imageScene?.outputAssetId).toBe("imported");
-  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Make the sky pink");
+  undoImageEdit();
+  expect(current().imageScene?.outputAssetId).toBe("imported");
+  expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("");
   expect(current().assets).toHaveLength(2);
   fireEvent.click(screen.getByRole("button", { name: "View Editing Imported" }));
   expect(current().imageScene?.outputAssetId).toBe(draftId);

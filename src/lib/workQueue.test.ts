@@ -18,7 +18,7 @@ import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo
 import { downloadTemplateWeights, getWeightDownloadState } from "./weightDownloads";
 import { compileImagePrompt } from "./imagePrompt";
 import { addImageNode, createImageEditScene } from "./imageScene";
-import { createEmptyImage, makeImagePrimary, restoreGeneratedImage } from "./imageHistory";
+import { createEmptyImage, imageGenerationSnapshot, makeImagePrimary, restoreGeneratedImage } from "./imageHistory";
 import { sceneGenerationRequest } from "./sceneGeneration";
 import { bridgeGapFrames, currentLongShotArchives } from "./longShot";
 
@@ -450,7 +450,8 @@ describe("image generation work", () => {
     const { queue } = setup();
     const record = imageProject();
     record.config.assets = ["first", "second", "third"].map((id) => ({ id, kind: "image", name: id, imageDraft,
-      relativePath: `media/${id}.jpg`, mimeType: "image/jpeg", createdAt: record.config.createdAt }));
+      relativePath: `media/${id}.jpg`, mimeType: "image/jpeg", createdAt: record.config.createdAt,
+      imageGeneration: imageGenerationSnapshot(record.config, "Compiled prompt", template.id) }));
     record.config.imageScene!.outputAssetId = "first";
     const session = queue.project(record);
     vi.mocked(invoke).mockImplementation(async (_command, args) => ({ relativePath: `media/${(args as { jobId: string }).jobId}.jpg`, width: 768, height: 768 }));
@@ -461,7 +462,13 @@ describe("image generation work", () => {
     queue.enqueueImage(session, template);
     const [first, second] = queue.getSnapshot();
     expect(queue.getSnapshot()).toHaveLength(2);
-    expect(second).toMatchObject({ imageAssetId: "second", status: "queued" });
+    expect(second).toMatchObject({ imageAssetId: imageDraft ? "second" : second.id, imageDraftId: imageDraft ? "second" : second.id, status: "queued" });
+    expect(session.getSnapshot().config.imageScene!.outputAssetId).toBe(second.imageDraftId);
+    if (!imageDraft) {
+      expect(session.getSnapshot().config.assets.slice(0, 3)).toEqual(record.config.assets);
+      expect(session.getSnapshot().config.assets.find((asset) => asset.id === second.imageDraftId)).toMatchObject({ imageDraft: true, parentAssetId: "second" });
+      expect(session.getSnapshot().config.assets.find((asset) => asset.id === second.imageDraftId)?.relativePath).toBeUndefined();
+    }
     expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce();
     session.update((current) => restoreGeneratedImage(current, "third"));
     await finish(queue, first.id);
@@ -531,7 +538,9 @@ describe("image generation work", () => {
     expect(result.assets[1].imageGeneration!.references.map((reference) => reference.id)).toEqual(["Lighting", "Balloon"]);
     expect(result.imageScene!.nodes).toHaveLength(1);
     expect(result.imageScene!.nodes[0].description).toBe("");
-    expect(restoreGeneratedImage(result, result.assets[0].id).imageScene!.nodes).toEqual(scene.nodes);
+    expect(result.assets[1].imageGeneration!.scene.nodes).toEqual(scene.nodes);
+    expect(restoreGeneratedImage(result, result.assets[0].id).imageScene!.nodes).toMatchObject([{ description: "" }]);
+    expect(result.assets[0].imageEditing).toBeUndefined();
   });
   it("submits ordered inpainting as one job, saves a child PNG, and retains its edit recipe", async () => {
     const { queue } = setup();
@@ -570,7 +579,9 @@ describe("image generation work", () => {
     expect(result.imageScene!.outputAssetId).toBe(draftId);
     expect(result.imageScene).toMatchObject({ rootType: "image", sourceImage: { relativePath: "media/generated/edited.png" } });
     expect(result.assets[1]).toMatchObject({ mimeType: "image/png", imageGeneration: { scene, prompt: expect.stringContaining("Edit 2 (24, 16, 48, 32)") } });
-    expect(restoreGeneratedImage(result, result.assets[0].id).imageScene!.nodes).toEqual(scene.nodes);
+    expect(result.assets[1].imageGeneration!.scene.nodes).toEqual(scene.nodes);
+    expect(restoreGeneratedImage(result, result.assets[0].id).imageScene!.nodes).toMatchObject([{ description: "" }]);
+    expect(result.assets[0].imageEditing).toBeUndefined();
     expect(releaseRendered).toHaveBeenCalledWith(request.jobId);
   });
   it("submits the selected image edit resolution, steps and seed to planning and generation", async () => {
@@ -599,8 +610,8 @@ describe("image generation work", () => {
     vi.spyOn(crypto, "getRandomValues").mockImplementation((array) => { (array as Uint32Array).set([0, ++seed]); return array; });
     const session = queue.project(record);
     for (let index = 0; index < 3; index++) {
-      if (index === 2) session.update((config) => ({ ...config, imageScene: { ...config.imageScene!,
-        nodes: config.imageScene!.nodes.map((node) => ({ ...node, description: "Make it moonlit" })) } }));
+      if (index > 0) session.update((config) => ({ ...config, imageScene: { ...structuredClone(record.config.imageScene!), outputAssetId: config.assets[0].id,
+        nodes: record.config.imageScene!.nodes.map((node) => ({ ...node, description: index === 2 ? "Make it moonlit" : "Warm up the lighting" })) } }));
       const previous = structuredClone(session.getSnapshot().config.assets.filter((asset) => !asset.imageDraft));
       queue.enqueueImage(session, template);
       await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(index + 1));
@@ -611,14 +622,14 @@ describe("image generation work", () => {
       await finish(queue, request.jobId);
       const config = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
       expect(config.assets).toHaveLength(index + 2);
-      expect(config.assets.slice(0, previous.length).map(({ imageEditing: _editing, ...asset }) => asset)).toEqual(previous.map(({ imageEditing: _editing, ...asset }) => asset));
+      expect(config.assets.slice(0, previous.length)).toEqual(previous);
       expect(config.assets[0]).toMatchObject({ name: "Original", relativePath: "media/source.png", width: 1001, height: 809 });
       expect(config.assets.slice(1).every((asset) => asset.parentAssetId === config.assets[0].id && !asset.imageDraft)).toBe(true);
       expect(config.imageScene!.nodes[0].description).toBe("");
       expect(config.imageScene!.sourceImage?.relativePath).toBe(`media/edited-${index}.png`);
       session.update(() => restoreGeneratedImage(config, config.assets[0].id));
-      expect(session.getSnapshot().config.imageScene).toMatchObject({ seed: -1, sourceImage: { relativePath: "media/source.png" }, outputSize: { width: 672, height: 544 } });
-      expect(session.getSnapshot().config.imageScene!.nodes[0].description).toBe(index === 2 ? "Make it moonlit" : "Warm up the lighting");
+      expect(session.getSnapshot().config.imageScene).toMatchObject({ seed: -1, sourceImage: { relativePath: "media/source.png" } });
+      expect(session.getSnapshot().config.imageScene!.nodes[0].description).toBe("");
       expect(session.getSnapshot().config.assets).toHaveLength(index + 2);
     }
   });
@@ -729,7 +740,8 @@ describe("image generation work", () => {
     expect(invoke).toHaveBeenCalledWith("save_generated_image", { folderPath: "C:/Image", jobId: request.jobId });
     const saved = session.getSnapshot().config;
     expect(saved.imageScene?.background).toBe("Edited during generation");
-    expect(saved.imageScene?.outputAssetId).toBe(request.jobId);
+    expect(saved.imageScene?.outputAssetId).not.toBe(request.jobId);
+    expect(saved.assets.find((asset) => asset.id === saved.imageScene?.outputAssetId)).toMatchObject({ imageDraft: true, imageGeneration: { scene: { background: "Edited during generation" } } });
     expect(saved.assets[0]).toMatchObject({ kind: "image", mimeType: "image/jpeg", relativePath: "media/generated/still.jpg", width: 768, height: 768 });
     expect(saved.assets[0].imageGeneration).toMatchObject({ resolution: "768p", aspectRatio: "1:1", prompt: request.prompt, generatorTemplateId: template.id });
     expect(saved.assets[0].imageGeneration!.scene.background).not.toBe("Edited during generation");
@@ -758,7 +770,9 @@ describe("image generation work", () => {
     expect(queue.getSnapshot().find((item) => item.id === image.id)?.status).toBe("cancelled");
     await finish(queue, queue.getSnapshot()[0].id);
     expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce();
-    expect(session.getSnapshot().config.assets).toHaveLength(0);
+    expect(session.getSnapshot().config.assets).toHaveLength(1);
+    expect(session.getSnapshot().config.assets[0]).toMatchObject({ id: image.imageDraftId, imageDraft: true });
+    expect(session.getSnapshot().config.assets[0].relativePath).toBeUndefined();
   });
   it("retains the saved image for retry when writing the project fails", async () => {
     const { queue, saved } = setup(); const session = queue.project(imageProject());

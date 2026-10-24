@@ -18,13 +18,6 @@ export function imageGenerationSnapshot(config: ProjectConfig, prompt: string, g
   });
 }
 
-/** Recover older parents' instructions from their saved edits until authored again. */
-export function imageEditingSnapshot(config: ProjectConfig, asset: ProjectAsset): ImageGenerationSnapshot | undefined {
-  return asset.imageEditing ?? (!asset.imageDraft && asset.relativePath ? [...config.assets].reverse().find((candidate) => candidate.id !== asset.id
-    && !candidate.imageGeneration?.template && candidate.imageGeneration?.scene.rootType === "image"
-    && candidate.imageGeneration.scene.sourceImage?.relativePath === asset.relativePath)?.imageGeneration : undefined) ?? undefined;
-}
-
 /** The primary image of `id`'s family: its parent, or itself when it is the
  *  primary (or its parent has since been removed). */
 export function imageFamilyRoot(assets: readonly ProjectAsset[], id: string | null | undefined): string | undefined {
@@ -64,7 +57,7 @@ export function removeImageAsset(assets: readonly ProjectAsset[], id: string): P
 }
 
 /** Keep the editable version in history without creating another image file. */
-export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: string, regenerate = false): ProjectConfig {
+export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: string, regenerate = false, draftId?: string): ProjectConfig {
   const scene = config.imageScene;
   if (!scene) return config;
   const selected = config.assets.find((asset) => asset.id === scene.outputAssetId);
@@ -72,8 +65,10 @@ export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: stri
   // recipe with the editor's generic image settings. Edits become another draft.
   const templateDraft = selected?.imageDraft && selected.imageGeneration?.template;
   if (templateDraft && JSON.stringify({ ...scene, outputAssetId: null }) === JSON.stringify(selected.imageGeneration!.scene)) return config;
-  const source = scene.rootType === "image" ? scene.sourceImage : null;
-  if (!source && !selected?.imageDraft) {
+  const sourceImage = scene.rootType === "image" ? scene.sourceImage : null;
+  // Copy only source pixels and dimensions, never an asset's identity or history.
+  const source = sourceImage && { relativePath: sourceImage.relativePath, name: sourceImage.name, width: sourceImage.width, height: sourceImage.height };
+  if (!regenerate && !source && !selected?.imageDraft) {
     const generation = selected?.imageGeneration;
     const root = scene.nodes.find((node) => node.kind === "root");
     const savedRoot = generation?.scene.nodes.find((node) => node.kind === "root");
@@ -85,8 +80,8 @@ export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: stri
         nodes: generation.scene.nodes.map((node) => node.kind === "root" ? { ...node, name: root.name } : node) } },
     } : asset) };
   }
-  const saved = selected && !selected.imageDraft ? imageEditingSnapshot(config, selected) : selected?.imageGeneration;
-  const snapshot = imageGenerationSnapshot(config, "", generatorTemplateId || saved?.generatorTemplateId || selected?.imageGeneration?.generatorTemplateId || "image-draft");
+  const saved = selected?.imageGeneration;
+  const snapshot = imageGenerationSnapshot(config, "", generatorTemplateId || saved?.generatorTemplateId || "image-draft");
   // Merely viewing a finished edit (including session autosave) must not create
   // a draft. Generate explicitly forks it, even when its inputs are unchanged.
   if (!regenerate && selected && !selected.imageDraft && saved && !saved.template
@@ -97,14 +92,11 @@ export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: stri
     config = { ...config, assets: [...config.assets, { id: `image-source-${crypto.randomUUID()}`, kind: "image", ...source,
       mimeType: /\.png$/i.test(source.relativePath) ? "image/png" : "image/jpeg", createdAt: new Date().toISOString() }] };
   }
-  if (!selected?.imageDraft && scene.outputAssetId && scene.nodes.length === 1 && !scene.nodes[0].description.trim()) return config;
+  if (!regenerate && !selected?.imageDraft && scene.outputAssetId && scene.nodes.length === 1 && !scene.nodes[0].description.trim()) return config;
   const existing = selected?.imageDraft && !templateDraft ? selected : undefined;
-  const id = existing?.id ?? `image-draft-${crypto.randomUUID()}`;
+  const id = existing?.id ?? draftId ?? `image-draft-${crypto.randomUUID()}`;
   const edited = source && config.assets.find((asset) => asset.kind === "image" && !asset.imageDraft && asset.relativePath === source.relativePath);
-  if (edited && JSON.stringify(edited.imageEditing) !== JSON.stringify(snapshot)) {
-    config = { ...config, assets: config.assets.map((asset) => asset.id === edited.id ? { ...asset, imageEditing: structuredClone(snapshot) } : asset) };
-  }
-  const parentAssetId = existing?.parentAssetId ?? imageFamilyRoot(config.assets, templateDraft ? selected.id : edited?.id);
+  const parentAssetId = existing?.parentAssetId ?? imageFamilyRoot(config.assets, templateDraft ? selected.id : edited?.id ?? (!selected?.imageDraft ? selected?.id : undefined));
   if (existing && existing.parentAssetId === parentAssetId && JSON.stringify(existing.imageGeneration) === JSON.stringify(snapshot)) return config;
   const asset = { id, kind: "image" as const, ...source, name: existing?.name ?? (source ? `Editing ${source.name}` : "New image"),
     imageDraft: true, mimeType: /\.png$/i.test(source?.relativePath ?? "") ? "image/png" : "image/jpeg",
@@ -150,17 +142,18 @@ export function completeImageDraft(config: ProjectConfig, id: string, result: Pr
 export function restoreGeneratedImage(config: ProjectConfig, id: string): ProjectConfig {
   const asset = config.assets.find((candidate) => candidate.id === id && candidate.kind === "image");
   if (!asset) return config;
-  const editing = !asset.imageDraft ? imageEditingSnapshot(config, asset) : undefined;
-  const snapshot = editing ?? asset.imageGeneration;
+  // Each image owns its inputs. Legacy imageEditing fields held a child's
+  // instructions on its source and must not override the source's own recipe.
+  const snapshot = asset.imageGeneration;
   const source = !snapshot && imageSourceSchema.safeParse(asset);
   if (source && source.success) {
     return { ...config, thumbnail: asset.relativePath ?? null,
-      imageScene: { ...createImageEditScene(source.data, config.imageScene ?? undefined), outputAssetId: id } };
+      imageScene: { ...createImageEditScene(source.data), outputAssetId: id } };
   }
   if (!snapshot) return { ...config, thumbnail: asset.relativePath ?? null,
-    imageScene: { ...(config.imageScene?.rootType === "image" ? createImageScene() : config.imageScene ?? createImageScene(config.brief.prompt)), outputAssetId: id } };
+    imageScene: { ...createImageScene(), outputAssetId: id } };
   const restored = structuredClone(snapshot);
-  const scene = !editing && !asset.imageDraft && restored.scene.rootType === "image" && asset.relativePath && asset.width && asset.height
+  const scene = !asset.imageDraft && restored.scene.rootType === "image" && asset.relativePath && asset.width && asset.height
     ? createImageEditScene({ relativePath: asset.relativePath, name: asset.name, width: asset.width, height: asset.height }, restored.scene)
     : restored.scene;
   const references = new Map(restored.references.map((reference) => [reference.id, reference]));

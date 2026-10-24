@@ -6,7 +6,35 @@ import snapshotFixture from "../../fixtures/image-generation-snapshot.json";
 import { createImageEditScene, createImageScene } from "./imageScene";
 
 describe("generated image history", () => {
-  it("retains the parent's edit instructions after reopening and deleting its children", () => {
+  it("restores a generated original's own prompt despite legacy shared edit instructions", () => {
+    const config = parseProjectConfig(fixture);
+    config.imageScene = createImageScene("A forest at sunrise");
+    const generation = imageGenerationSnapshot(config, "Compiled forest", "generator");
+    const source = { name: "Original", relativePath: "media/original.png", width: 640, height: 480 };
+    config.imageScene = createImageEditScene(source);
+    config.imageScene.nodes[0].description = "Make it snow";
+    const legacyEditing = imageGenerationSnapshot(config, "Compiled snow", "generator");
+    config.assets = [{ ...source, id: "original", kind: "image", mimeType: "image/png", createdAt: config.createdAt,
+      imageGeneration: generation, imageEditing: legacyEditing }];
+    config.imageScene.outputAssetId = "original";
+    const drafted = saveImageDraft(config, "generator");
+    const draftId = drafted.imageScene!.outputAssetId!;
+    const changed = structuredClone(drafted);
+    changed.imageScene!.nodes[0].description = "Make it moonlit";
+    changed.imageScene!.steps = 32;
+    const saved = saveImageDraft(changed, "generator");
+    expect(saved.assets[0]).toEqual(config.assets[0]);
+    expect(drafted.assets[1].imageGeneration!.scene.nodes[0].description).toBe("Make it snow");
+    const reopened = parseProjectConfig(JSON.parse(JSON.stringify(saved)));
+    const original = restoreGeneratedImage(reopened, "original");
+    expect(original.imageScene!.nodes[0].description).toBe("A forest at sunrise");
+    expect(original.imageScene!.steps).toBe(20);
+    const edit = restoreGeneratedImage(original, draftId);
+    expect(edit.imageScene!.nodes[0].description).toBe("Make it moonlit");
+    expect(edit.imageScene!.steps).toBe(32);
+  });
+
+  it("keeps edits on their own image after reopening and deleting children", () => {
     const initial = parseProjectConfig(fixture);
     const source = { name: "Original", relativePath: "media/original.png", width: 640, height: 480 };
     initial.assets = [{ ...source, id: "original", kind: "image", mimeType: "image/png", createdAt: initial.createdAt }];
@@ -19,14 +47,14 @@ describe("generated image history", () => {
     expect(completed.imageScene!.sourceImage?.relativePath).toBe("media/edited.png");
     const reopened = parseProjectConfig(JSON.parse(JSON.stringify(completed)));
     const parent = restoreGeneratedImage({ ...reopened, assets: removeImageAsset(reopened.assets, draft.id) }, "original");
-    expect(parent.imageScene!.nodes[0].description).toBe("Make the sky pink");
+    expect(parent.imageScene!.nodes[0].description).toBe("");
+    expect(completed.assets[0]).toEqual(initial.assets[0]);
+    expect(draft.imageGeneration!.scene.nodes[0].description).toBe("Make the sky pink");
     expect(parent.imageScene!.sourceImage).toEqual(source);
     expect(saveImageDraft(parent)).toBe(parent);
     expect(parent.assets).toHaveLength(1);
     expect(parent.assets[0].imageGeneration).toBeUndefined();
-    const invalid = structuredClone(parent);
-    invalid.assets[0].imageEditing!.scene.sourceImage!.relativePath = "media/another.png";
-    expect(() => parseProjectConfig(invalid)).toThrow("Image editing instructions must use this image as their source.");
+    expect(parent.assets[0].imageEditing).toBeUndefined();
   });
 
   it("keeps a submitted template intact when editing its pending entry and completing in the background", () => {
@@ -108,7 +136,7 @@ describe("generated image history", () => {
     expect(snapshot.scene.outputAssetId).toBeNull();
     config.assets = [{ id: "legacy", kind: "image", name: "Legacy", relativePath: "media/generated/legacy.jpg", mimeType: "image/jpeg", createdAt: config.createdAt }];
     const restored = restoreGeneratedImage(config, "legacy");
-    expect(restored.imageScene).toEqual({ ...config.imageScene, outputAssetId: "legacy" });
+    expect(restored.imageScene).toEqual({ ...createImageScene(), outputAssetId: "legacy" });
     expect(restored.settings).toEqual(config.settings);
   });
 

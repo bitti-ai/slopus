@@ -8,7 +8,7 @@ import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt, imageEditO
 import { imageSettings } from "../../lib/imageSettings";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
-import { createEmptyImage, imageEditingSnapshot, imageFamily, imageFamilyRoot, makeImagePrimary, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
+import { createEmptyImage, imageFamily, imageFamilyRoot, makeImagePrimary, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { createDraftGenerationJob, isVideoReference, PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig, type ProjectReference } from "../../lib/project";
 import { defaultGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, generatorModel, templateSupportsImages, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
@@ -165,7 +165,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     pan.current = null; setPanning(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
-  const work = workItems.filter((item) => item.imageAssetId === scene.outputAssetId || item.imageDraftId === scene.outputAssetId || item.id === scene.outputAssetId).at(-1);
+  const work = workItems.filter((item) => (item.imageDraftId ?? item.imageAssetId ?? item.id) === scene.outputAssetId).at(-1);
   const active = work && isWorkActive(work);
   const output = config.assets.find((asset) => asset.id === scene.outputAssetId);
   const templateSnapshot = output?.imageDraft ? output.imageGeneration?.template : undefined;
@@ -227,12 +227,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   };
   const resetImageEditing = (id: string) => {
     const asset = config.assets.find((asset) => asset.id === id);
-    const snapshot = asset && (imageEditingSnapshot(config, asset) ?? asset.imageGeneration);
-    if (!snapshot) return;
+    const snapshot = asset?.imageGeneration;
     undo.current = []; redo.current = []; historyChanged((value) => value + 1);
     pointer.current = null; setDraftBox(null); setDrawKind(null); setRenaming(null);
-    setCollapsed(new Set()); setSelection(snapshot.scene.nodes.find((node) => node.kind === "root")!.id);
-    if (imageTemplates.some((candidate) => candidate.id === snapshot.generatorTemplateId)) {
+    setCollapsed(new Set()); setSelection(snapshot?.scene.nodes.find((node) => node.kind === "root")?.id ?? "image-root");
+    if (snapshot && imageTemplates.some((candidate) => candidate.id === snapshot.generatorTemplateId)) {
       setTemplateId(snapshot.generatorTemplateId);
       localStorage.setItem("slopus.image-generator-template.v1", snapshot.generatorTemplateId);
     }
@@ -687,7 +686,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         onPointerUpCapture={endPan} onPointerCancelCapture={endPan} onLostPointerCapture={endPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div className="image-frame" style={{ "--image-ratio": width / height, "--image-zoom": view.zoom, "--image-pan-x": `${view.x}px`, "--image-pan-y": `${view.y}px` } as CSSProperties}>
-        {showResult ? <ReferenceImage key={output!.id} folderPath={folderPath} relativePath={output!.relativePath} sourcePath={output!.sourcePath} alt={output!.name} /> : imageRoot && scene.sourceImage ? <ReferenceImage folderPath={folderPath} relativePath={scene.sourceImage.relativePath} alt={scene.sourceImage.name} /> : output && !imageRoot && (output.relativePath || output.sourcePath) ? <ReferenceImage key={output.id} folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} onMeasured={!output.imageGeneration ? (size) => measureImportedImage(output.id, size) : undefined} /> : <div className="image-empty"><Image32 aria-hidden="true" /><strong>{templateSnapshot ? output!.name : imageRoot ? "Add an image to edit" : "Compose your image"}</strong><span>{templateSnapshot ? active ? "The generated image will appear here." : "No generated image yet." : imageRoot ? "Choose Add image file in the image bar menu, then enter an edit prompt." : "Add objects, text and groups, then describe them in the inspector."}</span></div>}
+        {active && output?.imageDraft ? <div className="image-empty" role="status"><Image32 aria-hidden="true" /><strong>{work.status === "queued" ? "Queued" : "Generating"}</strong><span>The generated image will appear here.</span></div> : showResult ? <ReferenceImage key={output!.id} folderPath={folderPath} relativePath={output!.relativePath} sourcePath={output!.sourcePath} alt={output!.name} /> : imageRoot && scene.sourceImage ? <ReferenceImage folderPath={folderPath} relativePath={scene.sourceImage.relativePath} alt={scene.sourceImage.name} /> : output && !imageRoot && (output.relativePath || output.sourcePath) ? <ReferenceImage key={output.id} folderPath={folderPath} relativePath={output.relativePath} sourcePath={output.sourcePath} alt={output.name} onMeasured={!output.imageGeneration ? (size) => measureImportedImage(output.id, size) : undefined} /> : <div className="image-empty"><Image32 aria-hidden="true" /><strong>{templateSnapshot ? output!.name : imageRoot ? "Add an image to edit" : "Compose your image"}</strong><span>{templateSnapshot ? active ? "The generated image will appear here." : "No generated image yet." : imageRoot ? "Choose Add image file in the image bar menu, then enter an edit prompt." : "Add objects, text and groups, then describe them in the inspector."}</span></div>}
         <svg className={`image-overlay ${drawKind ? "drawing" : ""}`} viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Image placement canvas" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={() => { pointer.current = null; setDraftBox(null); }}>
           {boxes && scene.nodes.filter((node) => node.box).map((node) => {
             const box = pointer.current?.id === node.id && draftBox ? draftBox : node.box!;
@@ -699,7 +698,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       </div></div>}
       {(error || work?.error) && <InfoBar className="image-error" severity="error" title="Couldn’t update the image" message={error ?? work?.error ?? ""} onClose={error ? () => setError(null) : undefined} />}
       <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : extendMode && extendOptions ? `Zoom: ${extendSize?.width ?? "-"} \u00d7 ${extendSize?.height ?? "-"} px` : templateSnapshot ? `${templateSnapshot.kind === "extend" ? "Zoom" : "Character sheet"} · ${width} × ${height} px` : imageRoot ? editingBlocked ?? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : !isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`}</span></div>
-      <ImageBar ref={imageResults} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
+      <ImageBar ref={imageResults} workItems={workItems} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
         onMenu={(id, x, y, inFamily) => { setContextMenu(null); setImageMenu({ id, x, y, inFamily, source: "bar" }); }} />
     </section>
     <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" />
