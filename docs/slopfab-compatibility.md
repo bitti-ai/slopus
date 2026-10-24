@@ -1,8 +1,23 @@
 # Slopfab compatibility
 
+## MOSS image generation (API 1.30+)
+
+The bundled Windows and Linux libraries now expose SlopFab API 1.31.0, including
+the MOSS model-family setter introduced in 1.30. Both builds disable FFmpeg.
+MOSS uses CUDA/Flash attention, the image VAE slot, and a separate Qwen3.5
+tokenizer file. It returns one RGB frame through the existing image save path.
+Older workers report an explicit runtime-upgrade error for MOSS requests.
+
+The app's native core and agent checks, frontend build, and focused generator,
+download, image, video, and queue tests passed. The Linux runtime's MOSS C API
+and embedded tokenizer tests passed. Its full C API suite reported two failures
+in `capi_lcs_settings_snapshot_and_mask`, for the error codes returned on malformed
+LCS JSON and boolean strength values. Slopus does not use those LCS APIs.
+No full MOSS inference with model weights was run for this integration.
+
 ## Zoom boundary correction (1.28.2)
 
-The bundled Windows and Linux runtimes use SlopFab commit `8fe7da0` (1.28.2),
+The earlier Windows and Linux runtimes used SlopFab commit `8fe7da0` (1.28.2),
 built with `SLOPFAB_WITH_FFMPEG=OFF`. Outpaint VAE preparation extends source
 edge pixels into the unknown canvas before encoding. Previously, grey padding
 entered the VAE receptive field and contaminated locked source-edge latents
