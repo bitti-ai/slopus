@@ -31,7 +31,7 @@ pub(in crate::agent) fn attach_cli_images(
             // -- terminates the last image argument before the '-' prompt.
             let marker = spec.args.pop().ok_or("Codex prompt marker is missing.")?;
             for (index, image) in images.iter().enumerate() {
-                let path = dir.path().join(format!("timeline-{}.png", index + 1));
+                let path = dir.path().join(format!("capture-{}.png", index + 1));
                 std::fs::write(&path, image.png_bytes()?).map_err(|e| e.to_string())?;
                 spec.args.extend(["--image".into(), path.into_os_string()]);
                 spec.stdin_payload

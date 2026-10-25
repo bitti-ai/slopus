@@ -39,15 +39,8 @@ pub(super) fn parse_turn_result(raw: &str) -> Result<AgentTurnResult, String> {
                     return Err("Use 1 to 8 inspection requests per turn.".into());
                 }
                 for request in &requests {
-                    if let super::capture::InspectionRequest::Timeline(
-                        super::capture::TimelineRead::Capture { at },
-                    ) = request
-                    {
-                        if !at.is_finite() || *at < 0.0 {
-                            return Err(
-                                "timeline.capture at must be finite, nonnegative seconds.".into()
-                            );
-                        }
+                    if let super::capture::InspectionRequest::Frame(target) = request {
+                        target.validate()?;
                     }
                 }
                 return Ok(AgentTurnResult::Inspect { requests });

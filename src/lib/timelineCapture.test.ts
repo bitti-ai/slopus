@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { captureTimelineFrame, timelineCapturePlan } from "./timelineCapture";
 import { createCaptureCompositor, openLayerFrameReader } from "./exportPipeline";
 import { createProjectConfig, type ProjectAsset, type TimelineClip } from "./project";
+import { emptyMotion, MOTION_MIME } from "./motion";
 
 vi.mock("./exportPipeline", () => ({ createCaptureCompositor: vi.fn(), openLayerFrameReader: vi.fn() }));
 
@@ -57,6 +58,25 @@ describe("timeline capture", () => {
     config.assets[1].id = "asset-bottom";
     config.timeline.tracks[0].clips[0].assetId = "asset-bottom";
     expect(timelineCapturePlan(config, 1.5).layers[0].sourceTimeUs).toBe(5750000);
+  });
+
+  it("renders visible Motion layers with clip trims, speed and effects at the captured timeline time", async () => {
+    const config = project();
+    const motion = emptyMotion(320, 180);
+    config.assets[0] = { ...config.assets[0], kind: "motion", mimeType: MOTION_MIME, relativePath: null, motion };
+    config.timeline.tracks[0].clips[0].playbackRate = 2;
+    const frame = { name: "rendered Motion" };
+    const motionReader = { frameAt: vi.fn().mockResolvedValue(frame), dispose: vi.fn() };
+    const bottomReader = { frameAt: vi.fn().mockResolvedValue({ name: "video" }), dispose: vi.fn() };
+    vi.mocked(openLayerFrameReader).mockResolvedValueOnce(bottomReader).mockResolvedValueOnce(motionReader);
+    const compositor = { kind: "webgpu" as const, clear: vi.fn(), draw: vi.fn(), take: vi.fn().mockReturnValue({ close: vi.fn() }), dispose: vi.fn() };
+    vi.mocked(createCaptureCompositor).mockResolvedValue(compositor);
+    vi.stubGlobal("OffscreenCanvas", class { getContext() { return { drawImage: vi.fn() }; } convertToBlob = async () => new Blob(["png"], { type: "image/png" }); });
+    await captureTimelineFrame(config, "D:/Project", 1.5, new AbortController().signal);
+    expect(openLayerFrameReader).toHaveBeenCalledWith("D:/Project", config.assets[0], 1_250_000, expect.any(Function));
+    expect(motionReader.frameAt).toHaveBeenCalledWith(1_250_000);
+    expect(compositor.draw).toHaveBeenCalledWith(frame, expect.objectContaining({ opacity: 0.25 }));
+    expect(motionReader.dispose).toHaveBeenCalledOnce();
   });
 
   it("renders into its own surface, encodes PNG and releases all frame resources", async () => {

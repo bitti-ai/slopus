@@ -18,8 +18,11 @@ pub(super) fn context_prompt(config: &ProjectConfig, prompt: &str) -> Result<Str
     project_context.agent_conversation.messages.clear();
     let project = serde_json::to_string(&project_context)
         .map_err(|error| format!("Could not prepare project context: {error}"))?;
+    // Detailed read contracts travel over stdin for CLI providers. Keeping them
+    // out of Claude's system-prompt argument avoids Windows' command-line limit.
+    let captures = include_str!("../../assets/agent-capture.md");
     Ok(format!(
-        "Prior conversation JSON:\n<conversation-json>\n{conversation}\n</conversation-json>\n\nComplete current slopus.json data:\n<project-json>\n{project}\n</project-json>\n\nCurrent user reply or request:\n{prompt}"
+        "Frame inspection API reference:\n{captures}\n\nPrior conversation JSON:\n<conversation-json>\n{conversation}\n</conversation-json>\n\nComplete current slopus.json data:\n<project-json>\n{project}\n</project-json>\n\nCurrent user reply or request:\n{prompt}"
     ))
 }
 

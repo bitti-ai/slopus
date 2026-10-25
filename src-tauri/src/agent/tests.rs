@@ -425,6 +425,9 @@ fn large_requests_are_piped_instead_of_crossing_the_windows_command_line_limit()
             .iter()
             .any(|arg| arg.to_string_lossy().contains("long validation retry")));
         assert!(spec.stdin_payload.as_deref().unwrap().contains(&request));
+        for operation in ["scene.capture", "shot.capture", "reference.capture", "image.capture", "motion.capture"] {
+            assert!(spec.stdin_payload.as_deref().unwrap().contains(operation));
+        }
     }
 }
 

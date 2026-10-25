@@ -885,6 +885,8 @@ export interface ExportRunOptions {
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 interface LayerFrameReader {
+  /** Actual presentation end from demuxed samples, when this is a video. */
+  durationUs?: number;
   /** Borrowed frame, valid until the next call or dispose. Times must increase. */
   frameAt(timestampUs: number): Promise<VideoFrame>;
   dispose(): void;
@@ -941,6 +943,7 @@ export async function openLayerFrameReader(
     progress: () => `${decoder.decodeQueueSize}:${decodedFrames}`,
   };
   return {
+    durationUs: source.samples.reduce((end, sample) => Math.max(end, sample.timestampUs + sample.durationUs), 0),
     async frameAt(wantUs) {
       while (true) {
         stopIfCancelled();

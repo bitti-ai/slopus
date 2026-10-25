@@ -40,11 +40,55 @@ fn capture_contract_is_read_only_and_requires_an_explicit_valid_time() {
 }
 
 #[test]
+fn media_capture_contract_round_trips_ids_defaults_and_explicit_takes() {
+    for request in [
+        json!({"op":"scene.capture","scene":"scene-1","generation":"take-2","at":1.5}),
+        json!({"op":"shot.capture","scene":"scene-1","shot":"shot-2"}),
+        json!({"op":"reference.capture","reference":"ref-1","at":0.5}),
+        json!({"op":"reference.capture","reference":"ref-1","image":"front"}),
+        json!({"op":"image.capture","image":"edited-image"}),
+        json!({"op":"motion.capture","motion":"motion-1","at":2.5}),
+    ] {
+        let parsed =
+            parse_turn_result(&json!({"kind":"inspect","requests":[request]}).to_string()).unwrap();
+        let AgentTurnResult::Inspect { requests } = parsed else {
+            panic!("inspection expected")
+        };
+        let InspectionRequest::Frame(target) = &requests[0] else {
+            panic!("frame expected")
+        };
+        let payload = CaptureRequest {
+            request_id: "turn".into(),
+            capture_id: "capture".into(),
+            target: target.clone(),
+        };
+        let encoded = serde_json::to_value(payload).unwrap();
+        assert_eq!(encoded["target"]["op"], request["op"]);
+        for (key, value) in request.as_object().unwrap() {
+            assert_eq!(&encoded["target"][key], value);
+        }
+    }
+    for request in [
+        json!({"op":"scene.capture","scene":""}),
+        json!({"op":"scene.capture","scene":"s","generation":" "}),
+        json!({"op":"shot.capture","scene":"s"}),
+        json!({"op":"shot.capture","scene":"s","shot":"s","at":-1}),
+        json!({"op":"reference.capture","reference":"r","path":"D:/private.png"}),
+        json!({"op":"image.capture","image":"i","at":1}),
+        json!({"op":"motion.capture","motion":"m","at":-1}),
+    ] {
+        assert!(
+            parse_turn_result(&json!({"kind":"inspect","requests":[request]}).to_string()).is_err()
+        );
+    }
+}
+
+#[test]
 fn capture_bridge_matches_turns_and_discards_cancelled_or_invalid_replies() {
     let bridge = CaptureBridge::default();
     let cancel = AtomicBool::new(false);
     let result = bridge
-        .request("one", 1.5, &cancel, |request| {
+        .request("one", FrameRead::Timeline { at: 1.5 }, &cancel, |request| {
             assert!(bridge
                 .complete(
                     "other".into(),
@@ -66,14 +110,14 @@ fn capture_bridge_matches_turns_and_discards_cancelled_or_invalid_replies() {
         })
         .unwrap();
     assert_eq!(result.time_ms, 1500.0);
-    let result = bridge.request("one", 1.5, &cancel, |request| {
+    let result = bridge.request("one", FrameRead::Timeline { at: 1.5 }, &cancel, |request| {
         let mut invalid = frame();
         invalid.width = 1537;
         bridge.complete(request.request_id, request.capture_id, Some(invalid), None)
     });
     assert!(result.unwrap_err().contains("oversized"));
     let mut pending = None;
-    let result = bridge.request("one", 1.5, &cancel, |request| {
+    let result = bridge.request("one", FrameRead::Timeline { at: 1.5 }, &cancel, |request| {
         pending = Some(request);
         cancel.store(true, Ordering::Release);
         Ok(())
@@ -84,9 +128,12 @@ fn capture_bridge_matches_turns_and_discards_cancelled_or_invalid_replies() {
         .complete(request.request_id, request.capture_id, Some(frame()), None)
         .is_err());
     assert!(bridge
-        .request("one", 1.5, &AtomicBool::new(false), |_| Err(
-            "No window".into()
-        ))
+        .request(
+            "one",
+            FrameRead::Timeline { at: 1.5 },
+            &AtomicBool::new(false),
+            |_| Err("No window".into())
+        )
         .unwrap_err()
         .contains("No window"));
 }
@@ -105,7 +152,7 @@ fn cli_providers_receive_actual_images_and_codex_files_are_temporary() {
     let files = attach_cli_images(ProviderId::Codex, &mut codex, &images)
         .unwrap()
         .unwrap();
-    let path = files.path().join("timeline-1.png");
+    let path = files.path().join("capture-1.png");
     assert_eq!(
         std::fs::read(&path).unwrap(),
         images[0].png_bytes().unwrap()
@@ -142,7 +189,7 @@ fn endpoint_receives_capture_and_keeps_it_on_validation_retries_without_project_
     let handle = std::thread::spawn(move || {
         let mut bodies = Vec::new();
         for result in [
-            json!({"kind":"inspect","requests":[{"op":"timeline.capture","at":1.5}]}),
+            json!({"kind":"inspect","requests":[{"op":"motion.capture","motion":"motion-1","at":1.5}]}),
             json!({"kind":"answer","content":""}),
             json!({"kind":"answer","content":"The frame is red."}),
         ] {
@@ -178,7 +225,7 @@ fn endpoint_receives_capture_and_keeps_it_on_validation_retries_without_project_
             },
             |_| {},
             |at, _| {
-                assert_eq!(at, 1.5);
+                assert!(matches!(at, FrameRead::Motion { motion, at } if motion == "motion-1" && *at == 1.5));
                 // The provider's failed final answer must reuse the capture, not render again.
                 capture_count.set(capture_count.get() + 1);
                 Ok(frame())

@@ -44,10 +44,10 @@ pub(crate) async fn run_agent_turn(
                     },
                 );
             },
-            |at, cancel| {
+            |target, cancel| {
                 runtime
                     .captures
-                    .request(&request_id, at, cancel, |payload| {
+                    .request(&request_id, target.clone(), cancel, |payload| {
                         app.emit("agent-capture-request", payload)
                             .map_err(|e| e.to_string())
                     })

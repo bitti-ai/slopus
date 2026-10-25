@@ -1,8 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ProjectRecord } from "./project";
+import type { FrameCaptureTarget } from "./frameCapture";
 
-interface CaptureRequest { requestId: string; captureId: string; at: number }
+interface CaptureRequest { requestId: string; captureId: string; target: FrameCaptureTarget }
 const activeCaptures = new Map<string, () => void>();
 
 export function cancelAgentCaptures(requestId: string) { activeCaptures.get(requestId)?.(); }
@@ -23,11 +24,11 @@ export async function listenForAgentCaptures(record: ProjectRecord, requestId: s
       seen.add(payload.captureId);
       const controller = new AbortController();
       running.add(controller);
-      const timer = setTimeout(() => controller.abort(new Error("Timeline capture timed out.")), 40_000);
+      const timer = setTimeout(() => controller.abort(new Error("Frame capture timed out.")), 40_000);
       void (async () => {
         try {
-          const { captureTimelineFrame } = await import("./timelineCapture");
-          const frame = await captureTimelineFrame(snapshot, record.folderPath, payload.at, controller.signal);
+          const { captureFrame } = await import("./frameCapture");
+          const frame = await captureFrame(snapshot, record.folderPath, payload.target, controller.signal);
           if (!disposed) await invoke("complete_agent_capture", { requestId, captureId: payload.captureId, frame });
         } catch (reason) {
           if (!disposed) await invoke("complete_agent_capture", { requestId, captureId: payload.captureId,
