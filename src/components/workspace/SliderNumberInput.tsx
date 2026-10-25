@@ -2,8 +2,7 @@ import type { ComponentProps } from "react";
 import { Slider } from "../ui";
 import { CommittedNumberInput } from "./CommittedNumberInput";
 
-/** One bounded value, editable by dragging or typing, with shared column widths
- * so ranges, values and optional units do not shift neighboring controls. */
+/** A flexible slider, fixed-width number field, and an optional trailing unit. */
 export function SliderNumberInput({ minimum, maximum, value, step = 1, sliderLabel, suffix, disabled, onCommit, ...input }: Omit<ComponentProps<typeof CommittedNumberInput>, "step"> & {
   step?: number;
   sliderLabel?: string;
@@ -11,13 +10,14 @@ export function SliderNumberInput({ minimum, maximum, value, step = 1, sliderLab
 }) {
   const label = input["aria-label"] ?? "Value";
   const range = `${minimum} to ${maximum}`;
+  const unit = suffix?.trim();
   const change = (next: number) => { if (!disabled) onCommit(next); };
-  return <div className="slider-number">
+  return <div className={`slider-number${unit ? " slider-number--unit" : ""}`}>
     <Slider aria-label={sliderLabel ?? `${label} slider`} min={minimum} max={maximum} step={step}
       value={value} disabled={disabled} title={range} onChange={change} />
     <CommittedNumberInput {...input} className={`text-field slider-number__input ${input.className ?? ""}`}
       minimum={minimum} maximum={maximum} step={step} value={value} disabled={disabled} title={input.title ?? range} onCommit={change} />
-    <span className="slider-number__unit" aria-hidden="true">{suffix?.trim()}</span>
+    {unit && <span className="slider-number__unit" aria-hidden="true">{unit}</span>}
   </div>;
 }
 

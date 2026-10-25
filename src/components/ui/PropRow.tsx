@@ -1,6 +1,6 @@
 /* PropRow + PropSection — dense inspector rows.
 
-   A row is a grid: label (--prop-label, 104px) | value | 20px reset. 28px
+   A row is a grid: label (--prop-label, 104px) | value | optional 20px reset. 28px
    min height, the label in 12px secondary ink. Give it `scrub` and dragging horizontally on
    the label changes the number (ew-resize cursor, pointer capture, `step` per
    pixel, Shift ×10) — the way every node editor does it. The reset button
@@ -59,6 +59,7 @@ export function PropRow({ label, tooltip, htmlFor, children, value, defaultValue
   const [scrubbing, setScrubbing] = useState(false);
   const suppressClick = useRef(false);
   const isModified = modified ?? (defaultValue !== undefined && value !== undefined && !Object.is(value, defaultValue));
+  const hasReset = Boolean(onReset) || defaultValue !== undefined;
 
   const clamp = (next: number) => Math.min(scrub?.max ?? Infinity, Math.max(scrub?.min ?? -Infinity, next));
   const round = (next: number, step: number) => {
@@ -96,7 +97,7 @@ export function PropRow({ label, tooltip, htmlFor, children, value, defaultValue
   };
 
   return (
-    <div className={cx("ui-prop-row", scrubbing && "ui-prop-row--scrubbing", className)}>
+    <div className={cx("ui-prop-row", hasReset && "ui-prop-row--resettable", scrubbing && "ui-prop-row--scrubbing", className)}>
       <label
         className={cx("ui-prop-row__label", scrub && "ui-prop-row__label--scrub")}
         htmlFor={htmlFor}
@@ -122,7 +123,7 @@ export function PropRow({ label, tooltip, htmlFor, children, value, defaultValue
         >
           <Reset12 aria-hidden="true" />
         </button>
-      ) : <span className="ui-prop-row__reset-spacer" aria-hidden="true" />}
+      ) : hasReset ? <span className="ui-prop-row__reset-spacer" aria-hidden="true" /> : null}
     </div>
   );
 }
