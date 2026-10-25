@@ -584,7 +584,7 @@
 .shot-thumb__popout {
   position: absolute;
   top: 50%;
-  left: calc(50% + var(--icon-button) / 2 + var(--space-1));
+  left: calc(50% + var(--space-1) / 2);
   transform: translateY(-50%);
   width: var(--icon-button);
   height: var(--icon-button);
@@ -593,15 +593,16 @@
   padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--scrim);
-  color: var(--on-accent);
   opacity: 0;
   transition: opacity var(--motion-fast) linear;
 }
 
 .shot-thumb-frame:hover .shot-thumb__popout,
+.shot-thumb-frame:hover .shot-thumb__play,
 .shot-thumb-frame:focus-within .shot-thumb__popout,
 .shot-thumb-frame:focus-within .shot-thumb__play { opacity: 1; }
+
+.shot-thumb__popout svg { width: 20px; height: 20px; }
 
 .shot-popout {
   position: absolute;
@@ -635,12 +636,10 @@
   padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
-  color: var(--on-accent);
-  background: var(--scrim);
 }
 .shot-popout__close { top: var(--space-2); right: var(--space-2); }
 .shot-popout__play { left: 50%; bottom: var(--space-3); transform: translateX(-50%); }
-.shot-popout__message { position: absolute; inset: var(--space-3) var(--space-5) auto; margin: 0; padding: var(--space-2); text-align: center; color: var(--on-accent); background: var(--scrim); }
+.shot-popout__message { position: absolute; inset: var(--space-3) var(--space-5) auto; margin: 0; padding: var(--space-2); text-align: center; color: var(--on-stage); background: var(--stage-bg); }
 
 .shot-thumb img {
   width: 100%;
@@ -665,17 +664,23 @@
 
 .shot-thumb__play {
   position: absolute;
-  inset: 50% auto auto 50%;
+  inset: 50% auto auto calc(50% - var(--icon-button) / 2 - var(--space-1) / 2);
   width: var(--icon-button);
   height: var(--icon-button);
   display: grid;
   place-items: center;
   transform: translate(-50%, -50%);
   border-radius: var(--radius-pill);
-  color: var(--on-accent);
-  background: var(--scrim);
   opacity: 0;
   transition: opacity var(--motion-fast) linear;
+}
+
+/* Media controls always use stage colors: accent contrast colors can turn
+   dark with a light accent, making them disappear over video in dark mode. */
+.shot-thumb__play, .shot-thumb__popout, .shot-popout__play, .shot-popout__close {
+  color: var(--on-stage);
+  background: color-mix(in srgb, var(--stage-bg) 90%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--on-stage) 35%, transparent), 0 2px 8px var(--scrim);
 }
 
 .shot-thumb--playable:hover .shot-thumb__play,
