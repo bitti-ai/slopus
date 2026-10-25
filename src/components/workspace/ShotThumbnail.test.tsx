@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProjectConfig, parseProjectConfig, sceneShots, type GenerationJob } from "../../lib/project";
 import { ShotThumbnail } from "./ShotThumbnail";
@@ -100,6 +100,80 @@ const rendered = (folder: string): GenerationJob => {
 };
 
 describe("a shot's picture", () => {
+  it("pops a shot into the board, respects its source offset and cut, and replays without reopening the file", async () => {
+    const folder = "C:\\Popout shot replay", job = rendered(folder);
+    await withFakeFile({ seconds: 20 }, async seen => {
+      const { container } = render(<div className="generator-board-viewport"><div className="generator-board">
+        <ShotThumbnail folderPath={folder} job={job} seconds={1} endSeconds={2} sourceOffsetSeconds={5} shotNumber={1} />
+      </div></div>);
+      const button = await screen.findByRole("button", { name: "Pop out shot 1 of First scene" });
+      button.focus(); fireEvent.click(button);
+      const dialog = await screen.findByRole("dialog", { name: "shot 1 of First scene preview" });
+      expect(dialog.closest(".generator-board-viewport")).toBe(container.firstChild);
+      expect(container.querySelector(".generator-board")?.hasAttribute("inert")).toBe(true);
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: "Pause shot 1 of First scene" })).not.toBeNull());
+      const video = dialog.querySelector("video")!;
+      expect(seen.seeks).toContain(6);
+      fireEvent.pointerDown(video); fireEvent.click(video);
+      expect(screen.getByRole("dialog")).toBe(dialog);
+      video.currentTime = 7; fireEvent.timeUpdate(video);
+      const reads = seen.reads();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Replay shot 1 of First scene" }));
+      await waitFor(() => expect(within(dialog).getByRole("button", { name: "Pause shot 1 of First scene" })).not.toBeNull());
+      expect(video.currentTime).toBe(6);
+      expect(seen.reads()).toBe(reads);
+      fireEvent.click(dialog.parentElement!);
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(container.querySelector(".generator-board")?.hasAttribute("inert")).toBe(false);
+      expect(document.activeElement).toBe(button);
+    });
+  });
+
+  it("stops inline playback when popping out and dismisses with Escape or an outside pointer press", async () => {
+    const folder = "C:\\Popout dismissal", job = rendered(folder);
+    await withFakeFile({ seconds: 9 }, async () => {
+      render(<div className="generator-board-viewport"><div className="generator-board">
+        <ShotThumbnail folderPath={folder} job={job} seconds={0} endSeconds={4.5} shotNumber={1} />
+      </div></div>);
+      fireEvent.click(await screen.findByRole("button", { name: "Play shot 1 of First scene" }));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Pause shot 1 of First scene" })).not.toBeNull());
+      const popout = screen.getByRole("button", { name: "Pop out shot 1 of First scene" });
+      fireEvent.click(popout);
+      await screen.findByRole("dialog");
+      expect(document.querySelector(".shot-thumb video")).toBeNull();
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(screen.queryByRole("dialog")).toBeNull();
+      fireEvent.click(popout); await screen.findByRole("dialog");
+      fireEvent.pointerDown(document.body);
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+  });
+
+  it("reports popout file errors and releases a file that finishes loading after dismissal", async () => {
+    const folder = "C:\\Popout errors", job = rendered(folder);
+    const { invoke } = await import("@tauri-apps/api/core");
+    await withFakeFile({ seconds: 9 }, async () => {
+      render(<div className="generator-board-viewport"><div className="generator-board">
+        <ShotThumbnail folderPath={folder} job={job} seconds={0} shotNumber={1} />
+      </div></div>);
+      const popout = await screen.findByRole("button", { name: "Pop out shot 1 of First scene" });
+      vi.mocked(invoke).mockRejectedValueOnce(new Error("Missing file"));
+      fireEvent.click(popout);
+      expect((await screen.findByRole("alert")).textContent).toContain("Could not open");
+      fireEvent.click(screen.getByRole("button", { name: "Close shot preview" }));
+      let finish!: (value: ArrayBuffer) => void;
+      vi.mocked(invoke).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+      const revoke = vi.spyOn(URL, "revokeObjectURL");
+      fireEvent.click(popout);
+      await waitFor(() => expect(finish).toBeDefined());
+      fireEvent.keyDown(document, { key: "Escape" });
+      finish(new ArrayBuffer(8));
+      await waitFor(() => expect(revoke).toHaveBeenCalledWith("blob:slopus-test"));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      revoke.mockRestore();
+    });
+  });
+
   it("previews the new scene inside its joined file and stops at the offset cut", async () => {
     const folder = "C:\\Joined scene playback";
     const job = rendered(folder);

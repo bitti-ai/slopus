@@ -1,5 +1,7 @@
-import { Clock18, Film18, Pause20, Play20Filled, Prohibited18, Spinner18, Spinner20, Warning18, Warning20 } from "../ui/icons";
+import { Clock18, Film18, OpenExternal16, Pause20, Play20Filled, Prohibited18, Spinner18, Spinner20, Warning18, Warning20 } from "../ui/icons";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { ShotPopout, SHOT_PLAY_EVENT } from "./ShotPopout";
 import { readMediaFileUrl } from "../../lib/persistence";
 import { sceneDurationSeconds, type GenerationJob } from "../../lib/project";
 
@@ -33,7 +35,7 @@ const SEEK_LIMIT_MS = 4_000;
  *  its own startSeconds. */
 /** Small JPEGs, but not free. Bounded like MediaThumbnail's own cache. */
 const CACHE_LIMIT = 96;
-const PLAY_EVENT = "slopus:play-generated-shot";
+const PLAY_EVENT = SHOT_PLAY_EVENT;
 
 /** Drawn frames, keyed by file and time. */
 const POSTERS = new Map<string, string>();
@@ -288,6 +290,8 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
   const [loadingPlayback, setLoadingPlayback] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [playFailed, setPlayFailed] = useState(false);
+  const [popoutHost, setPopoutHost] = useState<HTMLElement | null>(null);
+  const popoutButton = useRef<HTMLButtonElement>(null);
   const [estimateNow, setEstimateNow] = useState(() => Date.now());
   /* Bumped when a poster's shape is first measured, to re-render with it. */
   const [, setShapeSeen] = useState(0);
@@ -309,8 +313,10 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
 
   const playToCut = async (video: HTMLVideoElement) => {
     clearCutTimer();
+    const request = requestRef.current;
     try {
       await video.play();
+      if (request !== requestRef.current || videoRef.current !== video) return;
       setPlaying(true);
       const rate = video.playbackRate > 0 ? video.playbackRate : 1;
       cutTimerRef.current = window.setTimeout(finishPlayback, Math.max(0, (endAt - video.currentTime) * 1_000 / rate));
@@ -318,6 +324,10 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
       setPlayFailed(true);
     }
   };
+
+  useEffect(() => {
+    setPopoutHost(null);
+  }, [folderPath, relativePath, at, endAt]);
 
   useEffect(() => {
     if (!relativePath) {
@@ -403,7 +413,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
     const poster = result.poster;
     const shape = POSTER_SHAPES.get(poster);
     const action = playFailed ? "Playback unavailable" : loadingPlayback ? "Opening shot" : playing ? "Pause" : "Play";
-    return <button
+    return <div className="shot-thumb-frame" style={shape ? { aspectRatio: shape } : undefined}><button
       type="button"
       className="shot-thumb shot-thumb--poster shot-thumb--playable"
       /* The tile takes the rendered frame's own shape, not a fixed 16:9. */
@@ -433,7 +443,16 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
       <span className={`shot-thumb__play ${loadingPlayback ? "shot-thumb__play--loading" : ""}`} aria-hidden="true">
         {loadingPlayback ? <Spinner20 className="spin" /> : playing ? <Pause20 /> : playFailed ? <Warning20 /> : <Play20Filled />}
       </span>
-    </button>;
+    </button>
+      <button ref={popoutButton} type="button" className="shot-thumb__popout" aria-label={`Pop out shot ${shotNumber} of ${job.title}`}
+        data-tooltip="Pop out shot" onClick={event => {
+          event.stopPropagation();
+          const host = event.currentTarget.closest<HTMLElement>(".generator-board-viewport");
+          if (host) { onPlay?.(); setPopoutHost(host); }
+        }}><OpenExternal16 /></button>
+      {popoutHost && relativePath && createPortal(<ShotPopout folderPath={folderPath} relativePath={relativePath} start={at} end={endAt}
+        poster={poster} title={`shot ${shotNumber} of ${job.title}`} onClose={() => { setPopoutHost(null); popoutButton.current?.focus(); }} />, popoutHost)}
+    </div>;
   }
   const { icon, word } = placeholder(job, result.failed, cancelling);
   const estimateLine = job.status === "generating" && !cancelling

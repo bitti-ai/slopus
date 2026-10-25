@@ -72,6 +72,17 @@
 
 /* The board is where the shots are laid out, so it sits in the well; the
    scene headers across it are chrome, edge to edge. */
+.generator-board-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  isolation: isolate;
+}
+
 .generator-board {
   flex: 1 1 auto;
   min-height: 0;
@@ -561,6 +572,75 @@
   color: var(--text-muted);
   background-color: var(--panel-3);
 }
+
+.shot-thumb-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+.shot-thumb-frame > .shot-thumb { height: 100%; }
+
+.shot-thumb__popout {
+  position: absolute;
+  top: 50%;
+  left: calc(50% + var(--icon-button) / 2 + var(--space-1));
+  transform: translateY(-50%);
+  width: var(--icon-button);
+  height: var(--icon-button);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--scrim);
+  color: var(--on-accent);
+  opacity: 0;
+  transition: opacity var(--motion-fast) linear;
+}
+
+.shot-thumb-frame:hover .shot-thumb__popout,
+.shot-thumb-frame:focus-within .shot-thumb__popout,
+.shot-thumb-frame:focus-within .shot-thumb__play { opacity: 1; }
+
+.shot-popout {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  container-type: size;
+  background: color-mix(in srgb, var(--surface-chrome) 75%, transparent);
+  backdrop-filter: grayscale(1) brightness(.55);
+}
+
+.shot-popout__frame {
+  position: relative;
+  width: min(100cqw, calc(100cqh * var(--shot-aspect)));
+  max-width: 100%;
+  aspect-ratio: var(--shot-aspect);
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--stage-bg);
+}
+
+.shot-popout__frame video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.shot-popout__close, .shot-popout__play {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: var(--control-md);
+  height: var(--control-md);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--on-accent);
+  background: var(--scrim);
+}
+.shot-popout__close { top: var(--space-2); right: var(--space-2); }
+.shot-popout__play { left: 50%; bottom: var(--space-3); transform: translateX(-50%); }
+.shot-popout__message { position: absolute; inset: var(--space-3) var(--space-5) auto; margin: 0; padding: var(--space-2); text-align: center; color: var(--on-accent); background: var(--scrim); }
 
 .shot-thumb img {
   width: 100%;

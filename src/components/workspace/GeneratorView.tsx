@@ -538,7 +538,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
           />
       </CommandBar>
 
-      <div className="generator-board">
+      <div className="generator-board-viewport"><div className="generator-board">
         {jobs.length > 0
           ? <SceneBoard
             assets={config.assets}
@@ -583,7 +583,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             description="Add a scene, then write what happens in each of its shots."
             action={<button type="button" className="secondary-button" onClick={newScene}>Add a scene</button>}
           />}
-      </div>
+      </div></div>
 
       <ProjectStatus label="Generator status">
         <span role="status">{boardSummary(active.length, queued.length, jobs.length)}</span>
