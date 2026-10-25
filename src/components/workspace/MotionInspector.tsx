@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motionOverride, motionOverrideSchema, motionSchema, type Motion } from "../../lib/motion";
 import { PropSection, PropRow } from "../ui";
 import { SliderNumberInput } from "./SliderNumberInput";
+import { ColorSwatch } from "./ColorPicker";
 
 export function MotionInspector({ motion, selectedId, onChange, disabled = false }: {
   motion: Motion; selectedId: string | null; onChange: (motion: Motion) => void;
@@ -24,7 +25,9 @@ export function MotionInspector({ motion, selectedId, onChange, disabled = false
     </PropSection>
     <PropSection title="Parameters" persistKey="motion.parameters">
       {motion.parameters.length === 0 && <p className="settings-description">The agent can expose movement, timing, color and text controls here.</p>}
-      {motion.parameters.map((p) => <PropRow key={p.id} label={p.label}>{p.type === "number" && p.min !== undefined && p.max !== undefined ?
+      {motion.parameters.map((p) => <PropRow key={p.id} label={p.label}>{p.type === "color" ?
+        <ColorSwatch label={p.label} value={String(p.value)} disabled={disabled}
+          onChange={(value) => change({ ...motion, parameters: motion.parameters.map(item => item.id === p.id ? { ...item, value } : item) })} /> : p.type === "number" && p.min !== undefined && p.max !== undefined ?
         <SliderNumberInput aria-label={p.label} minimum={p.min} maximum={p.max} step={p.step ?? 0.01} value={Number(p.value)} disabled={disabled}
           onCommit={(value) => change({ ...motion, parameters: motion.parameters.map(item => item.id === p.id ? { ...item, value } : item) })} /> : <input className="text-field" aria-label={p.label} disabled={disabled}
         type={p.type === "boolean" ? "checkbox" : p.type === "number" ? "number" : "text"}
@@ -43,8 +46,8 @@ export function MotionInspector({ motion, selectedId, onChange, disabled = false
             change({ ...motion, overrides: { ...motion.overrides, [node.id]: { ...edit, [property]: vector } } });
           }} /></PropRow>;
       }))}
-      <PropRow label="Fill"><input className="text-field" aria-label="Element fill" disabled={disabled} value={edit.fill ?? node.fill}
-        onChange={(e) => change({ ...motion, overrides: { ...motion.overrides, [node.id]: { ...edit, fill: e.target.value } } })} /></PropRow>
+      <PropRow label="Fill"><ColorSwatch label="Element fill" disabled={disabled} value={edit.fill ?? node.fill}
+        onChange={(fill) => change({ ...motion, overrides: { ...motion.overrides, [node.id]: { ...edit, fill } } })} /></PropRow>
       {node.kind === "text" && <PropRow label="Text"><input className="text-field" aria-label="Element text" disabled={disabled} value={edit.text ?? node.text}
         onChange={(e) => change({ ...motion, overrides: { ...motion.overrides, [node.id]: { ...edit, text: e.target.value } } })} /></PropRow>}
       <button className="secondary-button inspector-action" disabled={disabled} onClick={() => change({ ...motion, overrides: { ...motion.overrides, [node.id]: motionOverrideSchema.parse({}) } })}>Reset element adjustments</button>
