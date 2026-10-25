@@ -20,7 +20,7 @@ export function MotionInspector({ motion, selectedId, onSelect, onChange, disabl
     <PropSection title="Motion" persistKey="motion.document">
       <PropRow label="Duration"><input className="text-field" type="number" aria-label="Motion duration" min={0.1} max={600} step={0.1} disabled={disabled}
         value={motion.duration} onChange={(e) => change({ ...motion, duration: Number(e.target.value) })} /><span>s</span></PropRow>
-      <button className="secondary-button" disabled={disabled || rendering || !onRenderReference} onClick={onRenderReference}>{rendering ? "Rendering reference…" : "Render as reference video"}</button>
+      <button className="secondary-button" disabled={rendering || !onRenderReference} onClick={onRenderReference}>{rendering ? "Rendering reference…" : "Render as reference video"}</button>
     </PropSection>
     <PropSection title="Elements" persistKey="motion.elements">
       {!motion.nodes.length && <p className="settings-description">This Motion is empty. Ask the agent to add elements and animation.</p>}

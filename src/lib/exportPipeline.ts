@@ -1,5 +1,5 @@
-import { motionFrameReader } from "./motionRuntime";
 /// <reference types="@webgpu/types" />
+import { motionFrameReader } from "./motionRuntime";
 
 /* ============================================================================
    exportPipeline.ts — the five stages CLAUDE.md describes, in order.
