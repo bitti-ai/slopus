@@ -104,11 +104,11 @@ export function saveImageDraft(config: ProjectConfig, generatorTemplateId?: stri
   return { ...config, imageScene: { ...scene, outputAssetId: id }, assets: existing ? config.assets.map((item) => item.id === id ? asset : item) : [...config.assets, asset] };
 }
 
-export function createEmptyImage(config: ProjectConfig, generatorTemplateId?: string, familyAssetId?: string | null): ProjectConfig {
+export function createEmptyImage(config: ProjectConfig, generatorTemplateId?: string, familyAssetId?: string | null, defaultSteps?: number): ProjectConfig {
   config = saveImageDraft(config);
   const parentAssetId = imageFamilyRoot(config.assets, familyAssetId);
   const id = `image-draft-${crypto.randomUUID()}`;
-  const scene = { ...createImageScene(), steps: config.imageScene?.steps ?? 20, outputAssetId: id };
+  const scene = { ...createImageScene(), steps: defaultSteps ?? config.imageScene?.steps ?? 20, outputAssetId: id };
   const next = { ...config, imageScene: scene };
   const asset: ProjectAsset = { id, kind: "image", name: "New image", mimeType: "image/jpeg", imageDraft: true,
     ...(parentAssetId ? { parentAssetId } : {}),
@@ -139,7 +139,7 @@ export function completeImageDraft(config: ProjectConfig, id: string, result: Pr
 }
 
 /** Restore authored inputs without replacing other results or unrelated references. */
-export function restoreGeneratedImage(config: ProjectConfig, id: string): ProjectConfig {
+export function restoreGeneratedImage(config: ProjectConfig, id: string, defaultSteps = 20): ProjectConfig {
   const asset = config.assets.find((candidate) => candidate.id === id && candidate.kind === "image");
   if (!asset) return config;
   // Each image owns its inputs. Legacy imageEditing fields held a child's
@@ -148,10 +148,10 @@ export function restoreGeneratedImage(config: ProjectConfig, id: string): Projec
   const source = !snapshot && imageSourceSchema.safeParse(asset);
   if (source && source.success) {
     return { ...config, thumbnail: asset.relativePath ?? null,
-      imageScene: { ...createImageEditScene(source.data), outputAssetId: id } };
+      imageScene: { ...createImageEditScene(source.data), steps: defaultSteps, outputAssetId: id } };
   }
   if (!snapshot) return { ...config, thumbnail: asset.relativePath ?? null,
-    imageScene: { ...createImageScene(), outputAssetId: id } };
+    imageScene: { ...createImageScene(), steps: defaultSteps, outputAssetId: id } };
   const restored = structuredClone(snapshot);
   const scene = !asset.imageDraft && restored.scene.rootType === "image" && asset.relativePath && asset.width && asset.height
     ? createImageEditScene({ relativePath: asset.relativePath, name: asset.name, width: asset.width, height: asset.height }, restored.scene)

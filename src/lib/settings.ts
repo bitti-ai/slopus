@@ -354,7 +354,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
       && candidate.defaultSteps >= 2
       && candidate.defaultSteps <= MAX_GENERATION_STEPS
       ? candidate.defaultSteps
-      : DEFAULT_GENERATION_STEPS;
+      : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS;
     const attention = candidate.attention === "exact" || candidate.attention === "flash2" || candidate.attention === "sol" ? candidate.attention : "sage2";
     const paths = pathsFrom(candidate.paths);
     const sources: GeneratorTemplate["sources"] = {};
@@ -604,11 +604,18 @@ export function saveGeneratorTemplateSettings(settings: GeneratorTemplateSetting
   queueMicrotask(() => window.dispatchEvent(new Event(GENERATOR_TEMPLATES_EVENT)));
 }
 
-export function defaultGeneratorTemplate(settings = loadGeneratorTemplateSettings(), medium?: "video"): GeneratorTemplate {
-  const eligible = settings.templates.filter((template) => medium !== "video" || templateSupportsVideo(template));
+export function defaultGeneratorTemplate(settings = loadGeneratorTemplateSettings(), medium?: "video" | "image"): GeneratorTemplate {
+  const eligible = settings.templates.filter((template) => medium === "video" ? templateSupportsVideo(template) : medium === "image" ? templateSupportsImages(template) : true);
   return eligible.find((template) => template.id === settings.defaultTemplateId && templateUsable(template))
     ?? eligible.find(templateUsable)
     ?? { id: "", name: "No downloaded generators", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(EMPTY_ENGINE_SETTINGS) };
+}
+
+/** Match the image page's remembered selection when initializing new images. */
+export function selectedImageGeneratorTemplate(settings = loadGeneratorTemplateSettings()): GeneratorTemplate {
+  const id = localStorage.getItem("slopus.image-generator-template.v1");
+  return settings.templates.find((template) => template.id === id && templateSupportsImages(template))
+    ?? defaultGeneratorTemplate(settings, "image");
 }
 
 export function loadDefaultGenerationSteps(): number {

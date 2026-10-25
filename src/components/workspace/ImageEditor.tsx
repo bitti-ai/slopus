@@ -13,7 +13,7 @@ import { compileImagePrompt } from "../../lib/imagePrompt";
 import { createEmptyImage, imageFamily, imageFamilyRoot, makeImagePrimary, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { createDraftGenerationJob, isVideoReference, PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig, type ProjectReference } from "../../lib/project";
-import { defaultGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, generatorModel, templateSupportsImages, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
+import { defaultGeneratorTemplate, selectedImageGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, generatorModel, templateSupportsImages, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
 import { isWorkActive, MAX_IMAGE_BATCH_COUNT, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
 import { ReferenceImage } from "./ReferenceImage";
@@ -59,7 +59,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   openImage?: { id: string };
   onImageOpened?: () => void;
 }) {
-  const scene = useMemo(() => config.imageScene ?? createImageScene(config.brief.prompt), [config.imageScene, config.brief.prompt]);
+  const scene = useMemo(() => config.imageScene ?? { ...createImageScene(config.brief.prompt), steps: selectedImageGeneratorTemplate().defaultSteps }, [config.imageScene, config.brief.prompt]);
   const settings = imageSettings(config);
   const root = scene.nodes.find((node) => node.kind === "root")!;
   const imageRoot = scene.rootType === "image";
@@ -96,7 +96,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const inspectorPane = usePaneSize("image.inspector", 300, { min: 240, max: 520 });
   const clipboard = useSyncExternalStore(subscribeImageNodeClipboard, getImageNodeClipboard);
   const [templates, setTemplates] = useState(loadGeneratorTemplateSettings);
-  const [templateId, setTemplateId] = useState(() => localStorage.getItem("slopus.image-generator-template.v1") ?? defaultGeneratorTemplate().id);
+  const [templateId, setTemplateId] = useState(() => selectedImageGeneratorTemplate().id);
   const imageTemplates = templates.templates.filter(templateSupportsImages);
   const template = imageTemplates.find((candidate) => candidate.id === templateId) ?? imageTemplates.find(templateUsable) ?? imageTemplates[0];
   const model = generatorModel(template?.modelType);
@@ -266,7 +266,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   };
   const selectImage = (id: string) => {
     resetImageEditing(id);
-    attempt(() => onChange((current) => restoreGeneratedImage(current, id)));
+    attempt(() => onChange((current) => restoreGeneratedImage(current, id, template?.defaultSteps)));
   };
   useEffect(() => {
     if (!openImage) return;
@@ -282,7 +282,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       const asset = current.assets.find((item) => item.id === id);
       if (!asset?.relativePath || asset.imageGeneration || current.imageScene?.outputAssetId !== id || current.imageScene.rootType === "image") return current;
       const next = { ...current, assets: current.assets.map((item) => item.id === id ? { ...item, ...size } : item) };
-      return restoreGeneratedImage(next, id);
+      return restoreGeneratedImage(next, id, template?.defaultSteps);
     });
   });
   const createFromImage = (id: string, asScene: boolean) => {
@@ -323,11 +323,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           : remaining[Math.min(currentImages.findIndex((asset) => asset.id === id), remaining.length - 1)];
       const updated = { ...current,
         assets: removeImageAsset(current.assets, id),
-        imageScene: removingSelected && removed.imageDraft && !next ? currentScene.rootType === "image" ? createImageEditScene(null, currentScene) : createImageScene() : { ...currentScene, outputAssetId: removingSelected ? next?.id ?? null : currentScene.outputAssetId },
+        imageScene: removingSelected && removed.imageDraft && !next ? currentScene.rootType === "image" ? createImageEditScene(null, currentScene) : { ...createImageScene(), steps: template?.defaultSteps ?? 20 } : { ...currentScene, outputAssetId: removingSelected ? next?.id ?? null : currentScene.outputAssetId },
         thumbnail: removingSelected || current.thumbnail === removed.relativePath ? next?.relativePath ?? null : current.thumbnail,
         timeline: { ...current.timeline, tracks: current.timeline.tracks.map((track) => ({ ...track, clips: track.clips.filter((clip) => clip.assetId !== id) })) },
       };
-      return removingSelected && next ? restoreGeneratedImage(updated, next.id) : updated;
+      return removingSelected && next ? restoreGeneratedImage(updated, next.id, template?.defaultSteps) : updated;
     });
     requestAnimationFrame(() => {
       const selectedButton = imageResults.current?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]');
@@ -716,11 +716,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       ...(imageMenu.source === "bar" ? [
         { label: "New empty image", icon: <Add16 />, action: () => attempt(() => {
           undo.current = []; redo.current = []; pointer.current = null; setDraftBox(null); setDraftLasso(null); setDrawKind(null); setRenaming(null); setCollapsed(new Set()); setSelection("image-root");
-          onChange((current) => createEmptyImage(current, template?.id, imageMenu.inFamily ? imageMenu.id ?? current.imageScene?.outputAssetId : undefined));
+          onChange((current) => createEmptyImage(current, template?.id, imageMenu.inFamily ? imageMenu.id ?? current.imageScene?.outputAssetId : undefined, template?.defaultSteps));
         }) },
         { label: "Add image file", icon: <FolderOpen16 />, disabled: !isTauri(), action: () => attempt(async () => {
           const source = await invoke<ImageSource | null>("open_image_source", { folderPath });
-          if (source) replaceScene(createImageEditScene(source, scene));
+          if (source) replaceScene({ ...createImageEditScene(source, scene), steps: template?.defaultSteps ?? 20 });
         }) },
       ] : []),
       ...(imageMenu.id ? [

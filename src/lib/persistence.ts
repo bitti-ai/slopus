@@ -1,3 +1,4 @@
+import { selectedImageGeneratorTemplate } from "./settings";
 import { invoke } from "@tauri-apps/api/core";
 import { addReferenceImageAssets } from "./referenceImageAssets";
 import {
@@ -238,6 +239,7 @@ export async function readMediaFileBytes(folderPath: string, item: StoredLocatio
 
 export async function createProject(input: CreateProjectInput): Promise<ProjectRecord | null> {
   const config = createProjectConfig(input);
+  if (config.imageScene) config.imageScene.steps = selectedImageGeneratorTemplate().defaultSteps;
   if (isTauri()) {
     const value = await invoke<ProjectRecord | null>("create_project", {
       projectDirectory: input.projectDirectory ?? null,

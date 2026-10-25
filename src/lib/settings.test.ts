@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { TURBO_LORA, VIGGLE_ANIMATE_LORA, loadLoras, saveLoras } from "./loras";
 import {
   agentEndpointProviderSettings,
-  createGeneratorTemplate, mossImageTemplate, fiboImageTemplate, defaultGeneratorTemplate, generatorPathFields, templateSupportsVideo,
+  selectedImageGeneratorTemplate, createGeneratorTemplate, mossImageTemplate, fiboImageTemplate, defaultGeneratorTemplate, generatorPathFields, templateSupportsVideo,
   engineProviderSetting,
   loadInferenceBackend,
   saveInferenceBackend,
@@ -24,6 +24,24 @@ import {
 
 describe("generator templates", () => {
   beforeEach(() => localStorage.clear());
+
+  it("starts image projects with the remembered Fibo generator's four-step default", async () => {
+    const h3 = createGeneratorTemplate("Video"), fibo = createGeneratorTemplate("Fibo", "fibo2");
+    saveGeneratorTemplateSettings({ templates: [h3, fibo], defaultTemplateId: h3.id, catalogVersion: 14 });
+    localStorage.setItem("slopus.image-generator-template.v1", fibo.id);
+    expect(selectedImageGeneratorTemplate().defaultSteps).toBe(4);
+    const { createProject } = await import("./persistence");
+    const record = await createProject({ name: "Fibo image", generationType: "image", prompt: "A blue vase", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 10 });
+    expect(record?.config.imageScene?.steps).toBe(4);
+  });
+
+  it("normalizes missing Fibo steps to four while retaining explicit custom defaults", () => {
+    const fibo = fiboImageTemplate();
+    localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [{ ...fibo, defaultSteps: undefined }], catalogVersion: 14 }));
+    expect(loadGeneratorTemplateSettings().templates[0].defaultSteps).toBe(4);
+    saveGeneratorTemplateSettings({ templates: [{ ...fibo, defaultSteps: 8 }], defaultTemplateId: "", catalogVersion: 14 });
+    expect(loadGeneratorTemplateSettings().templates[0].defaultSteps).toBe(8);
+  });
 
   it("adds Fibo once without replacing custom settings or restoring a removed template", () => {
     const custom = createGeneratorTemplate("Custom");

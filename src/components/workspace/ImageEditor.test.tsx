@@ -1343,3 +1343,23 @@ it("shows model-specific negative prompts, preserves them across model switches 
   expect(screen.getByRole("textbox", { name: "Negative prompt" })).toHaveValue("Watermarks, blurry details");
   expect(screen.queryByText("Background (environment)")).not.toBeInTheDocument();
 });
+
+it("uses Fibo's four-step default for fresh images and imports, preserving saved steps", () => {
+  const fibo = createGeneratorTemplate("Fibo", "fibo2");
+  saveGeneratorTemplateSettings({ templates: [fibo], defaultTemplateId: fibo.id, catalogVersion: 14 });
+  const initial = parseProjectConfig(fixture);
+  initial.imageScene!.steps = 12;
+  const imported = { id: "imported", kind: "image" as const, name: "Imported", relativePath: "media/source.png", width: 512, height: 512, mimeType: "image/png", createdAt: initial.createdAt };
+  initial.assets = [imported, { ...imported, id: "saved", name: "Saved", imageGeneration: imageGenerationSnapshot(initial, "Saved prompt", fibo.id) }];
+  const latest = setup(initial);
+  fireEvent.click(screen.getByRole("button", { name: "View Imported" }));
+  expect(screen.getByLabelText("Steps")).toHaveValue(4);
+  fireEvent.click(screen.getByRole("button", { name: "View Saved" }));
+  expect(screen.getByLabelText("Steps")).toHaveValue(12);
+  fireEvent.contextMenu(screen.getByLabelText("Generated images"));
+  fireEvent.click(screen.getByRole("menuitem", { name: "New empty image" }));
+  expect(screen.getByLabelText("Steps")).toHaveValue(4);
+  expect(latest().imageScene!.steps).toBe(4);
+  fireEvent.change(screen.getByLabelText("Steps"), { target: { value: "8" } });
+  expect(latest().imageScene!.steps).toBe(8);
+});
