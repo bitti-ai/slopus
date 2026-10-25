@@ -19,3 +19,4 @@ mod tests;
 pub(crate) use batch::execute_checked;
 
 mod motions;
+mod music;

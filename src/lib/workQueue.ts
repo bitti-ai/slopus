@@ -818,7 +818,8 @@ export class WorkQueue {
       const saved = await invoke<{ relativePath: string; durationMs: number }>("save_generated_music", { folderPath: work.session.record.folderPath, jobId: work.id });
       const song = work.music!, id = work.id;
       const asset: ProjectAsset = { id, kind: "audio", name: song.title, ...saved, mimeType: "audio/wav", hasAudio: true, createdAt: new Date().toISOString() };
-      work.session.update((current) => ({ ...updateSong(current, song.id, { status: "completed", assetId: id, error: null }), assets: [...current.assets.filter((item) => item.id !== id), asset] }));
+      work.session.update((current) => ({ ...updateSong(current, song.id, { status: "completed", assetId: id, error: null,
+        generation: { generatorId: song.generatorId, style: work.request.prompt, settings: work.request.music!, steps: work.request.steps, seed: work.request.seed } }), assets: [...current.assets.filter((item) => item.id !== id), asset] }));
       try {
         await work.session.save();
         this.patch(id, { status: "completed", progress: 1, detail: "Music saved" });

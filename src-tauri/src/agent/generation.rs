@@ -9,6 +9,8 @@ pub enum GenerationCommand {
     Generate { scene: String, template: String },
     #[serde(rename = "image.generate")]
     Image { image: String, template: String },
+    #[serde(rename = "music.generate")]
+    Music { song: String, template: String },
 }
 
 pub(super) fn validate(
@@ -17,6 +19,14 @@ pub(super) fn validate(
     generators: &GeneratorContext,
 ) -> Result<(), String> {
     let template = match command {
+        GenerationCommand::Music { song, template } => {
+            if !config.music_songs.iter().any(|item| &item.id == song) { return Err(format!("Unknown song '{song}'. Use music.add first.")); }
+            if !generators.settings["templates"].as_array().is_some_and(|items| items.iter().any(|item|
+                item["id"].as_str() == Some(template) && slopus_core::models::generator_features(item["modelType"].as_str().unwrap_or("")).music_generation)) {
+                return Err("Choose an existing music generator template.".into());
+            }
+            template
+        }
         GenerationCommand::Generate { scene, template } => {
             if !config.generation_jobs.iter().any(|job| &job.id == scene) {
                 return Err(format!("Unknown scene '{scene}'. Create the scene before generating it."));
@@ -62,6 +72,25 @@ mod tests {
     use super::*;
     use crate::agent::{protocol::parse_turn_result, AgentTurnResult};
     use serde_json::json;
+
+    #[test]
+    fn music_generation_prepares_songs_and_requires_a_music_template() {
+        assert!(matches!(parse_turn_result("{\"op\":\"music.add\",\"id\":\"song\",\"title\":\"Intro\",\"style\":\"Jazz\"}\n{\"op\":\"commit\",\"summary\":\"Prepared music\"}").unwrap(), AgentTurnResult::Commands { .. }));
+        let config: ProjectConfig = serde_json::from_str(include_str!("../../../fixtures/project-v1-complete.json")).unwrap();
+        let response = json!({"kind":"generation","summary":"Generate music","prepare":[{"op":"music.add","id":"song","title":"Intro","style":"Jazz","settings":{"lyrics":"Hello"}}],
+            "command":{"op":"music.generate","song":"song","template":"music"}});
+        let AgentTurnResult::Generation { command, prepare, .. } = parse_turn_result(&response.to_string()).unwrap() else { panic!() };
+        let mut generators = GeneratorContext { settings:json!({"templates":[{"id":"music","modelType":"yue2"}]}), ..Default::default() };
+        assert!(validate(&command,&config,&generators).is_err());
+        let prepared = crate::project::commands::execute_commands_at(&config,&prepare,&config.updated_at).unwrap();
+        validate(&command,&prepared,&generators).unwrap();
+        generators.settings["templates"][0]["modelType"] = json!("minimax-h3");
+        assert!(validate(&command,&prepared,&generators).is_err());
+        generators.settings["templates"][0]["modelType"] = json!("minimax_music3");
+        validate(&command,&prepared,&generators).unwrap();
+        let bad = json!({"kind":"generation","summary":"Bad","command":{"op":"music.generate","song":"song","template":"music","assetId":"fake"}});
+        assert!(parse_turn_result(&bad.to_string()).is_err());
+    }
 
     #[test]
     fn image_generation_validates_prepared_drafts_and_prompt_generators() {

@@ -21,8 +21,9 @@ pub(super) fn context_prompt(config: &ProjectConfig, prompt: &str) -> Result<Str
     // Detailed read contracts travel over stdin for CLI providers. Keeping them
     // out of Claude's system-prompt argument avoids Windows' command-line limit.
     let captures = include_str!("../../assets/agent-capture.md");
+    let music = include_str!("../../assets/agent-music.md");
     Ok(format!(
-        "Frame inspection API reference:\n{captures}\n\nPrior conversation JSON:\n<conversation-json>\n{conversation}\n</conversation-json>\n\nComplete current slopus.json data:\n<project-json>\n{project}\n</project-json>\n\nCurrent user reply or request:\n{prompt}"
+        "Frame inspection API reference:\n{captures}\n\nMusic API reference:\n{music}\n\nPrior conversation JSON:\n<conversation-json>\n{conversation}\n</conversation-json>\n\nComplete current slopus.json data:\n<project-json>\n{project}\n</project-json>\n\nCurrent user reply or request:\n{prompt}"
     ))
 }
 

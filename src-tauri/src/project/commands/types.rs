@@ -12,6 +12,17 @@ pub const MAX_COMMANDS_PER_TURN: usize = 100;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", deny_unknown_fields)]
 pub enum ProjectCommand {
+    #[serde(rename = "music.add")]
+    MusicAdd { id: String, title: String, style: String, #[serde(default)] settings: slopus_core::slopfab::music::MusicSettings,
+        #[serde(default, rename = "folderId")] folder_id: Option<String>, #[serde(default)] steps: Option<i32>, #[serde(default)] seed: Option<i64> },
+    #[serde(rename = "music.set")]
+    MusicSet { id: String, #[serde(default)] title: Option<String>, #[serde(default)] style: Option<String>,
+        #[serde(default)] settings: Option<slopus_core::slopfab::music::MusicSettings>,
+        #[serde(default, rename = "folderId", skip_serializing_if = "Patch::is_unchanged")] folder_id: Patch<String>, #[serde(default)] steps: Option<i32>, #[serde(default)] seed: Option<i64> },
+    #[serde(rename = "motion.sync")]
+    MotionSync { id: String, song: String, bpm: f64, #[serde(default, rename = "beatOffsetSeconds")] beat_offset_seconds: f64,
+        #[serde(default, rename = "beatsPerBar")] beats_per_bar: Option<u32>, #[serde(default)] clip: Option<String>,
+        #[serde(default, rename = "audioClip")] audio_clip: Option<String> },
     #[serde(rename = "motion.add")]
     MotionAdd { id: String, name: String, motion: serde_json::Value },
     #[serde(rename = "motion.set")]
@@ -322,6 +333,9 @@ pub(super) struct CommitLine {
 }
 pub(super) fn command_name(command: &ProjectCommand) -> &'static str {
     match command {
+        ProjectCommand::MusicAdd { .. } => "music.add",
+        ProjectCommand::MusicSet { .. } => "music.set",
+        ProjectCommand::MotionSync { .. } => "motion.sync",
         ProjectCommand::MotionAdd { .. } => "motion.add",
         ProjectCommand::MotionSet { .. } => "motion.set",
         ProjectCommand::ImageConfigure { .. } => "image.configure",

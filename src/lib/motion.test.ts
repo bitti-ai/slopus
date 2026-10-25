@@ -16,6 +16,21 @@ function fixture() {
 }
 
 describe("Motions", () => {
+  it("derives beat timing from source trim and arbitrary seek time without accumulating state", () => {
+    const { motion } = fixture();
+    motion.music = { songId: "song", assetId: "audio", bpm: 120, beatOffsetSeconds: 0.25, beatsPerBar: 4, sourceAt: 5 };
+    const seen: unknown[] = [];
+    const update: MotionUpdate = ({ music }) => { seen.push(music); };
+    evaluateMotion(motion, 0.375, update); evaluateMotion(motion, 3, update); evaluateMotion(motion, 0.375, update);
+    expect(seen[0]).toEqual(seen[2]);
+    expect(seen[0]).toMatchObject({ time: 5.375, beat: 10.25, beatIndex: 10, phase: 0.25, bar: 2, beatInBar: 2 });
+    motion.music.sourceAt = 0;
+    evaluateMotion(motion, 0, update);
+    expect(seen[3]).toMatchObject({ beat: -0.5, beatIndex: -1, phase: 0.5, bar: -1, beatInBar: 3 });
+    const { config, asset } = fixture(); config.assets = [{ ...asset, motion }];
+    expect(parseProjectConfig(config).assets[0].motion?.music).toEqual(motion.music);
+    expect(motionSchema.safeParse({ ...motion, music: { ...motion.music, bpm: 0 } }).success).toBe(false);
+  });
   it("evaluates arbitrary seeks independently and applies editable overrides after animation", () => {
     const { motion } = fixture();
     motion.overrides.title = motionOverrideSchema.parse({ offset: [10, 20, 0], text: "Edited", scale: [2, 1, 1] });

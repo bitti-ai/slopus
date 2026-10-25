@@ -88,6 +88,7 @@ impl FrameRead {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum InspectionRequest {
+    Music(super::music::MusicRead),
     Generator(super::generators::GeneratorRead),
     Frame(FrameRead),
 }

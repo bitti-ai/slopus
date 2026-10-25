@@ -15,6 +15,11 @@ fn vector(v: &Value) -> bool {
 }
 pub(crate) fn validate(m: &Value) -> Result<(), String> {
     let invalid = || "Invalid Motion document. Use version 1, space 2d, valid nodes, parameters and source.".to_string();
+    if let Some(music) = m.get("music") {
+        if !music.is_object() || !text(&music["songId"], 200) || music["songId"] == "" || !text(&music["assetId"], 200) || music["assetId"] == ""
+            || !number(&music["bpm"], 20.0, 300.0) || !number(&music["beatOffsetSeconds"], 0.0, 600.0)
+            || !number(&music["sourceAt"], 0.0, 600.0) || !music["beatsPerBar"].as_u64().is_some_and(|n| (1..=16).contains(&n)) { return Err("Invalid Motion music timing.".into()); }
+    }
     if m["version"] != 1 || m["space"] != "2d" || !text(&m["source"], 200000)
         || !number(&m["duration"], 0.1, 600.0)
         || ["width", "height"].iter().any(|k| !m[k].as_u64().is_some_and(|n| (32..=4096).contains(&n)))

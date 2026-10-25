@@ -7,15 +7,18 @@ import { longShotBlocker } from "./longShot";
 import { continuationBlocker, continuationSceneId, generationAssetId, sceneGenerationSnapshot, sceneTypeFor } from "./project";
 import type { ProjectSession } from "./projectSession";
 import { sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "./sceneGeneration";
-import { loadGeneratorTemplateSettings, templateUsable } from "./settings";
+import { generatorPathFields, loadGeneratorTemplateSettings, templateSupportsMusic, templateUsable } from "./settings";
 import { isWorkActive, projectQueueKey, type WorkQueue } from "./workQueue";
 
 export interface SceneGenerateCommand { op: "scene.generate"; scene: string; template: string }
 export interface ImageGenerateCommand { op: "image.generate"; image: string; template: string }
-export type AgentGenerateCommand = SceneGenerateCommand | ImageGenerateCommand;
+export interface MusicGenerateCommand { op: "music.generate"; song: string; template: string }
+export type AgentGenerateCommand = SceneGenerateCommand | ImageGenerateCommand | MusicGenerateCommand;
 export interface GenerationObservation {
   scene?: string;
   image?: string;
+  song?: string;
+  sourceSong?: string;
   template: string;
   status: "completed" | "failed" | "cancelled" | "rejected";
   workId?: string;
@@ -29,7 +32,42 @@ export interface GenerationObservation {
 export function generateAgentMedia(queue: WorkQueue, session: ProjectSession, command: AgentGenerateCommand,
   signal: AbortSignal, onProgress: (text: string) => void): Promise<GenerationObservation> {
   return command.op === "image.generate" ? generateAgentImage(queue, session, command, signal, onProgress)
+    : command.op === "music.generate" ? generateAgentMusic(queue, session, command, signal, onProgress)
     : generateAgentScene(queue, session, command, signal, onProgress);
+}
+
+export async function generateAgentMusic(queue: WorkQueue, session: ProjectSession, command: MusicGenerateCommand,
+  signal: AbortSignal, onProgress: (text: string) => void): Promise<GenerationObservation> {
+  signal.throwIfAborted();
+  if (!isTauri()) throw new Error("Music generation requires the desktop app.");
+  const source = session.getSnapshot().config.musicSongs?.find((song) => song.id === command.song);
+  if (!source) throw new Error(`Song '${command.song}' was not found. Use music.add first.`);
+  const template = loadGeneratorTemplateSettings().templates.find((item) => item.id === command.template);
+  if (!template || !templateSupportsMusic(template)) throw new Error("Choose an existing music generator template.");
+  if (!templateUsable(template) || !generatorPathFields(template).every(({ id, required }) => !required || template.paths[id].trim() || template.sources?.[id]?.length))
+    throw new Error(`Generator '${template.name}' needs its weights prepared before generation.`);
+  if (queue.getSnapshot().some((item) => item.projectKey === projectQueueKey(session.record) && item.kind === "music" && item.sceneId === source.id && isWorkActive(item)))
+    throw new Error(`Song '${source.title}' already has generation in progress.`);
+  const songId = queue.enqueueMusic(session, source.id, template);
+  const work = queue.getSnapshot().find((item) => item.projectKey === projectQueueKey(session.record) && item.kind === "music" && item.sceneId === songId && isWorkActive(item));
+  if (!work) throw new Error("Music could not be queued.");
+  const cancel = () => { void queue.cancel(work.id).catch(() => undefined); };
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    if (signal.aborted) { cancel(); signal.throwIfAborted(); }
+    let lastDetail = "";
+    const item = await queue.waitFor(work.id, signal, (progress) => {
+      if (lastDetail !== progress.detail) { lastDetail = progress.detail; onProgress(`${source.title}: ${progress.detail}`); }
+    });
+    signal.throwIfAborted();
+    const config = session.getSnapshot().config;
+    const song = config.musicSongs?.find((song) => song.id === songId);
+    const asset = config.assets.find((asset) => asset.id === song?.assetId);
+    return { song: songId, sourceSong: source.id, template: template.id, workId: work.id,
+      status: item.status === "completed" ? "completed" : item.status === "cancelled" ? "cancelled" : "failed",
+      detail: item.detail, error: item.error, needsSave: item.needsSave,
+      ...(item.status === "completed" || item.needsSave ? { assetId: asset?.id, outputRelativePath: asset?.relativePath } : {}) };
+  } finally { signal.removeEventListener("abort", cancel); }
 }
 
 export async function generateAgentImage(queue: WorkQueue, session: ProjectSession, command: ImageGenerateCommand,

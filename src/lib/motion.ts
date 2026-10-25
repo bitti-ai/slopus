@@ -39,6 +39,9 @@ export const motionSchema = z.object({
   source: z.string().max(200000), nodes: z.array(motionNodeSchema).max(512),
   parameters: z.array(parameterSchema).max(100),
   overrides: z.record(motionOverrideSchema).default({}),
+  music: z.object({ songId: z.string().min(1).max(200), assetId: z.string().min(1).max(200),
+    bpm: z.number().finite().min(20).max(300), beatOffsetSeconds: z.number().finite().min(0).max(600),
+    beatsPerBar: z.number().int().min(1).max(16), sourceAt: z.number().finite().min(0).max(600) }).optional(),
 }).superRefine((motion, ctx) => {
   for (const entries of [motion.nodes, motion.parameters]) {
     if (new Set(entries.map(({ id }) => id)).size !== entries.length) ctx.addIssue({ code: "custom", message: "Motion IDs must be unique." });

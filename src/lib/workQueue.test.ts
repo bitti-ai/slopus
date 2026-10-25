@@ -9,7 +9,7 @@ import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "./p
 import { ProjectSession } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
 import { saveEngineSettings, saveGeneratorTemplateSettings, loadGeneratorTemplateSettings, EMPTY_ENGINE_SETTINGS, type GeneratorTemplate } from "./settings";
-import { generateAgentImage, generateAgentScene } from "./agentGeneration";
+import { generateAgentImage, generateAgentScene, generateAgentMusic } from "./agentGeneration";
 import { applyImageDraftCommand } from "./imageDraftCommands";
 import { LATENT_UPSCALER_URL, saveLocalOtherWeightPaths } from "./upscalers";
 import { WorkQueue, type GenerationSubmission } from "./workQueue";
@@ -83,7 +83,8 @@ it("queues an immutable music request and saves its audio into timeline media", 
   const id = queue.getSnapshot()[0].id;
   await finish(queue, id);
   expect(invoke).toHaveBeenCalledWith("save_generated_music", { folderPath: first.record.folderPath, jobId: id });
-  expect(first.getSnapshot().config.musicSongs![0]).toMatchObject({ status: "completed", assetId: id, style: "Changed later" });
+  expect(first.getSnapshot().config.musicSongs![0]).toMatchObject({ status: "completed", assetId: id, style: "Changed later",
+    generation: { style: "Soft jazz", seed: 42, steps: 32, generatorId: template.id, settings: { lyrics: "", duration: 30 } } });
   expect(first.getSnapshot().config.assets).toContainEqual(expect.objectContaining({ id, kind: "audio", name: "Evening", relativePath: "media/generated/song.wav", durationMs: 30000 }));
   expect(saved).toHaveBeenCalled();
   expect(releaseRendered).toHaveBeenCalledWith(id);
@@ -99,6 +100,39 @@ it("cancels a queued song without altering another song", async () => {
   await queue.cancel(id);
   expect(first.getSnapshot().config.musicSongs![1].status).toBe("cancelled");
   expect(first.getSnapshot().config.musicSongs![0].status).not.toBe("cancelled");
+});
+
+it("returns the actual new song and asset to the agent when generating from completed music", async () => {
+  const { queue, first } = setup();
+  const song = { ...newSong(), style: "Jazz", status: "completed" as const, assetId: "original" };
+  first.update((config) => ({ ...config, musicSongs: [song] }));
+  const template = musicTemplates()[0]; template.paths.transformer = "C:/weights/yue2.safetensors"; template.sources = {};
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id });
+  vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/agent.wav", durationMs: 30000 });
+  const pending = generateAgentMusic(queue, first, { op: "music.generate", song: song.id, template: template.id }, new AbortController().signal, vi.fn());
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  const work = queue.getSnapshot()[0];
+  await finish(queue, work.id);
+  await expect(pending).resolves.toMatchObject({ song: work.sceneId, sourceSong: song.id, status: "completed", assetId: work.id, outputRelativePath: "media/generated/agent.wav" });
+  expect(work.sceneId).not.toBe(song.id);
+  expect(first.getSnapshot().config.musicSongs![0]).toEqual(song);
+});
+
+it("rejects duplicate active agent music jobs and cancels only the submitted song", async () => {
+  const { queue, first } = setup();
+  const song = { ...newSong(), style: "Jazz" };
+  first.update((config) => ({ ...config, musicSongs: [song] }));
+  const template = musicTemplates()[0]; template.paths.transformer = "C:/weights/yue2.safetensors"; template.sources = {};
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id });
+  const controller = new AbortController();
+  const command = { op: "music.generate" as const, song: song.id, template: template.id };
+  const pending = generateAgentMusic(queue, first, command, controller.signal, vi.fn());
+  const stopped = expect(pending).rejects.toThrow();
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  await expect(generateAgentMusic(queue, first, command, new AbortController().signal, vi.fn())).rejects.toThrow("already");
+  controller.abort(); await stopped;
+  await waitFor(() => expect(cancelSlopfabGeneration).toHaveBeenCalledWith(queue.getSnapshot()[0].id));
+  expect(queue.getSnapshot()).toHaveLength(1);
 });
 
 it.each(["completed", "failed"])("generates a separate song from existing audio and preserves the original when %s", async (outcome) => {

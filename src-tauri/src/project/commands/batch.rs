@@ -80,6 +80,7 @@ fn apply_command(
     effects: &mut Effects,
 ) -> Result<(), String> {
     match command {
+        ProjectCommand::MusicAdd { .. } | ProjectCommand::MusicSet { .. } | ProjectCommand::MotionSync { .. } => super::music::apply(project, command, timestamp),
         ProjectCommand::MotionAdd { .. } | ProjectCommand::MotionSet { .. } => super::motions::apply(project, command, timestamp),
         ProjectCommand::ImageDraftAdd { .. } | ProjectCommand::ImageDraftSelect { .. } => {
             super::image_drafts::apply(project, command, timestamp)

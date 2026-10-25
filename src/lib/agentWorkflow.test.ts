@@ -65,6 +65,18 @@ it("deduplicates repeated generation commands after resuming", async () => {
   expect(runAgentTurn).toHaveBeenCalledTimes(3);
 });
 
+it("prepares music once and resumes with the new song receipt without generating duplicate variations", async () => {
+  const record = project();
+  const host = { getRecord: () => record, prepare: vi.fn().mockResolvedValue(undefined), generate: vi.fn().mockResolvedValue({ song: "new-song", sourceSong: "old-song", template: "chosen", status: "completed", assetId: "audio", detail: "Saved" }) };
+  const music = response({ kind: "generation", summary: "Music", prepare: [{ op: "music.set", id: "old-song", style: "Jazz" }],
+    command: { op: "music.generate", song: "old-song", template: "chosen" } });
+  vi.mocked(runAgentTurn).mockResolvedValueOnce(music).mockResolvedValueOnce(music).mockResolvedValueOnce(answer);
+  await runAgentWorkflow(record, "local", "Generate music", "turn", [], new AbortController().signal, host);
+  expect(host.generate).toHaveBeenCalledOnce(); expect(host.prepare).toHaveBeenCalledOnce();
+  expect(vi.mocked(runAgentTurn).mock.calls[1][2]).toContain('"song":"new-song"');
+  expect(vi.mocked(runAgentTurn).mock.calls[1][2]).toContain("music.analyze");
+});
+
 it.each(["failed", "cancelled"] as const)("returns %s to the agent without automatically generating again", async (status) => {
   const record = project();
   const host = { getRecord: () => record, generate: vi.fn().mockResolvedValue({ ...outcome, status, error: "Stopped", needsSave: true }) };

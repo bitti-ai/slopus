@@ -8,6 +8,7 @@ Changes since 0.3.2.
 - **Motions.** Create JavaScript animations with the agent, edit elements and parameters, and export them on the timeline or as reference videos.
 - **Scene history.** Keep up to four takes and an editable Draft, restore take settings, choose the primary timeline video, and duplicate scenes.
 - **Agent frame inspection.** Agents can view timeline frames, scenes, takes, references, generated images and Motions at a requested time.
+- **Agent music tools.** Generate songs, retrieve lyrics and settings, estimate tempo and energy, and sync Motions to music or trimmed audio clips.
 - **MOSS Image.** Generate images on CUDA with per-model CFG and negative prompts.
 - **Fibo 2.0.** Added Base and Edit Turbo generators for CUDA, with text-to-image generation, image references, local edits and Zoom where supported.
 - **Lasso edits.** Draw and move freehand selections; use Ctrl to combine areas or Alt to subtract them.

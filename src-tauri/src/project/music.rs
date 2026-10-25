@@ -16,7 +16,19 @@ pub(crate) struct MusicSong {
     pub status: String,
     pub asset_id: Option<String>,
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation: Option<MusicGeneration>,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MusicGeneration {
+    pub generator_id: String,
+    pub style: String,
+    pub settings: MusicSettings,
+    pub steps: i32,
+    pub seed: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -46,11 +58,16 @@ pub(crate) fn validate(config: &super::ProjectConfig) -> Result<(), String> {
     for song in &config.music_songs {
         if song.folder_id.as_deref().is_some_and(|id| !folders.contains_key(id)) { return Err("Song folder does not exist.".into()); }
         if song.id.is_empty() || !ids.insert(&song.id) || song.title.trim().is_empty() || song.title.chars().count() > 200
-            || song.style.chars().count() > 10000 || !(2..=100).contains(&song.steps) || song.seed < -1
+            || song.style.chars().count() > 10000 || !(2..=100).contains(&song.steps) || !(-1..=9_007_199_254_740_991).contains(&song.seed)
             || !matches!(song.status.as_str(), "draft" | "queued" | "generating" | "completed" | "failed" | "cancelled") {
             return Err("Invalid music song.".into());
         }
         song.settings.validate()?;
+        if let Some(generation) = &song.generation {
+            generation.settings.validate()?;
+            if !(2..=100).contains(&generation.steps) || !(0..=9_007_199_254_740_991).contains(&generation.seed)
+                || generation.style.chars().count() > 10000 { return Err("Invalid recorded music generation.".into()); }
+        }
     }
     Ok(())
 }

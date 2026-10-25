@@ -173,7 +173,7 @@ impl AgentRuntime {
                             );
                         }
                         let event = AgentEvent::Message {
-                            text: "Inspecting requested media frames or generator settings…"
+                            text: "Inspecting requested media or generator settings…"
                                 .into(),
                         };
                         on_event(&event);
@@ -183,6 +183,7 @@ impl AgentRuntime {
                             .map(|read| {
                                 use super::capture::InspectionRequest;
                                 let result = match read {
+                                    InspectionRequest::Music(read) => super::music::read(&config, &folder, read, &cancel),
                                     InspectionRequest::Generator(read) => super::generators::read(&request.generators, read, &cancel),
                                     InspectionRequest::Frame(target) => {
                                         if images.len() >= 8 {

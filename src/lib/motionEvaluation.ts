@@ -1,6 +1,7 @@
 import { applyMotionOverrides, motionNodeSchema, type Motion, type MotionNode } from "./motion";
 
-export interface MotionContext { time: number; duration: number; width: number; height: number; parameters: Record<string, string | number | boolean>; nodes: MotionNode[]; random: () => number }
+export interface MotionMusicContext { songId: string; assetId: string; time: number; bpm: number; beatsPerBar: number; beat: number; beatIndex: number; phase: number; bar: number; beatInBar: number }
+export interface MotionContext { time: number; duration: number; width: number; height: number; parameters: Record<string, string | number | boolean>; nodes: MotionNode[]; random: () => number; music?: MotionMusicContext }
 export type MotionDraw = Record<MotionNode["kind"], (node: Partial<MotionNode>) => void>;
 export type MotionUpdate = (context: MotionContext, draw: MotionDraw) => void;
 
@@ -13,7 +14,14 @@ export function evaluateMotion(motion: Motion, seconds: number, update: MotionUp
     if (nodes.length >= 1024) throw new Error("Motion exceeds 1024 drawing elements.");
     nodes.push(motionNodeSchema.parse({ id: `draw-${nodes.length}`, name: kind, ...node, kind }));
   }])) as MotionDraw;
-  const result = update({ time: Math.max(0, Math.min(motion.duration, seconds)), duration: motion.duration,
+  const time = Math.max(0, Math.min(motion.duration, seconds));
+  const binding = motion.music;
+  const beat = binding ? (time + binding.sourceAt - binding.beatOffsetSeconds) * binding.bpm / 60 : 0;
+  const beatIndex = Math.floor(beat);
+  const result = update({ time, duration: motion.duration,
+    ...(binding ? { music: { songId: binding.songId, assetId: binding.assetId, time: time + binding.sourceAt,
+      bpm: binding.bpm, beatsPerBar: binding.beatsPerBar, beat, beatIndex, phase: beat - beatIndex,
+      bar: Math.floor(beat / binding.beatsPerBar), beatInBar: ((beatIndex % binding.beatsPerBar) + binding.beatsPerBar) % binding.beatsPerBar } } : {}),
     width: motion.width, height: motion.height, nodes,
     parameters: Object.fromEntries(motion.parameters.map((p) => [p.id, p.value])),
     random: () => { state = (Math.imul(1664525, state) + 1013904223) >>> 0; return state / 4294967296; },

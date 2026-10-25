@@ -25,6 +25,8 @@ export const musicSongSchema = z.object({
   seed: z.number().int().min(-1).max(Number.MAX_SAFE_INTEGER).default(-1),
   status: z.enum(["draft", "queued", "generating", "completed", "failed", "cancelled"]).default("draft"),
   assetId: z.string().nullish(), error: z.string().nullish(),
+  generation: z.object({ generatorId: z.string(), style: z.string(), settings: musicSettingsSchema,
+    steps: z.number().int().min(2).max(100), seed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }).nullish(),
   createdAt: z.string(),
 });
 export type MusicSong = z.infer<typeof musicSongSchema>;
@@ -44,7 +46,7 @@ export function newSongVariation(source: MusicSong, songs: readonly MusicSong[])
     title = base.slice(0, 200 - suffix.length) + suffix;
   } while (songs.some((song) => song.title === title));
   return { ...structuredClone(source), id: `song-${crypto.randomUUID()}`, title,
-    status: "draft", assetId: null, error: null, createdAt: new Date().toISOString() };
+    status: "draft", assetId: null, error: null, generation: null, createdAt: new Date().toISOString() };
 }
 
 export function newMusicFolder(name: string, parentId: string | null): MusicFolder {
