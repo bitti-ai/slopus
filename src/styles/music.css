@@ -8,11 +8,15 @@
 .music-library { grid-column: 1; grid-row: 1; min-width: 0; overflow: auto; padding: var(--space-4); }
 .music-library__heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-4); }
 .music-library__heading h2 { margin: 0; font-size: var(--text-lg); min-width: 0; overflow-wrap: anywhere; }
-.music-folders { display: flex; flex-wrap: wrap; gap: var(--space-1); max-height: 128px; overflow-y: auto; margin-bottom: var(--space-3); }
-.music-folders > button { min-width: 0; max-width: 100%; }
-.music-folders > button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.music-folders [aria-current="page"] { color: var(--accent); border-color: var(--accent); }
-.music-folders [data-drop-target="true"] { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--fill-subtle-hover); }
+.music-library__heading nav { min-width: 0; }
+.music-library__heading > span { flex-shrink: 0; }
+.music-path { display: flex; flex-wrap: wrap; align-items: center; }
+.music-path > span { min-width: 0; display: inline-flex; align-items: center; }
+.music-path button { border: 0; border-radius: var(--radius-sm); padding: 2px 4px; background: transparent; color: var(--text-secondary); font: inherit; overflow-wrap: anywhere; text-align: left; }
+.music-path button:hover { background: var(--fill-subtle-hover); color: var(--text-primary); }
+.music-path [aria-current="page"] { color: var(--text-primary); }
+.music-path__separator { padding-inline: 4px; color: var(--text-secondary); }
+.music-library [data-drop-target="true"] { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--fill-subtle-hover); }
 .music-new-folder { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
 .music-new-folder input { flex: 1; min-width: 120px; }
 .music-library__heading > span, .music-song__info > span, .music-song__status, .music-player__now span { color: var(--text-secondary); font-size: var(--text-xs); }

@@ -48,17 +48,50 @@ it("creates songs in the browsed folder and moves them between folders by drag a
   const dataTransfer = { effectAllowed: "", dropEffect: "", types: ["application/x-slopus-music-song"],
     setData: (type: string, value: string) => data.set(type, value), getData: (type: string) => data.get(type) ?? "" };
   fireEvent.dragStart(screen.getByRole("listitem"), { dataTransfer });
-  const destination = within(screen.getByRole("navigation", { name: "Music folders" })).getByRole("button", { name: "Jazz" });
+  const destination = within(screen.getByRole("navigation", { name: "Music path" })).getByRole("button", { name: "Jazz" });
   fireEvent.dragOver(destination, { dataTransfer });
   expect(destination).toHaveAttribute("data-drop-target", "true");
   fireEvent.drop(destination, { dataTransfer });
   expect(latest.musicSongs![1].folderId).toBe(jazz.id);
   expect(screen.getByText("This folder is empty")).toBeInTheDocument();
   fireEvent.click(destination);
-  expect(screen.getAllByRole("listitem")).toHaveLength(2);
-  fireEvent.dragStart(screen.getAllByRole("listitem")[1], { dataTransfer });
-  fireEvent.drop(within(screen.getByRole("navigation", { name: "Music folders" })).getByRole("button", { name: "Your music" }), { dataTransfer });
+  expect(screen.getAllByRole("listitem")).toHaveLength(3);
+  fireEvent.dragStart(screen.getAllByRole("button", { name: "Select New song" })[1].closest('[role="listitem"]')!, { dataTransfer });
+  const root = within(screen.getByRole("navigation", { name: "Music path" })).getByRole("button", { name: "Music" });
+  fireEvent.drop(root, { dataTransfer });
   expect(latest.musicSongs![1].folderId).toBeNull();
+  fireEvent.click(root);
+  fireEvent.dragStart(screen.getByRole("button", { name: "Select New song" }).closest('[role="listitem"]')!, { dataTransfer });
+  const folderCard = screen.getByRole("button", { name: "Open Jazz" }).closest('[role="listitem"]')!;
+  fireEvent.dragOver(folderCard, { dataTransfer });
+  expect(folderCard).toHaveAttribute("data-drop-target", "true");
+  fireEvent.drop(folderCard, { dataTransfer });
+  expect(latest.musicSongs![1].folderId).toBe(jazz.id);
+});
+
+it.each(["Grid", "List"])("browses folders as %s items with a Music path header and only the current contents", (view) => {
+  const parent = newMusicFolder("Jazz", null), child = newMusicFolder("Piano", parent.id);
+  const rootSong = { ...newSong(), title: "Root song" }, nestedSong = { ...newSong("yue2", 32, child.id), title: "Piano song" };
+  render(<Harness initial={{ ...createConfig(), musicFolders: [parent, child], musicSongs: [rootSong, nestedSong] }} />);
+  fireEvent.click(screen.getByRole("button", { name: `${view} view` }));
+  expect(screen.getByRole("heading", { name: "Music", level: 2 })).toBeInTheDocument();
+  expect(screen.getByRole("list", { name: "Music contents" })).toHaveClass(`music-songs--${view.toLowerCase()}`);
+  const folder = screen.getByRole("button", { name: "Open Jazz" });
+  expect(folder).toHaveClass("music-song__select");
+  expect(folder.querySelector(".music-song__art svg")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Open Piano" })).not.toBeInTheDocument();
+  fireEvent.click(folder);
+  expect(screen.getByRole("heading", { name: "Music / Jazz", level: 2 })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Select Root song" })).not.toBeInTheDocument();
+  expect(screen.queryByText("This folder is empty")).not.toBeInTheDocument();
+  expect(screen.getAllByRole("listitem")).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Open Piano" }));
+  expect(screen.getByRole("heading", { name: "Music / Jazz / Piano", level: 2 })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Select Piano song" })).toBeInTheDocument();
+  const path = within(screen.getByRole("navigation", { name: "Music path" }));
+  fireEvent.click(path.getByRole("button", { name: "Music" }));
+  expect(screen.getByRole("button", { name: "Select Root song" })).toBeInTheDocument();
+  expect(screen.queryByRole("navigation", { name: "Music folders" })).not.toBeInTheDocument();
 });
 
 it("creates songs and folders from the library and song context menus in the current folder", () => {
@@ -82,15 +115,16 @@ it("removes the context-clicked folder and moves its contents to the parent", ()
   const parent = newMusicFolder("Jazz", null), folder = newMusicFolder("Piano", parent.id), child = newMusicFolder("Solo", folder.id);
   const song = newSong("yue2", 32, folder.id), nested = newSong("yue2", 32, child.id);
   render(<Harness initial={{ ...createConfig(), musicFolders: [parent, folder, child], musicSongs: [song, nested] }} />);
-  const navigation = within(screen.getByRole("navigation", { name: "Music folders" }));
-  fireEvent.click(navigation.getByRole("button", { name: "Jazz / Piano" }));
-  fireEvent.keyDown(navigation.getByRole("button", { name: "Jazz / Piano" }), { key: "ContextMenu" });
+  const navigation = within(screen.getByRole("navigation", { name: "Music path" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Jazz" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Piano" }));
+  fireEvent.keyDown(navigation.getByRole("button", { name: "Piano" }), { key: "ContextMenu" });
   fireEvent.click(screen.getByRole("menuitem", { name: "Remove folder" }));
   expect(latest.musicFolders).toEqual([parent, { ...child, parentId: parent.id }]);
   expect(latest.musicSongs).toEqual([{ ...song, folderId: parent.id }, nested]);
   expect(navigation.getByRole("button", { name: "Jazz" })).toHaveAttribute("aria-current", "page");
-  expect(navigation.getByRole("button", { name: "Jazz / Solo" })).toBeInTheDocument();
-  fireEvent.contextMenu(navigation.getByRole("button", { name: "Your music" }));
+  expect(screen.getByRole("button", { name: "Open Solo" })).toBeInTheDocument();
+  fireEvent.contextMenu(navigation.getByRole("button", { name: "Music" }));
   expect(screen.queryByRole("menuitem", { name: "Remove folder" })).not.toBeInTheDocument();
 });
 
@@ -133,13 +167,14 @@ it("automatically plays the next generated song in the starting folder even afte
     relativePath: `media/${song.assetId}.wav`, durationMs: 30000, mimeType: "audio/wav", createdAt: song.createdAt }] : []);
   vi.mocked(readMediaFileUrl).mockImplementation(async (_, asset) => `blob:${asset.relativePath}`);
   const { container } = render(<Harness initial={{ ...createConfig(), musicFolders: [jazz, other], musicSongs: songs, assets }} />);
-  const folders = within(screen.getByRole("navigation", { name: "Music folders" }));
-  fireEvent.click(folders.getByRole("button", { name: "Jazz" }));
+  const path = within(screen.getByRole("navigation", { name: "Music path" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Jazz" }));
   fireEvent.click(screen.getByRole("button", { name: "Play First" }));
   const audio = container.querySelector("audio")!;
   await waitFor(() => expect(audio).toHaveAttribute("src", "blob:media/first.wav"));
   fireEvent.canPlay(audio);
-  fireEvent.click(folders.getByRole("button", { name: "Other" }));
+  fireEvent.click(path.getByRole("button", { name: "Music" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Other" }));
   fireEvent.ended(audio);
   await waitFor(() => expect(audio).toHaveAttribute("src", "blob:media/second.wav"));
   fireEvent.canPlay(audio);
@@ -158,7 +193,7 @@ it("adds songs, edits lyrics and style, switches layout and queues the selected 
   fireEvent.change(screen.getByLabelText("Music lyrics"), { target: { value: "[Verse]\nCity lights" } });
   expect(latest.musicSongs![0]).toMatchObject({ title: "Night drive", style: "Synth pop", settings: { lyrics: "[Verse]\nCity lights" } });
   fireEvent.click(screen.getByRole("button", { name: "List view" }));
-  expect(screen.getByRole("list", { name: "Songs" })).toHaveClass("music-songs--list");
+  expect(screen.getByRole("list", { name: "Music contents" })).toHaveClass("music-songs--list");
   fireEvent.click(screen.getByRole("button", { name: "Generate" }));
   expect(generate).toHaveBeenCalledWith(latest.musicSongs![0].id, expect.objectContaining({ modelType: "yue2" }));
 });

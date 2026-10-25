@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ProjectAsset, ProjectConfig } from "../../lib/project";
 import { isTauri, readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateSupportsMusic, templateUsable, generatorPathFields, type GeneratorTemplate } from "../../lib/settings";
-import { musicFolderLabel, musicSettingsForModel, moveSong, newMusicFolder, newSong, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
+import { musicSettingsForModel, moveSong, newMusicFolder, newSong, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import { ComboBox, CommandBarButton, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
 import { Add16, Audio16, Delete16, FolderAdd16, FolderOpen16, GoToEnd16, GoToStart16, GridView16, ListView16, Pause16, Play16, References16, Speaker14, Sparkle16, Stop14 } from "../ui/icons";
@@ -27,6 +27,16 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
   const [folderId, setFolderId] = useState<string | null>(null);
   const currentFolder = folders.find((folder) => folder.id === folderId);
   const currentFolderId = currentFolder?.id ?? null;
+  const visibleFolders = folders.filter((folder) => (folder.parentId ?? null) === currentFolderId);
+  const breadcrumbs: { id: string | null; name: string }[] = [];
+  const visited = new Set<string>();
+  let ancestor = currentFolder;
+  while (ancestor && !visited.has(ancestor.id)) {
+    visited.add(ancestor.id); breadcrumbs.unshift({ id: ancestor.id, name: ancestor.name });
+    const parentId = ancestor.parentId;
+    ancestor = folders.find((folder) => folder.id === parentId);
+  }
+  breadcrumbs.unshift({ id: null, name: "Music" });
   const visibleSongs = (config.musicSongs ?? []).filter((song) => (song.folderId ?? null) === currentFolderId);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderName, setFolderName] = useState("");
@@ -88,6 +98,17 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
       onChange((current) => moveSong(current, data.songId, destination));
     } catch { /* Ignore unrelated or malformed drag data. */ }
   };
+  const browseFolder = (id: string | null) => {
+    setFolderId(id); setSelectedId(undefined); setNotice(null); setCreatingFolder(false); setFolderName("");
+  };
+  const folderDropProps = (id: string | null) => ({
+    "data-drop-target": dropFolder === (id ?? "") ? "true" : undefined,
+    onDragOver: (event: React.DragEvent<HTMLElement>) => {
+      if (event.dataTransfer.types.includes(SONG_DRAG_TYPE)) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropFolder(id ?? ""); }
+    },
+    onDragLeave: () => setDropFolder(undefined),
+    onDrop: (event: React.DragEvent<HTMLElement>) => dropSong(event, id),
+  });
   const chooseGenerator = (id: string) => {
     const next = templates.find((item) => item.id === id);
     setNewGeneratorId(id);
@@ -192,16 +213,18 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
       <div className="music-library" tabIndex={0} aria-label="Music library"
         onContextMenu={(event) => { if (!(event.target as HTMLElement).closest("input, textarea")) folderContext(event, currentFolderId); }}
         onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "ContextMenu" || event.shiftKey && event.key === "F10")) folderContext(event, currentFolderId); }}>
-        <div className="music-library__heading"><h2>{currentFolder?.name ?? "Your music"}</h2><span>{visibleSongs.length} songs</span></div>
-        <nav className="music-folders" aria-label="Music folders">
-          {[{ id: null, name: "Your music" }, ...folders.map((folder) => ({ id: folder.id, name: musicFolderLabel(folders, folder.id) }))].map((folder) =>
-            <button key={folder.id ?? "root"} type="button" className="secondary-button" aria-current={currentFolderId === folder.id ? "page" : undefined}
-              onContextMenu={(event) => folderContext(event, folder.id)}
-              onKeyDown={(event) => { if (event.key === "ContextMenu" || event.shiftKey && event.key === "F10") folderContext(event, folder.id); }}
-              data-drop-target={dropFolder === (folder.id ?? "") ? "true" : undefined} onClick={() => { setFolderId(folder.id); setSelectedId(undefined); setNotice(null); }}
-              onDragOver={(event) => { if (event.dataTransfer.types.includes(SONG_DRAG_TYPE)) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropFolder(folder.id ?? ""); } }}
-              onDragLeave={() => setDropFolder(undefined)} onDrop={(event) => dropSong(event, folder.id)} data-tooltip={folder.name}><FolderOpen16 /><span>{folder.name}</span></button>)}
-        </nav>
+        <div className="music-library__heading">
+          <nav aria-label="Music path"><h2 className="music-path">
+            {breadcrumbs.map((folder, index) => <span key={folder.id ?? "root"}>
+              {index > 0 && <span className="music-path__separator"> / </span>}
+              <button type="button" aria-current={currentFolderId === folder.id ? "page" : undefined}
+                onClick={() => browseFolder(folder.id)} {...folderDropProps(folder.id)}
+                onContextMenu={(event) => folderContext(event, folder.id)}
+                onKeyDown={(event) => { if (event.key === "ContextMenu" || event.shiftKey && event.key === "F10") folderContext(event, folder.id); }}>{folder.name}</button>
+            </span>)}
+          </h2></nav>
+          <span>{visibleFolders.length > 0 && `${visibleFolders.length} folders · `}{visibleSongs.length} songs</span>
+        </div>
         {creatingFolder && <form className="music-new-folder" onSubmit={createFolder}>
           <input className="text-field" aria-label="Folder name" placeholder="Folder name" autoFocus maxLength={200} value={folderName} onChange={(event) => setFolderName(event.target.value)} />
           <button type="submit" className="primary-button" disabled={!folderName.trim()}>Create folder</button>
@@ -209,12 +232,20 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
         </form>}
         {notice && <p role="status">{notice}</p>}
         {error && <p role="alert">{error}</p>}
-        {!visibleSongs.length ? <div className="music-empty"><Audio16 /><h3>{currentFolder ? "This folder is empty" : "Create your first song"}</h3><p>Add a song, describe its style and write lyrics, or leave lyrics empty for an instrumental.</p><button type="button" className="primary-button" onClick={add}><Add16 />New song</button></div> :
-          <div className={`music-songs music-songs--${view}`} role="list" aria-label="Songs">
+        {!visibleSongs.length && !visibleFolders.length ? <div className="music-empty"><Audio16 /><h3>{currentFolder ? "This folder is empty" : "Create your first song"}</h3><p>Add a song, describe its style and write lyrics, or leave lyrics empty for an instrumental.</p><button type="button" className="primary-button" onClick={add}><Add16 />New song</button></div> :
+          <div className={`music-songs music-songs--${view}`} role="list" aria-label="Music contents">
+            {visibleFolders.map((folder) => <div className="music-song music-folder" role="listitem" key={`folder:${folder.id}`}
+              {...folderDropProps(folder.id)} onContextMenu={(event) => folderContext(event, folder.id)}>
+              <button type="button" className="music-song__select" aria-label={`Open ${folder.name}`} onClick={() => browseFolder(folder.id)}
+                onKeyDown={(event) => { if (event.key === "ContextMenu" || event.shiftKey && event.key === "F10") folderContext(event, folder.id); }}>
+                <span className="music-song__art" aria-hidden="true"><FolderOpen16 /></span>
+                <span className="music-song__info"><strong>{folder.name}</strong></span>
+              </button>
+            </div>)}
             {visibleSongs.map((song, index) => {
               const asset = config.assets.find((item) => item.id === song.assetId);
               const work = workItems.find((item) => item.sceneId === song.id && isWorkActive(item));
-              return <div className={`music-song${selected?.id === song.id ? " music-song--selected" : ""}`} role="listitem" key={song.id}
+              return <div className={`music-song${selected?.id === song.id ? " music-song--selected" : ""}`} role="listitem" key={`song:${song.id}`}
                 draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData(SONG_DRAG_TYPE, JSON.stringify({ projectId: config.id, songId: song.id })); }} onDragEnd={() => setDropFolder(undefined)}
                 onContextMenu={(event) => context(event, song)}>
                 <button type="button" className="music-song__select" aria-label={`Select ${song.title}`} aria-pressed={selected?.id === song.id}
