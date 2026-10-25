@@ -106,6 +106,13 @@
   display: inline-grid;
 }
 
+.project-views__playing {
+  color: var(--accent-bright);
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
 .project-views__name::after {
   content: attr(data-label);
   height: 0;

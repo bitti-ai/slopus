@@ -14,6 +14,7 @@ import { preparedPreviewClips, previewPlayerKeys, previewSegmentIndex, previewSe
 import { PreviewMedia } from "../../lib/previewPresentation";
 import { PLAYBACK_SAMPLE_MS, previewEngine } from "../../lib/previewEngine";
 import { continuationPlaybackTracks } from "../../lib/continuationMedia";
+import { notifyPreviewPlayback } from "../../lib/mediaPlayback";
 
 /* The monitor owns a continuous timeline clock. Visible and upcoming clips
  * prepare persistent media elements ahead of a cut. Adjacent ranges of a joined
@@ -241,6 +242,7 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
      published once a second, never through this component's state. */
   useEffect(() => {
     if (!playing) return;
+    notifyPreviewPlayback();
     previewEngine.start();
     let last = performance.now();
     const timer = window.setInterval(() => {

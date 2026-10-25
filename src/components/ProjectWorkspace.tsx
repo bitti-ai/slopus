@@ -1,6 +1,7 @@
 import { Agent16, Agent16Filled, Back16, ChevronDown12, Download16, Download16Filled, Film16, Film16Filled, Image16, Image16Filled, Redo16, References16, References16Filled, Save16, Sparkle16, Sparkle16Filled, Undo16 } from "./ui/icons";
 import { MusicView } from "./workspace/MusicView";
-import { Audio16 } from "./ui/icons";
+import { Audio16, Speaker14 } from "./ui/icons";
+import { notifyPreviewPlayback } from "../lib/mediaPlayback";
 import { ImageEditor } from "./workspace/ImageEditor";
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { GenerationJob, ProjectConfig, ProjectRecord } from "../lib/project";
@@ -123,8 +124,11 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
   // Legacy project types choose only the initial view; every project has both editors.
   const openingView = initialView === "agent" ? "timeline" : initialView ?? (config.generationType === "image" ? "editor" : "timeline");
   const [view, setShownView] = useState<ShownView>(openingView);
+  const [musicVisited, setMusicVisited] = useState(openingView === "music");
+  const [musicPlaying, setMusicPlaying] = useState(false);
   const [mediaMode, setMediaMode] = useState<"video" | "image">(() => openingView === "editor" || ((openingView === "references" || openingView === "export") && config.generationType === "image") ? "image" : "video");
   const setView = (next: ShownView) => {
+    if (next === "music") setMusicVisited(true);
     if (next === "editor") setMediaMode("image");
     else if (next === "generator" || next === "timeline") setMediaMode("video");
     setShownView(next);
@@ -277,7 +281,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
           controls: `${panelId}-view`,
           label: id === "generator" && running > 0
             ? <span className="project-views__label" data-tooltip={`${running} generation${running === 1 ? "" : "s"} running or queued`} data-tooltip-shortcut={shortcutOf(views.indexOf(id))}><span className="project-views__name" data-label={VIEW_LABELS[id]}>{VIEW_LABELS[id]}</span><InfoBadge value={running} severity="informational" /></span>
-            : <span className="project-views__label" data-tooltip={VIEW_LABELS[id]} data-tooltip-shortcut={shortcutOf(views.indexOf(id))}><span className="project-views__name" data-label={VIEW_LABELS[id]}>{VIEW_LABELS[id]}</span></span>,
+            : <span className="project-views__label" data-tooltip={id === "music" && musicPlaying ? "Music playing" : VIEW_LABELS[id]} data-tooltip-shortcut={shortcutOf(views.indexOf(id))}><span className="project-views__name" data-label={VIEW_LABELS[id]}>{VIEW_LABELS[id]}</span>{id === "music" && musicPlaying && <Speaker14 role="img" aria-label="Playing" className="project-views__playing" />}</span>,
           icon: viewIcon(id, id === view),
         }))}
       />
@@ -289,8 +293,12 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
 
     <ProjectStatusSlot.Provider value={statusSlot}>
     <div className={`project-body${agentOpen ? " project-body--agent" : ""}`} style={agentPane.style}>
-      <div id={`${panelId}-view`} role="tabpanel" aria-label={VIEW_LABELS[view]} className={`project-content project-content--${view}`}>
-        {view === "music" && <MusicView openSong={musicNavigation} onSongOpened={() => setMusicNavigation(undefined)} config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(id, template) => queue.enqueueMusic(session, id, template)} onCancel={(id) => void queue.cancel(id)} workItems={projectItems.filter((item) => item.kind === "music")} />}
+      <div id={`${panelId}-view`} role="tabpanel" aria-label={VIEW_LABELS[view]} className={`project-content project-content--${view}`} onPlayCapture={(event) => {
+        if (["timeline", "generator", "export"].includes(view) && event.target instanceof Element && !event.target.closest(".music-view")) notifyPreviewPlayback();
+      }}>
+        {musicVisited && <div hidden={view !== "music"} style={{ height: "100%", display: view === "music" ? "block" : "none" }}>
+          <MusicView active={view === "music"} onPlayingChange={setMusicPlaying} openSong={musicNavigation} onSongOpened={() => setMusicNavigation(undefined)} config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(id, template) => queue.enqueueMusic(session, id, template)} onCancel={(id) => void queue.cancel(id)} workItems={projectItems.filter((item) => item.kind === "music")} />
+        </div>}
         {view === "editor" && <ImageEditor openImage={imageNavigation} onImageOpened={() => setImageNavigation(undefined)} config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(template, count) => queue.enqueueImage(session, template, count)} onGenerateCharacterSheet={(template, sourceId, options) => queue.enqueueCharacterSheet(session, template, sourceId, options)} onGenerateExtend={(template, sourceId, options) => queue.enqueueExtendImage(session, template, sourceId, options)} onCancel={(id) => queue.cancel(id)} workItems={projectItems.filter((item) => item.kind === "image")} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} onOpenReferences={() => setView("references")} />}
         {view === "timeline" && <TimelineView config={config} openSceneId={selectedGenerationJobId} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
         {view === "generator" && <GeneratorView onGenerate={(submissions) => queue.enqueue(session, submissions)} onCancelGeneration={(ids) => queue.cancelScenes(session, ids)} cancellingJobIds={cancellingJobIds} config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.slopfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onSelectedJobChange={setSelectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}

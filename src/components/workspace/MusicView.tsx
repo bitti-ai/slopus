@@ -11,11 +11,13 @@ import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
 import type { ConfigUpdate } from "./TimelineView";
 import { GeneratorSelector } from "./GeneratorSelector";
 import { ProjectStatus } from "./ProjectStatus";
+import { PREVIEW_PLAYBACK_STARTED } from "../../lib/mediaPlayback";
 
 const time = (seconds: number) => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
 const SONG_DRAG_TYPE = "application/x-slopus-music-song";
 
-export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, workItems, openSong, onSongOpened }: {
+export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, workItems, openSong, onSongOpened, active = true, onPlayingChange }: {
+  active?: boolean; onPlayingChange?: (playing: boolean) => void;
   openSong?: { id: string }; onSongOpened?: () => void;
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate, key?: string) => void;
   onGenerate: (songId: string, template: GeneratorTemplate) => string | void; onCancel: (id: string) => void;
@@ -49,6 +51,7 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
   const [view, setView] = useState<"grid" | "list">(() => localStorage.getItem("slopus.music.view") === "list" ? "list" : "grid");
   const inspector = usePaneSize("music.inspector", 340, { min: 280, max: 560 });
   const menu = useContextMenu();
+  useEffect(() => { if (!active) menu.close(); }, [active, menu.close]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const activeWork = selected && workItems.find((item) => item.sceneId === selected.id && isWorkActive(item));
@@ -130,6 +133,24 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
   const [length, setLength] = useState(0);
   const [volume, setVolume] = useState(0.8);
   const playWhenReady = useRef(false);
+  const interrupted = useRef(false);
+  useEffect(() => { onPlayingChange?.(playing); }, [playing, onPlayingChange]);
+  useEffect(() => {
+    const media = audio.current;
+    const pause = () => {
+      interrupted.current = true;
+      playWhenReady.current = false;
+      media?.pause();
+      setPlaying(false);
+    };
+    window.addEventListener(PREVIEW_PLAYBACK_STARTED, pause);
+    return () => {
+      window.removeEventListener(PREVIEW_PLAYBACK_STARTED, pause);
+      interrupted.current = true;
+      playWhenReady.current = false;
+      media?.pause();
+    };
+  }, []);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const visiblePlayable = visibleSongs.flatMap((song) => {
     const asset = config.assets.find((item) => item.id === song.assetId && item.kind === "audio" && item.relativePath);
@@ -154,9 +175,10 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
   }, [folderPath, playerAsset?.id, playerAsset?.relativePath]);
   useEffect(() => { if (audio.current) audio.current.volume = volume; }, [volume, url]);
   const play = async () => {
-    try { await audio.current?.play(); } catch (reason) { setPlaybackError(`Could not play song: ${String(reason)}`); setPlaying(false); }
+    try { await audio.current?.play(); } catch (reason) { if (!interrupted.current) { setPlaybackError(`Could not play song: ${String(reason)}`); setPlaying(false); } }
   };
   const playAsset = (asset: ProjectAsset) => {
+    interrupted.current = false;
     setPlaybackError(null);
     if (asset.id === playerId && url) void play();
     else { playWhenReady.current = true; setPlayerId(asset.id); }
@@ -302,17 +324,17 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
         </div>
         <div className="music-player__volume"><Speaker14 /><Slider aria-label="Music volume" min={0} max={1} step={0.01} value={volume} onChange={setVolume} /></div>
         {playbackError && <p className="music-player__error" role="alert">{playbackError}</p>}
-        <audio ref={audio} src={url ?? undefined} preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+        <audio ref={audio} src={url ?? undefined} preload="metadata" onPlay={() => { if (interrupted.current) audio.current?.pause(); else setPlaying(true); }} onPause={() => setPlaying(false)}
           onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; setLength(Number.isFinite(duration) ? duration : 0); }}
           onCanPlay={() => { if (playWhenReady.current) { playWhenReady.current = false; void play(); } }}
-          onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)} onEnded={() => { setPlaying(false); const index = playable.findIndex(({ asset }) => asset.id === playerId); if (index >= 0 && index + 1 < playable.length) playAsset(playable[index + 1].asset); }}
+          onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)} onEnded={() => { setPlaying(false); if (interrupted.current) return; const index = playable.findIndex(({ asset }) => asset.id === playerId); if (index >= 0 && index + 1 < playable.length) playAsset(playable[index + 1].asset); }}
           onError={() => { if (url) { playWhenReady.current = false; setPlaying(false); setPlaybackError("This song could not be played."); } }} />
       </div>
     </div>
-    <ProjectStatus label="Music status">
+    {active && <ProjectStatus label="Music status">
       <span>{config.musicSongs?.length ?? 0} songs</span>
       {generatorStatus.state !== "ready" && <span className="generator-status__runtime">{generatorStatus.detail}</span>}
-    </ProjectStatus>
-    {menu.element}
+    </ProjectStatus>}
+    {active && menu.element}
   </div>;
 }

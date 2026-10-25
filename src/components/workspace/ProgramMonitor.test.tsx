@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDraftGenerationJob, createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectConfig, type TimelineClip } from "../../lib/project";
 import { ProgramMonitor } from "./ProgramMonitor";
 import { PreviewSources } from "../../lib/exportPipeline";
+import { PREVIEW_PLAYBACK_STARTED } from "../../lib/mediaPlayback";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 beforeEach(() => { vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined); });
@@ -53,6 +54,23 @@ const monitor = (config: ProjectConfig, playheadMs: number) => render(
 );
 
 describe("the program monitor", () => {
+  it("yields background music only when the Timeline/Export transport starts, including reverse", () => {
+    const started = vi.fn();
+    window.addEventListener(PREVIEW_PLAYBACK_STARTED, started);
+    const props = { config: project([clip()]), folderPath: "C:/Film", onSeek: vi.fn(), onPlayingChange: vi.fn() };
+    try {
+      const view = render(<ProgramMonitor {...props} playheadMs={2000} playing={false} />);
+      view.rerender(<ProgramMonitor {...props} playheadMs={2500} playing={false} />);
+      expect(started).not.toHaveBeenCalled();
+      view.rerender(<ProgramMonitor {...props} playheadMs={2500} playing />);
+      expect(started).toHaveBeenCalledTimes(1);
+      view.rerender(<ProgramMonitor {...props} playheadMs={3000} playing />);
+      expect(started).toHaveBeenCalledTimes(1);
+      view.rerender(<ProgramMonitor {...props} playheadMs={3000} playing={false} />);
+      view.rerender(<ProgramMonitor {...props} playheadMs={3000} playing rate={-1} />);
+      expect(started).toHaveBeenCalledTimes(2);
+    } finally { window.removeEventListener(PREVIEW_PLAYBACK_STARTED, started); }
+  });
   it.each([1, 2])("keeps the Long Shot video running across both bridge boundaries at %sx speed", async (playbackRate) => {
     const read = vi.spyOn(PreviewSources.prototype, "url").mockImplementation(async (asset) => `blob:${asset.id}`);
     const playingElements = new WeakSet<HTMLMediaElement>();
