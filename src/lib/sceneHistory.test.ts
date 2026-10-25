@@ -26,6 +26,13 @@ describe("scene generation history", () => {
     expect(config.generationJobs[0]).toMatchObject({ music: "Pending", steps: 8, seed: 20 });
     expect(config.generationJobs[0].generationHistory!.versions[0].scene.music).toBe("First");
   });
+  it("removes a draft when its edits are reverted to a saved take", () => {
+    let config = finish(edit(initial(), "First"), "one");
+    config = edit(config, "Pending");
+    expect(config.generationJobs[0].generationHistory!.draft).toBeTruthy();
+    config = edit(config, "First");
+    expect(config.generationJobs[0].generationHistory).toMatchObject({ selectedId: "one", draft: null });
+  });
   it("removes optional settings when restoring a take that never had them", () => {
     let config = finish(initial(), "one");
     config = { ...config, generationJobs: config.generationJobs.map(j => ({ ...j, audioSteps: 8, latentUpscale: true, backdropColor: "green" as const })) };

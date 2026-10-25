@@ -70,7 +70,7 @@ export class ProjectSession {
   private backgroundSeq = 0;
   constructor(readonly record: ProjectRecord, private writer: ProjectWriter) {
     this.savedConfig = record.config;
-    const config = saveSceneDrafts(saveImageDraft(record.config));
+    const config = saveImageDraft(record.config);
     const stamped = Date.parse(record.config.updatedAt);
     this.state = { config, dirty: config !== record.config, saving: false, saveError: null, canUndo: false, canRedo: false, savedAt: Number.isFinite(stamped) ? stamped : null };
     this.history.subscribe(() => {

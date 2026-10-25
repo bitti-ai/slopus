@@ -1,3 +1,4 @@
+import { duplicateScene, makeSceneGenerationPrimary, saveSceneDrafts, selectSceneGeneration } from "../../lib/sceneHistory";
 import { sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "../../lib/sceneGeneration";
 import { longShotBlocker, longShotDependencies, longShotPosition } from "../../lib/longShot";
 export { templateSceneBlocker } from "../../lib/sceneGeneration";
@@ -61,8 +62,10 @@ const readDensity = (): BoardDensity => {
  * one place to change any given thing. */
 export function GeneratorView({ config, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId, onSelectedJobChange, onRuntimeChange, onGenerate, onCancelGeneration, cancellingJobIds = new Set() }: GeneratorViewProps) {
   const jobs = config.generationJobs;
+  const [selection, setSelection] = useState<GeneratorSelection>(() => ({ jobId: selectedJobId ?? jobs.find((job) => job.status === "generating")?.id ?? jobs[0]?.id ?? "", shotId: null }));
   const [templateSettings, setTemplateSettings] = useState(loadGeneratorTemplateSettings);
-  const selectedTemplate = defaultGeneratorTemplate(templateSettings, "video");
+  const templateFor = (job?: GenerationJob) => templateSettings.templates.find(t => t.id === job?.generatorTemplateId) ?? defaultGeneratorTemplate(templateSettings, "video");
+  const selectedTemplate = templateFor(jobs.find(j => j.id === selection.jobId));
   const defaultGenerationSteps = selectedTemplate.defaultSteps;
   const [generatorRuntime, setGeneratorRuntime] = useState<SlopfabStatus | null>(runtime);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
@@ -76,7 +79,6 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   /* A scene is always what is named; the shot inside it is what a card opens.
      Opening the Generator, or arriving from a clip in the timeline, opens the
      SCENE — the thing that has a state, a prompt and a Generate button. */
-  const [selection, setSelection] = useState<GeneratorSelection>(() => ({ jobId: selectedJobId ?? jobs.find((job) => job.status === "generating")?.id ?? jobs[0]?.id ?? "", shotId: null }));
   const [density, setDensity] = useState<BoardDensity>(readDensity);
   const chooseDensity = (next: BoardDensity) => {
     setDensity(next);
@@ -109,12 +111,13 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
   }, []);
 
-  const chooseGeneratorTemplate = (templateId: string) => {
+  const chooseGeneratorTemplate = (templateId: string, updates: Partial<GenerationJob> = {}) => {
     const template = templateSettings.templates.find((candidate) => candidate.id === templateId);
-    if (!template || !(templateSupportsVideo(template) && templateUsable(template)) || template.id === templateSettings.defaultTemplateId) return;
+    if (!template || !(templateSupportsVideo(template) && templateUsable(template))) return;
     const next = { ...templateSettings, defaultTemplateId: template.id };
     saveGeneratorTemplateSettings(next);
     setTemplateSettings(next);
+    updateJob(selection.jobId, { ...updates, generatorTemplateId: template.id });
   };
 
   useEffect(() => {
@@ -164,7 +167,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const updateJob = (id: string, updates: Partial<GenerationJob>) => {
     const current = configRef.current;
     // Typing in one scene's fields (or dragging its length) is one undo step.
-    onChange({ ...current, generationJobs: current.generationJobs.map((job) => job.id === id ? { ...job, ...updates } : job) }, `scene:${id}`);
+    onChange(saveSceneDrafts({ ...current, generationJobs: current.generationJobs.map((job) => job.id === id ? { ...job, ...updates } : job) }, current), `scene:${id}`);
   };
 
   // Keep saved bindings in sync with all shots, including chip replacement,
@@ -187,14 +190,14 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     updateJob(job.id, mergeSceneUpdates(job, updates));
 
   const changeSceneSettings = (job: GenerationJob, updates: Partial<GenerationJob>) => {
-    updateScene(job, updates);
     if (updates.sceneType && templateSceneBlocker(updates.sceneType, selectedTemplate)) {
       const candidates = templateSettings.templates.filter((template) => (templateSupportsVideo(template) && templateUsable(template))
         && !templateSceneBlocker(updates.sceneType!, template));
       const compatible = (updates.sceneType === "character-replace" || updates.sceneType === "pose" || isVideoTransition(updates)
         ? candidates.find((template) => /ref2v/i.test(template.paths.transformer)) : undefined) ?? candidates[0];
-      if (compatible) chooseGeneratorTemplate(compatible.id);
+      if (compatible) { chooseGeneratorTemplate(compatible.id, mergeSceneUpdates(job, updates)); return; }
     }
+    updateScene(job, updates);
   };
 
   const addFrame = async (job: GenerationJob, edge: "start" | "end") => {
@@ -325,7 +328,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   };
 
   const requestFor = (job: GenerationJob): SlopfabGenerationRequest =>
-    sceneGenerationRequest(job, configRef.current, folderPath, defaultGenerationSteps, selectedTemplate);
+    sceneGenerationRequest(job, configRef.current, folderPath, templateFor(job).defaultSteps, templateFor(job));
 
   const snapshotFor = (job: GenerationJob, request = requestFor(job)): string =>
     sceneGenerationSnapshot(job, request);
@@ -339,7 +342,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     if (!runtimeReady) return;
     const submissions = scenes.map((job) => {
       const request = requestFor(job);
-      return { job, request, snapshot: snapshotFor(job, request) };
+      return { job, request, snapshot: snapshotFor(job, request), template: templateFor(job) };
     });
     try { onGenerate?.(submissions); }
     catch (reason) { setRuntimeError(reason instanceof Error ? reason.message : String(reason)); }
@@ -406,7 +409,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const visited = new Set<string>();
   const visiting = new Set<string>();
   const visitForBatch = (job: GenerationJob): boolean => {
-    if (continuationBlocker(job, jobs) || longShotBlocker(job, config, false) || templateSceneBlocker(sceneTypeFor(job), selectedTemplate) || sendBlocker(job, config.references)) return false;
+    if (job.generatorTemplateId && !templateSettings.templates.some(t => t.id === job.generatorTemplateId) || !templateUsable(templateFor(job))) return false;
+    if (continuationBlocker(job, jobs) || longShotBlocker(job, config, false) || templateSceneBlocker(sceneTypeFor(job), templateFor(job)) || sendBlocker(job, config.references)) return false;
     if (visited.has(job.id)) return true;
     if (visiting.has(job.id)) return false;
     if (["queued", "generating", "ready"].includes(job.status)) { visited.add(job.id); return true; }
@@ -431,13 +435,15 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const generateAll = () => submit(batchScenesReady);
 
   const generationBlocker = (job: GenerationJob): string | null => {
+    if (job.generatorTemplateId && !templateSettings.templates.some(t => t.id === job.generatorTemplateId)) return "The saved generator is no longer available. Choose another generator.";
+    if (!templateUsable(templateFor(job))) return "Prepare this scene's generator weights before generating.";
     if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";
     if (job.status === "ready") return "Saving this scene.";
     const source = jobs.find((candidate) => candidate.id === continuationSceneId(job, jobs));
     return continuationBlocker(job, jobs)
       ?? longShotBlocker(job, config)
       ?? (source && (!source.latentRelativePath || source.status !== "completed") ? "Generate the selected source scene first, or use Generate all." : null)
-      ?? templateSceneBlocker(sceneTypeFor(job), selectedTemplate) ?? sendBlocker(job, config.references);
+      ?? templateSceneBlocker(sceneTypeFor(job), templateFor(job)) ?? sendBlocker(job, config.references);
   };
 
   const changedJobIds = new Set(jobs
@@ -446,7 +452,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       && (job.generationSnapshot !== snapshotFor(job)
         || jobs.some((source) => (source.id === continuationSceneId(job, jobs) || longShotDependencies(job, jobs).includes(source)) && ["queued", "generating", "ready"].includes(source.status))))
     .map((job) => job.id));
-  const selectedIndicator = selected && changedJobIds.has(selected.id) ? "changed" : selected?.status;
+  const selectedIndicator = selected && changedJobIds.has(selected.id) && !selected.generationHistory?.selectedId ? "changed" : selected?.status;
   const selectedCancellable = selected?.status === "queued" || selected?.status === "generating";
   const selectedCancelling = Boolean(selected && cancellingJobIds.has(selected.id));
   const selectedBlocker = selected && !selectedCancellable ? generationBlocker(selected) : null;
@@ -555,6 +561,18 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             onMoveScene={moveScene}
             onMoveShot={moveShot}
             onRename={rename}
+            onHistorySelect={(job, versionId) => {
+              onChange(selectSceneGeneration(configRef.current, job.id, versionId));
+              setSelection({ jobId: job.id, shotId: null });
+            }}
+            onMakePrimary={(job, versionId) => {
+              onChange(makeSceneGenerationPrimary(configRef.current, job.id, versionId));
+              void purgeSceneThumbnails(job);
+            }}
+            onDuplicate={(job) => {
+              const duplicated = duplicateScene(configRef.current, job.id);
+              if (duplicated) { onChange(duplicated.config); setSelection({ jobId: duplicated.id, shotId: null }); }
+            }}
             onRemoveScene={(job) => void confirmRemoveScene(job)}
             onRemoveShot={(job, shotId) => void confirmRemoveShot(job, shotId)}
           />

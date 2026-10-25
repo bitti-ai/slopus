@@ -224,6 +224,7 @@ export class WorkQueue {
     for (const submission of submissions) {
       if (this.items.some((item) => item.projectKey === projectKey && item.sceneId === submission.job.id && isWorkActive(item))) continue;
       const chosen = template ?? submission.template ?? loadGeneratorTemplateSettings().templates.find(t => t.id === submission.job.generatorTemplateId) ?? defaultGeneratorTemplate(undefined, "video");
+      if (!templateSupportsVideo(chosen)) throw new Error("Choose a generator that supports video generation.");
       const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
         slopfab: engineProviderSetting(chosen.paths, current.providerSettings.slopfab, chosen.attention, chosen.loras ?? [], chosen.mode ?? "prompt", chosen.additionalSafetensors ?? [], chosen.motionCache ?? false, chosen.sources ?? {}, chosen),
       } });

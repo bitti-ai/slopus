@@ -28,7 +28,7 @@ Slopus brings an AI assistant, a scene generator, reusable references, a timelin
 
 - **One workspace.** Every project has **Timeline**, **Video**, **Image**, **References** and **Export** tabs.
 - **Agent.** Plan scenes, create references and edit projects with Claude Code, Codex, OpenRouter or a local OpenAI-compatible model. Open the agent pane with Ctrl+Shift+A.
-- **Scene generator.** Generate scenes with First & last frame, Animate, Pose, Character replace, Extend or Bridge. Set steps, seeds and presets; manage jobs in the **Work queue**.
+- **Scene generator.** Generate scenes with First & last frame, Animate, Pose, Character replace, Extend or Bridge. Set steps, seeds and presets; manage jobs in the **Work queue**. Each scene keeps four takes and an editable Draft in its history strip. Select a take to restore its scene settings, use **Make Primary** to choose its timeline video, or **Duplicate** the scene.
 - **Shot controls.** Set timing, action, dialogue, language, camera and performance. Add scene-wide look, sound and music, and cite references with smart chips.
 - **References.** Reuse descriptions, images and video clips across scenes. Start from searchable presets, see where references are used, and trim clips with optional sound.
 - **RefMods.** Use pre-encoded H3 `.safetensors` references with Ref2VA generators for video, images, edits and icons. Set **Strength** and **Copies** per attachment.

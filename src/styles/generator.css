@@ -947,3 +947,17 @@
   .scene-rule__caption,
   .scene-rule__badge { display: none; }
 }
+
+
+/* Scene histories use a normal column, never a nested scrolling surface. The
+   retention policy is in sceneHistory.ts; the layout accepts more takes. */
+.scene-section__content { display: grid; grid-template-columns: minmax(0, 1fr) 88px; align-items: start; gap: var(--space-2); }
+.scene-section__content > .shot-grid { min-width: 0; grid-template-columns: repeat(auto-fill, minmax(0, min(var(--shot-tile-width), 100%))); }
+.scene-board--list .scene-section__content > .shot-grid { grid-template-columns: minmax(0, 1fr); }
+.scene-history { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-2) var(--space-3) 0; }
+.scene-history__take { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-1); min-width: 0; padding: 3px; border: 1px solid var(--stroke-divider); border-radius: var(--radius-sm); color: var(--text-secondary); background: var(--surface-pane); font-size: var(--text-xs); }
+.scene-history__take:hover:not(:disabled) { background: var(--fill-subtle-hover); }
+.scene-history__take[aria-pressed="true"] { border-color: var(--accent); color: var(--text-primary); background: var(--accent-soft); }
+.scene-history__picture { display: grid; place-items: center; width: 100%; aspect-ratio: 16 / 9; background: var(--stage-bg); border-radius: var(--radius-sm); overflow: hidden; }
+.scene-history__picture img { width: 100%; height: 100%; object-fit: contain; }
+.scene-history__draft .scene-history__picture { background: var(--fill-subtle-hover); }

@@ -22,7 +22,7 @@ export function sceneHistory(job: GenerationJob, assets: readonly ProjectAsset[]
   if (!job.outputRelativePath) return { versions: [], primaryId: null, selectedId: null, draft: sceneInput(job) };
   const media = assets.find(a => a.id === generationAssetId(job.id) || a.kind === "generated" && a.relativePath === job.outputRelativePath);
   const version: SceneGenerationVersion = { id: `legacy-${job.id}`, createdAt: job.updatedAt, scene: sceneInput(job),
-    media: { ...media, id: generationAssetId(job.id), name: job.title, kind: "generated", mimeType: "video/mp4", relativePath: job.outputRelativePath, createdAt: media?.createdAt ?? job.createdAt },
+    media: { ...media, id: generationAssetId(job.id), name: job.title, kind: "generated", mimeType: "video/mp4", sourcePath: null, relativePath: job.outputRelativePath, createdAt: media?.createdAt ?? job.createdAt },
     generationSnapshot: job.generationSnapshot, latentRelativePath: job.latentRelativePath };
   return { versions: [version], primaryId: version.id, selectedId: version.id, draft: null };
 }
@@ -40,7 +40,11 @@ export function saveSceneDrafts(config: ProjectConfig, previous?: ProjectConfig)
     const selectedId = history.selectedId;
     const selected = history.versions.find(v => v.id === selectedId);
     if (selected && !sameSceneInput(input, selected.scene)) history = { ...history, selectedId: null, draft: input };
-    else if (!selected && (!history.draft || !sameSceneInput(input, history.draft))) history = { ...history, selectedId: null, draft: input };
+    else if (!selected) {
+      const matching = history.versions.find(v => sameSceneInput(input, v.scene));
+      if (matching) history = { ...history, selectedId: matching.id, draft: null };
+      else if (!history.draft || !sameSceneInput(input, history.draft)) history = { ...history, selectedId: null, draft: input };
+    }
     if (history === job.generationHistory) return job;
     changed = true; return { ...job, generationHistory: history };
   });

@@ -348,7 +348,7 @@ describe("project workspace timecode", () => {
     // shot the user has no way to tell apart.
     expect(screen.getByRole("heading", { name: "First scene" })).not.toBeNull();
     expect(screen.queryByRole("heading", { name: "New scene draft" })).toBeNull();
-    expect(screen.queryByText("Draft")).toBeNull();
+    expect(screen.getByRole("button", { name: "Draft of First scene" })).toBeInTheDocument();
   });
 
   it("leaves the monitor empty rather than explaining the emptiness", () => {

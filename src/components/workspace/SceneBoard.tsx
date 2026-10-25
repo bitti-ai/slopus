@@ -1,4 +1,6 @@
-import { Add16, ArrowDown16, ArrowUp16, ChevronDown12, ChevronRight12, Delete16, Grip16, MoveTo16, OpenExternal16, Rename16, Stop14, Stop16, Wand16 } from "../ui/icons";
+import { SceneHistoryBar } from "./SceneHistoryBar";
+import { scenePreviewJob, scenePreviewAsset } from "../../lib/sceneHistory";
+import { Copy16, Add16, ArrowDown16, ArrowUp16, ChevronDown12, ChevronRight12, Delete16, Grip16, MoveTo16, OpenExternal16, Rename16, Stop14, Stop16, Wand16 } from "../ui/icons";
 import { useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
   SCENE_MAX_SECONDS,
@@ -17,7 +19,7 @@ import { statusIcon, STATUS_BADGE } from "./sceneStatus";
 import { ShotThumbnail } from "./ShotThumbnail";
 import { sceneMediaStartSeconds } from "../../lib/continuationMedia";
 import { longShotPlaybackSource } from "../../lib/longShot";
-import { generationAssetId, type ProjectAsset } from "../../lib/project";
+import { type ProjectAsset } from "../../lib/project";
 
 export interface GeneratorSelection {
   jobId: string;
@@ -82,7 +84,7 @@ export function SceneBoard({
   onMoveShot,
   onRename,
   onRemoveScene,
-  onRemoveShot,
+  onRemoveShot, onHistorySelect, onMakePrimary, onDuplicate,
 }: {
   jobs: GenerationJob[];
   assets?: ProjectAsset[];
@@ -104,6 +106,9 @@ export function SceneBoard({
   onRename?: (selection: GeneratorSelection) => void;
   onRemoveScene?: (job: GenerationJob) => void;
   onRemoveShot?: (job: GenerationJob, shotId: string) => void;
+  onHistorySelect?: (job: GenerationJob, id: string | null) => void;
+  onMakePrimary?: (job: GenerationJob, id: string) => void;
+  onDuplicate?: (job: GenerationJob) => void;
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [dragging, setDragging] = useState<Dragging | null>(null);
@@ -141,6 +146,7 @@ export function SceneBoard({
         ? { id: "cancel", label: "Cancel generation", icon: <Stop16 />, onSelect: () => onGenerate(job) }
         : { id: "generate", label: "Generate", icon: <Wand16 />, disabled: Boolean(blocker), onSelect: () => onGenerate(job) },
       { id: "rename", label: "Rename", icon: <Rename16 />, shortcut: "F2", disabled: !onRename, onSelect: () => onRename?.({ jobId: job.id, shotId: null }) },
+      { id: "duplicate", label: "Duplicate", icon: <Copy16 />, disabled: !onDuplicate, onSelect: () => onDuplicate?.(job) },
       { id: "add-shot", label: "Add shot", icon: <Add16 />, onSelect: () => onAddShot(job) },
       { separator: true },
       { id: "up", label: "Move up", icon: <ArrowUp16 />, disabled: jobIndex === 0, onSelect: () => onMoveScene(job.id, jobs[jobIndex - 1]?.id ?? null) },
@@ -214,11 +220,14 @@ export function SceneBoard({
     {jobs.map((job, jobIndex) => {
       const shots = sceneShots(job);
       const duration = sceneDurationSeconds(job);
+      const preview = scenePreviewJob(job, assets);
+      const previewAsset = scenePreviewAsset(job, assets);
+      const joined = job.generationHistory?.selectedId ? null : longShotPlaybackSource(job, { assets, generationJobs: jobs });
       const order = referenceOrder(job, shots, references);
       const sceneOpen = selection.jobId === job.id && selection.shotId === null;
       const cancellable = job.status === "queued" || job.status === "generating";
       const blocker = generationBlocker(job);
-      const indicator = changedJobIds.has(job.id) ? "changed" : job.status;
+      const indicator = changedJobIds.has(job.id) && !job.generationHistory?.selectedId ? "changed" : job.status;
       const isCollapsed = collapsed.has(job.id);
       const rovingShot = shots.find((shot) => selection.jobId === job.id && shot.id === selection.shotId)?.id ?? shots[0]?.id;
       const sceneDrop = dropTarget?.kind === "scene" ? dropTarget.beforeJobId : undefined;
@@ -392,7 +401,7 @@ export function SceneBoard({
           >{cancellable ? <Stop14 /> : <Wand16 />}</HeaderButton>
         </header>
 
-        {!isCollapsed && <ol
+        {!isCollapsed && <div className="scene-section__content"><ol
           className={`shot-grid${shotDrop?.beforeShotId === null ? " shot-grid--drop-end" : ""}`}
           aria-label={`Shots in ${job.title}`}
           onKeyDown={(event) => gridKeys(event, job)}
@@ -400,7 +409,6 @@ export function SceneBoard({
           onDrop={(event) => dropShot(event, null)}
         >
           {shots.map((shot, index) => {
-            const joined = longShotPlaybackSource(job, { assets, generationJobs: jobs });
             const isSource = dragging?.kind === "shot" && dragging.shotId === shot.id;
             return <li
               key={shot.id}
@@ -425,8 +433,8 @@ export function SceneBoard({
               }}
             >
               <ShotCard
-                sourceOffsetSeconds={joined ? joined.segment.startFrame / 24 : sceneMediaStartSeconds(assets.find((asset) => asset.id === generationAssetId(job.id)))}
-                job={joined ? { ...job, outputRelativePath: joined.source.relativePath } : job}
+                sourceOffsetSeconds={joined ? joined.segment.startFrame / 24 : sceneMediaStartSeconds(previewAsset)}
+                job={joined ? { ...job, outputRelativePath: joined.source.relativePath } : preview}
                 shot={shot}
                 index={index}
                 endsAt={index + 1 < shots.length ? shots[index + 1].startSeconds : duration}
@@ -458,7 +466,9 @@ export function SceneBoard({
               />
             </li>;
           })}
-        </ol>}
+        </ol>
+        <SceneHistoryBar job={job} assets={assets} folderPath={folderPath} onSelect={onHistorySelect} onMakePrimary={onMakePrimary} />
+        </div>}
       </section>;
     })}
     {menu.element}

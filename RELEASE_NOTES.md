@@ -4,6 +4,8 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## What's new
 
+- **Scene generation history.** Each Video scene has a thumbnail strip on its right with up to four completed takes and a separate Draft for edits. Select a take to restore its shots, prompts and scene settings, or right-click and choose Make Primary to use its video on the timeline. Duplicate creates a new scene with independent copies of the selected scene's settings and shots.
+
 - **Motions.** Create an empty Motion on the timeline and ask the agent to animate it with JavaScript. Edit named elements in the preview, adjust exposed parameters and view or change the full source in the inspector. Motions support transparent layering, scrubbing and video export. Render a Motion as a reference video to add it to References for MiniMax generation.
 
 - **Fibo 2.0 Base and editing capabilities.** Added the Base generator with the Dev transformer and shared Fibo encoder/VAE. A per-template Editing model switch controls image editing and Zoom, defaults off for Base and MOSS, and is preserved when sharing templates. Fibo Edit Turbo now supports Zoom with masked border generation that preserves the source image.

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { completeSceneGeneration, sceneInput } from "../../lib/sceneHistory";
 
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -861,8 +862,8 @@ describe("Generator scene controls", () => {
 
   it("selects a scene from its header and keeps confirmed removal in the inspector", async () => {
     const state = setup();
-    expect(screen.queryByText("Draft")).not.toBeInTheDocument();
-    expect(screen.queryByText(/^Draft/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Draft of First scene" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Draft of Second scene" })).toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("slider", { name: "First scene length in seconds" }), { target: { value: "10" } });
     expect(state.latest().generationJobs[0].durationSeconds).toBe(10);
@@ -1249,4 +1250,43 @@ it("shows template shifts and locks active LoRA overrides without replacing save
   fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
   expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!)).toMatchObject({ videoSigmaShift: 6, audioSigmaShift: 3.5 });
   expect(state.latest().generationJobs[0].videoSigmaShift).toBe(8);
+});
+
+
+it("restores older takes and drafts, makes a take primary, and duplicates a scene", () => {
+  let config = project();
+  const id = config.generationJobs[0].id;
+  const saveTake = (takeId: string) => {
+    const job = config.generationJobs[0];
+    config = completeSceneGeneration(config, id, { id: takeId, scene: sceneInput(job), createdAt: config.createdAt,
+      media: { id: `asset-${id}`, kind: "generated", name: job.title, mimeType: "video/mp4", relativePath: `media/${takeId}.mp4`, createdAt: config.createdAt } });
+  };
+  config.generationJobs[0].music = "First music"; config.generationJobs[0].steps = 4; saveTake("one");
+  config = { ...config, generationJobs: config.generationJobs.map((job, i) => i ? job : { ...job, music: "Second music", steps: 8 }) }; saveTake("two");
+  const state = setup(config);
+  fireEvent.change(screen.getByLabelText("The music of this scene"), { target: { value: "Draft music" } });
+  fireEvent.click(screen.getByRole("button", { name: "Generation 1 of First scene" }));
+  expect(state.latest().generationJobs[0]).toMatchObject({ music: "First music", steps: 4, outputRelativePath: "media/two.mp4" });
+  fireEvent.click(screen.getByRole("button", { name: "Draft of First scene" }));
+  expect(state.latest().generationJobs[0].music).toBe("Draft music");
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Generation 1 of First scene" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Make Primary" }));
+  expect(state.latest().generationJobs[0].outputRelativePath).toBe("media/one.mp4");
+  expect(state.latest().generationJobs[0].music).toBe("Draft music");
+  fireEvent.contextMenu(screen.getByRole("region", { name: "First scene" }).querySelector(".scene-rule")!);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate" }));
+  const copy = state.latest().generationJobs[1];
+  expect(copy).toMatchObject({ title: "First scene copy", music: "Draft music", steps: 8, status: "draft" });
+  expect(copy.generationHistory).toBeUndefined(); expect(copy.outputRelativePath).toBeFalsy();
+});
+
+
+it("keeps scene-type changes when automatically choosing a compatible generator", async () => {
+  vi.mocked(getEngineStatus).mockResolvedValue(readyRuntime);
+  const prompt = { ...minimaxOriginalTemplate(), id: "prompt-template", name: "Prompt template", sources: {}, paths: { transformer: "prompt-transformer", textEncoder: "text", videoVae: "vae", audioVae: "audio", tokenizer: "tokens" } };
+  const animate = { ...viggleAnimateTemplate(), id: "animate-template", name: "Animate template", sources: {}, loras: [], additionalSafetensors: [], paths: { transformer: "animate-transformer", textEncoder: "text", videoVae: "vae", audioVae: "audio", tokenizer: "tokens" } };
+  saveGeneratorTemplateSettings({ templates: [prompt, animate], defaultTemplateId: prompt.id, catalogVersion: 10 });
+  const state = setup();
+  choose("Scene type", "Animate");
+  await waitFor(() => expect(state.latest().generationJobs[0]).toMatchObject({ sceneType: "animate", generatorTemplateId: "animate-template" }));
 });
