@@ -853,7 +853,7 @@
 
 .slider-number {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 64px 32px;
+  grid-template-columns: minmax(0, 1fr) 32px 64px;
   align-items: center;
   gap: var(--space-1);
   flex: 1;
@@ -866,6 +866,8 @@
 }
 
 .ui-prop-row__value .slider-number > .slider-number__input.text-field {
+  grid-column: 3;
+  grid-row: 1;
   width: 100%;
   min-width: 0;
   height: var(--control-sm);
@@ -875,6 +877,9 @@
 }
 
 .slider-number__unit {
+  grid-column: 2;
+  grid-row: 1;
+  text-align: center;
   color: var(--text-secondary);
   font-size: var(--text-xs);
 }

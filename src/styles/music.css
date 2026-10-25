@@ -35,7 +35,7 @@
 .music-inspector { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface-pane); }
 .music-inspector__fields { overflow-y: auto; min-height: 0; flex: 1; }
 .music-prompt { display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); margin-top: var(--space-2); }
-.music-prompt textarea { width: 100%; resize: vertical; }
+.music-prompt textarea { width: 100%; height: auto; padding: var(--space-2); line-height: var(--leading-normal); resize: vertical; }
 .music-inspector__actions { display: grid; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--line); }
 .music-inspector__actions p, .music-inspector__empty { color: var(--text-secondary); font-size: var(--text-xs); }
 .music-inspector__empty { padding: var(--space-3); }
