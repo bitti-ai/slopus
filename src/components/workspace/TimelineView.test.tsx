@@ -985,3 +985,17 @@ describe("measuring media", () => {
     expect(folded.assets.map((asset) => [asset.name, asset.durationMs])).toEqual([["Macro footage", 40_000], ["Room tone", 40_000]]);
   }, 20_000);
 });
+
+
+it("creates an empty inline Motion and places it on an unlocked video track", () => {
+  const config = projectWithMedia();
+  const { onChange } = render_(config);
+  fireEvent.click(screen.getByRole("button", { name: "Add Motion" }));
+  const update = onChange.mock.calls.at(-1)![0];
+  const next = typeof update === "function" ? update(config) : update;
+  const motion = next.assets.find((asset: ProjectAsset) => asset.kind === "motion")!;
+  expect(motion.motion.nodes).toEqual([]);
+  expect(motion.motion.source).toContain("export function update");
+  expect(motion.relativePath).toBeUndefined();
+  expect(next.timeline.tracks.flatMap((track: ProjectConfig["timeline"]["tracks"][number]) => track.clips).some((clip: TimelineClip) => clip.assetId === motion.id)).toBe(true);
+});

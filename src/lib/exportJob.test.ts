@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { createProjectConfig } from "./project";
 import { defaultExportSettings, buildExportPlan } from "./export";
 import { runExport, writeExportFile, type ExportProgress, type ExportResult } from "./exportPipeline";
-import { cancelExportJob, clearFinishedExports, getExportJobs, resetExportJobForTests, startExportJob, startImageExportJob } from "./exportJob";
+import { cancelExportJob, clearFinishedExports, getExportJobs, resetExportJobForTests, startExportJob, startImageExportJob, startMotionReferenceJob } from "./exportJob";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -70,4 +70,26 @@ it("follows image progress outside its view and cancels the native export", asyn
   cancelExportJob(id); await done;
   expect(invoke).toHaveBeenCalledWith("cancel_image_export", { jobId: id });
   expect(getExportJobs()[0]).toMatchObject({ status: "cancelled", cancelling: false });
+});
+
+
+it("saves rendered Motion bytes into the project and returns its reference path", async () => {
+  vi.mocked(runExport).mockResolvedValue(result);
+  vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/motion.mp4", bytes: 42 });
+  const saved = await startMotionReferenceJob(video());
+  expect(saved).toEqual({ relativePath: "media/generated/motion.mp4", bytes: 42 });
+  expect(invoke).toHaveBeenCalledWith("write_generated_video", result.bytes, { headers: {
+    "x-generated-folder": "D%3A%2FMovie", "x-generated-job": expect.stringMatching(/^motion-/),
+  } });
+  expect(getExportJobs()[0]).toMatchObject({ status: "completed", outcome: { kind: "saved", path: "D:/Movie/media/generated/motion.mp4" } });
+});
+
+it("does not save a Motion reference if encoding is cancelled", async () => {
+  let finish!: (result: ExportResult) => void;
+  vi.mocked(runExport).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  const done = startMotionReferenceJob(video());
+  cancelExportJob(); finish(result);
+  expect(await done).toBeNull();
+  expect(invoke).not.toHaveBeenCalled();
+  expect(getExportJobs()[0].status).toBe("cancelled");
 });

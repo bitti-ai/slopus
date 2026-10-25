@@ -4,6 +4,8 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## What's new
 
+- **Motions.** Create an empty Motion on the timeline and ask the agent to animate it with JavaScript. Edit named elements in the preview, adjust exposed parameters and view or change the full source in the inspector. Motions support transparent layering, scrubbing and video export. Render a Motion as a reference video to add it to References for MiniMax generation.
+
 - **Fibo 2.0 Base and editing capabilities.** Added the Base generator with the Dev transformer and shared Fibo encoder/VAE. A per-template Editing model switch controls image editing and Zoom, defaults off for Base and MOSS, and is preserved when sharing templates. Fibo Edit Turbo now supports Zoom with masked border generation that preserves the source image.
 
 - **Image negative prompts.** MOSS exposes a Negative prompt field below the image root prompt, saved per model with drafts and generated images and applied during local or LAN generation. Fibo Turbo shows the field disabled because its single positive prediction does not support negative prompts. Visibility and support are controlled by model settings. Update LAN workers to protocol 17.

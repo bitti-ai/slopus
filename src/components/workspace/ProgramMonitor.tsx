@@ -1,9 +1,11 @@
+import { MotionHandles } from "./MotionHandles";
+import type { Motion, MotionNode } from "../../lib/motion";
 import { clipPlaybackRate, clipSourceTimeMs } from "../../lib/clipTiming";
 import { ProgramLayer } from "./ProgramLayer";
 import { ProgramPicture } from "./ProgramPicture";
 import { Film16 } from "../ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { clipFrameStyle, clipVisualSettings, outputDimensions } from "../../lib/export";
+import { clipFrameStyle, clipVisualSettings, outputDimensions, fitRect } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import type { ClipTransform, ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
 import { clipEndMs } from "../../lib/timeline";
@@ -49,7 +51,10 @@ const clamp = (value: number, minimum: number, maximum: number) => Math.max(mini
 const angleAt = (x: number, y: number, centerX: number, centerY: number) => Math.atan2(y - centerY, x - centerX) * 180 / Math.PI;
 const normalizedAngle = (value: number) => ((value + 180) % 360 + 360) % 360 - 180;
 
-export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate = 1, onSeek, onPlayingChange, selectedClipId = null, transformEditingDisabled = false, onSelectClip, onTransformChange }: {
+export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate = 1, onSeek, onPlayingChange, selectedClipId = null, transformEditingDisabled = false, onSelectClip, onTransformChange, selectedMotionNodeId, onSelectMotionNode, onMotionChange }: {
+  selectedMotionNodeId?: string | null;
+  onSelectMotionNode?: (id: string) => void;
+  onMotionChange?: (motion: Motion) => void;
   config: ProjectConfig;
   folderPath: string;
   playheadMs: number;
@@ -70,6 +75,10 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
   onSelectClip?: (clipId: string) => void;
   onTransformChange?: (clipId: string, transform: ClipTransform) => void;
 }) {
+  const [motionFrame, setMotionFrame] = useState<{ id: string; nodes: MotionNode[] } | null>(null);
+  const receiveMotionFrame = useCallback((id: string, nodes: MotionNode[]) => {
+    if (id === selectedClipId && !playing) setMotionFrame({ id, nodes });
+  }, [selectedClipId, playing]);
   const tracks = useMemo(() => continuationPlaybackTracks(config), [config.timeline.tracks, config.assets, config.generationJobs]);
   const assetsById = useMemo(() => new Map(config.assets.map((candidate) => [candidate.id, candidate])), [config.assets]);
   const segments = useMemo(() => previewSegments(tracks, assetsById), [tracks, assetsById]);
@@ -138,7 +147,19 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
   const sources = useMemo(() => new PreviewSources(folderPath), [folderPath]);
   const media = useMemo(() => new PreviewMedia(), [folderPath]);
   const [composited, setComposited] = useState(false);
+  const [pictureSize, setPictureSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const element = pictureRef.current;
+    if (!element || !asset?.motion) return;
+    const measure = () => setPictureSize({ width: element.clientWidth, height: element.clientHeight });
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure); observer.observe(element);
+    return () => observer.disconnect();
+  }, [Boolean(asset?.motion)]);
   const dimensions = outputDimensions(config.settings.resolution, config.settings.aspectRatio);
+  const projectFit = fitRect(dimensions.width, dimensions.height, pictureSize.width || dimensions.width, pictureSize.height || dimensions.height);
+  const motionFit = asset?.motion ? fitRect(asset.motion.width, asset.motion.height, projectFit.width, projectFit.height) : projectFit;
   const previewScale = Math.min(1, 1280 / Math.max(dimensions.width, dimensions.height));
   useEffect(() => () => sources.dispose(), [sources]);
 
@@ -319,7 +340,7 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
   else if (asset?.kind === "generated" && !asset.relativePath && !asset.sourcePath) {
     overlay = <div className="program-note"><Film16 /><span>{clip.label} isn’t generated yet</span></div>;
   }
-  else if (!isTauri()) {
+  else if (!isTauri() && !asset?.motion) {
     overlay = <div className="program-note"><Film16 /><span>Playback needs the desktop app</span></div>;
   }
 
@@ -351,6 +372,7 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
         sources={sources}
         media={media}
         composited={composited}
+        onMotionFrame={receiveMotionFrame}
         playheadMs={depth >= 0 ? playheadMs : prepareAtMs}
         playing={mediaPlaying}
         rate={rate}
@@ -361,7 +383,13 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
         depth={depth >= 0 ? layers.length - depth : 0}
       />;
     })}</div>
-    {clip && frameStyle && editingClipId === clip.id && onTransformChange && !transformEditingDisabled && <div
+    {clip && asset?.motion && selectedClipId === clip.id && onMotionChange && onSelectMotionNode && !playing && !transformEditingDisabled && frameStyle && <div className="motion-edit-surface"
+      style={{ width: motionFit.width, height: motionFit.height,
+        transform: `translate(${frameStyle.transform.positionX / 100 * projectFit.width}px, ${frameStyle.transform.positionY / 100 * projectFit.height}px) scale(${frameStyle.transform.scale / 100}) rotate(${frameStyle.transform.rotation}deg)` }}>
+      <MotionHandles motion={asset.motion} nodes={motionFrame?.id === clip.id ? motionFrame.nodes : []} selectedId={selectedMotionNodeId ?? null}
+        onSelect={onSelectMotionNode} onChange={onMotionChange} />
+    </div>}
+    {clip && !asset?.motion && frameStyle && editingClipId === clip.id && onTransformChange && !transformEditingDisabled && <div
       className="program-transform"
       style={{ transform: `translate(${frameStyle.transform.positionX}%, ${frameStyle.transform.positionY}%) scale(${frameStyle.transform.scale / 100}) rotate(${frameStyle.transform.rotation}deg)` }}
       role="group"

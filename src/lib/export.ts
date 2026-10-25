@@ -481,7 +481,7 @@ export function visibleClipsAt(
     if (best) {
       visible.push(best);
       const transition = clipTransition(best);
-      const revealing = Boolean(clipChromaKey(best)) || clipLook(best).opacity < 100 ||
+      const revealing = Boolean(assetsById?.get(best.assetId)?.motion) || Boolean(clipChromaKey(best)) || clipLook(best).opacity < 100 ||
         (transition.type !== "cut" && timeMs - best.startMs < transition.durationMs);
       if (!revealing) break;
     }
@@ -571,10 +571,10 @@ export function buildExportPlan(config: ProjectConfig, settings: ExportSettings)
        outside it — imported video and audio are never copied in, so they only
        ever have the second. Neither means there is no file to read, and the run
        would die on the first frame; say so here, where the button still is. */
-    if (!asset.relativePath && !asset.sourcePath) {
+    if (!asset.motion && !asset.relativePath && !asset.sourcePath) {
       locationless.push(`${segment.label} (${asset.name})`);
     }
-    const drawable = DEMUXABLE_VIDEO.has(asset.mimeType) || DRAWABLE_IMAGE.has(asset.mimeType);
+    const drawable = Boolean(asset.motion) || DEMUXABLE_VIDEO.has(asset.mimeType) || DRAWABLE_IMAGE.has(asset.mimeType);
     if (!drawable) undecodable.push(`${segment.label} (${asset.name}, ${asset.mimeType})`);
   }
   if (missing.length > 0) {

@@ -1,3 +1,4 @@
+import { motionFrameReader } from "./motionRuntime";
 /// <reference types="@webgpu/types" />
 
 /* ============================================================================
@@ -894,6 +895,7 @@ interface LayerFrameReader {
 export async function openLayerFrameReader(
   folderPath: string, asset: ProjectAsset, startUs: number, stopIfCancelled: () => void,
 ): Promise<LayerFrameReader> {
+  if (asset.motion) return motionFrameReader(asset.motion, stopIfCancelled);
   const bytes = await readAssetBytes(folderPath, asset);
   stopIfCancelled();
   if (asset.mimeType.startsWith("image/")) {
@@ -1381,7 +1383,7 @@ export async function runExport(options: ExportRunOptions): Promise<ExportResult
       stopIfCancelled();
       if (segment.kind === "gap") {
         for (let index = segment.startFrame; index < segment.endFrame; index += 1) await emit(null, index);
-      } else if (segment.underlays?.length) {
+      } else if (segment.underlays?.length || assetFor(segment.assetId)?.motion) {
         await renderLayeredSegment(segment);
       } else {
         await renderClipSegment(segment);
@@ -1521,6 +1523,15 @@ export async function drawPreviewFrame(options: {
 
   const asset = config.assets.find((candidate) => candidate.id === clip.assetId);
   if (!asset) throw new Error("This clip points at media that is not in this project.");
+  if (asset.motion) {
+    const reader = motionFrameReader(asset.motion, () => {});
+    try {
+      const frame = await reader.frameAt(clip.sourceTimeMs * 1000);
+      const box = fitRect(frame.displayWidth, frame.displayHeight, canvas.width, canvas.height);
+      context.drawImage(frame, box.x, box.y, box.width, box.height);
+    } finally { reader.dispose(); }
+    return;
+  }
   const url = await sources.url(asset);
 
   if (asset.mimeType.startsWith("image/")) {

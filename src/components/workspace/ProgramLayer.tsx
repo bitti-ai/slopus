@@ -1,3 +1,6 @@
+import { MotionCanvas } from "./MotionCanvas";
+import type { MotionNode } from "../../lib/motion";
+import type { ComponentProps } from "react";
 import { clipPlaybackRate, clipSourceTimeMs } from "../../lib/clipTiming";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { clipFrameStyle, clipVisualSettings, type ClipFrameStyle } from "../../lib/export";
@@ -21,7 +24,7 @@ export function previewMediaStyle(frame: ClipFrameStyle): CSSProperties {
 }
 
 /** Prepared clips keep their decoder and effect renderer when made visible. */
-export function ProgramLayer({ clip, playerKey, asset, sources, playheadMs, playing, rate = 1, active, foreground, muted, externalSeek, depth, media, composited }: {
+function MediaProgramLayer({ clip, playerKey, asset, sources, playheadMs, playing, rate = 1, active, foreground, muted, externalSeek, depth, media, composited }: {
   clip: TimelineClip;
   playerKey: string;
   asset: ProjectAsset | undefined;
@@ -117,5 +120,19 @@ export function ProgramLayer({ clip, playerKey, asset, sources, playheadMs, play
     {showStatus && (error
       ? <div className="program-note program-note--error" role="alert">{error}</div>
       : (!url || (!ready && !isImage)) && <div className="program-note"><span>Loading {clip.label}…</span></div>)}
+  </div>;
+}
+
+export function ProgramLayer(props: ComponentProps<typeof MediaProgramLayer> & { onMotionFrame?: (clipId: string, nodes: MotionNode[]) => void }) {
+  const motionFrame = useCallback((nodes: MotionNode[]) => props.onMotionFrame?.(props.clip.id, nodes), [props.onMotionFrame, props.clip.id]);
+  if (!props.asset?.motion) return <MediaProgramLayer {...props} />;
+  const { clip, asset, active, depth, composited } = props;
+  const needsGpu = hasVideoEffects(activeVideoEffects(clip)) || Boolean(clipChromaKey(clip));
+  return <div className="program-layer" data-clip-id={clip.id} data-active={active} aria-hidden={!active}
+    style={{ visibility: active ? "visible" : "hidden", zIndex: depth }}>
+    <MotionCanvas motion={asset.motion!} time={clipSourceTimeMs(clip, props.playheadMs) / 1000}
+      media={props.media} playerKey={props.playerKey} onFrame={motionFrame}
+      style={{ ...previewMediaStyle(clipFrameStyle(clipVisualSettings(clip), props.playheadMs - clip.startMs)), ...(composited ? { visibility: "hidden" } : {}) }} />
+    {active && !composited && needsGpu && <div className="program-note program-note--error" role="alert">Motion effects preview requires WebGPU.</div>}
   </div>;
 }

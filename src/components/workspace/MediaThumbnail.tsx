@@ -1,3 +1,4 @@
+import { MotionCanvas } from "./MotionCanvas";
 import { Audio22, Image22, Video22, Warning22 } from "../ui/icons";
 import { useEffect, useRef, useState } from "react";
 import { readMediaFileUrl } from "../../lib/persistence";
@@ -198,7 +199,7 @@ const wantsMeasuring = (asset: ProjectAsset) =>
     ? !asset.width || !asset.height
     : !asset.durationMs || (asset.kind === "video" && asset.hasAudio == null);
 
-export function MediaThumbnail({ folderPath, asset, onMeasured, posterTimeSeconds = POSTER_TIME_SECONDS, jpegQuality = DEFAULT_JPEG_QUALITY }: {
+function FileMediaThumbnail({ folderPath, asset, onMeasured, posterTimeSeconds = POSTER_TIME_SECONDS, jpegQuality = DEFAULT_JPEG_QUALITY }: {
   folderPath: string;
   asset: ProjectAsset;
   /** Called once with whatever the decode could measure, so the project can
@@ -286,4 +287,8 @@ export function MediaThumbnail({ folderPath, asset, onMeasured, posterTimeSecond
     aria-label={failed ? `${asset.name} — preview unavailable` : asset.name}
     data-tooltip={failed ? "Couldn’t read this file" : undefined}
   >{icon}</span>;
+}
+
+export function MediaThumbnail(props: React.ComponentProps<typeof FileMediaThumbnail>) {
+  return props.asset.motion ? <MotionCanvas motion={props.asset.motion} time={0} /> : <FileMediaThumbnail {...props} />;
 }

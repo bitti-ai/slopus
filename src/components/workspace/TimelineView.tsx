@@ -1,3 +1,7 @@
+import { startMotionReferenceJob } from "../../lib/exportJob";
+import { motionReferenceExport, motionVideoReference } from "../../lib/motionReference";
+import { emptyMotion, MOTION_MIME, type Motion } from "../../lib/motion";
+import { MotionInspector } from "./MotionInspector";
 import { clipEffectCount, ClipEffects } from "./ClipEffects";
 import { clipPlaybackRate, clipSourceTimeMs, MIN_CLIP_SPEED, MAX_CLIP_SPEED } from "../../lib/clipTiming";
 import { continuationPlaybackTracks, sceneMediaDurationMs, sceneMediaStartSeconds } from "../../lib/continuationMedia";
@@ -83,8 +87,9 @@ const SHUTTLE_SPEEDS = [1, 2, 4];
    Five kinds, each with one colour and one glyph wherever it appears: the
    clip's title strip, the track chip, the inspector's kind chip. The kind is
    the MEDIA's; a clip whose file is missing takes its track's. */
-type ClipKind = "video" | "generated" | "image" | "audio" | "caption";
+type ClipKind = "motion" | "video" | "generated" | "image" | "audio" | "caption";
 const CLIP_KINDS: Record<ClipKind, { label: string; color: string; icon: React.ReactNode; glyph: React.ReactNode }> = {
+  motion: { label: "Motion", color: "var(--clip-image)", icon: <Sparkle16 />, glyph: <Sparkle12 /> },
   video: { label: "Video", color: "var(--clip-video)", icon: <Film16 />, glyph: <Film12 aria-hidden="true" /> },
   generated: { label: "Generated video", color: "var(--clip-generated)", icon: <Sparkle16 />, glyph: <Sparkle12 aria-hidden="true" /> },
   image: { label: "Still image", color: "var(--clip-image)", icon: <Image16 />, glyph: <Image12 aria-hidden="true" /> },
@@ -221,6 +226,9 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
 }) {
   const firstClip = config.timeline.tracks.flatMap((track) => track.clips)[0];
   const fps = config.settings.frameRate;
+  const [motionRendering, setMotionRendering] = useState(false);
+  const [motionNotice, setMotionNotice] = useState<string | null>(null);
+  const [motionNodeId, setMotionNodeId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState(firstClip?.id ?? "");
   const [playhead, setPlayhead] = useState(firstClip?.startMs ?? 0);
   const [playing, setPlaying] = useState(false);
@@ -801,7 +809,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     ? Math.max(1, ((sceneMediaDurationMs(selectedAsset) ?? selectedAsset.durationMs) - selected.sourceStartMs) / clipPlaybackRate(selected))
     : null;
   const minClipMs = Math.max(1, Math.round(1000 / fps));
-  const speedDisabled = !selected || tracks.find((track) => track.id === selected.trackId)?.locked || !selectedAsset || !["video", "generated", "audio"].includes(selectedAsset.kind);
+  const speedDisabled = !selected || tracks.find((track) => track.id === selected.trackId)?.locked || !selectedAsset || !["video", "generated", "audio", "motion"].includes(selectedAsset.kind);
   const changeSpeed = (percent: number) => {
     if (!selected || speedDisabled) return;
     const next = retimeClip(tracks, selected.id, percent / 100);
@@ -1056,6 +1064,41 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     setSelectedId((current) => removedClipIds.has(current) ? "" : current);
   };
 
+  const updateMotion = (motion: Motion) => {
+    if (!selectedAsset?.motion) return;
+    const id = selectedAsset.id;
+    onChange((current) => ({ ...current, assets: current.assets.map((asset) => asset.id !== id ? asset : {
+      ...asset, motion, width: motion.width, height: motion.height, durationMs: Math.round(motion.duration * 1000),
+    }) }), `motion:${id}`);
+  };
+  const renderMotionReference = async () => {
+    if (!selectedAsset?.motion || motionRendering || !isTauri()) return;
+    const asset = structuredClone(selectedAsset);
+    setMotionRendering(true); setMotionNotice(null);
+    try {
+      const saved = await startMotionReferenceJob({ folderPath, ...motionReferenceExport(config, asset) });
+      if (saved) {
+        const reference = motionVideoReference(asset, saved.relativePath);
+        onChange((current) => ({ ...current, references: [...current.references, reference] }));
+        setMotionNotice(`Added ${reference.name} to References. Select it in a MiniMax video prompt.`);
+      } else setMotionNotice("Motion reference was not saved. See Work Queue for cancellation or error details.");
+    } catch (reason) { setMotionNotice(String(reason)); }
+    finally { setMotionRendering(false); }
+  };
+  const addMotion = () => {
+    const size = outputDimensions(config.settings.resolution, config.settings.aspectRatio);
+    const motion = emptyMotion(Math.min(4096, size.width), Math.min(4096, size.height));
+    const id = `motion-${crypto.randomUUID()}`, clipId = `clip-${crypto.randomUUID()}`;
+    const track = tracks.find((t) => !t.locked && t.kind === "video");
+    if (!track) { setImportError("Unlock a video track to add a Motion."); return; }
+    const start = Math.max(playhead, ...track.clips.map(clipEndMs));
+    const asset: ProjectAsset = { id, name: "Empty Motion", kind: "motion", mimeType: MOTION_MIME, motion, width: motion.width, height: motion.height,
+      durationMs: 5000, hasAudio: false, createdAt: new Date().toISOString() };
+    const item: TimelineClip = { id: clipId, assetId: id, trackId: track.id, label: asset.name, startMs: start, durationMs: 5000, sourceStartMs: 0, status: "approved" };
+    onChange((current) => ({ ...current, assets: [...current.assets, asset], timeline: { ...current.timeline,
+      tracks: current.timeline.tracks.map((t) => t.id === track.id ? { ...t, clips: [...t.clips, item] } : t) } }));
+    setSelectedId(clipId); setMotionNodeId(null); setMediaSelectedId(id); setPanelTab("media"); setPlayhead(start);
+  };
   const addScene = () => {
     // A new project already carries an unstarted draft made from the user's own
     // words, so open that rather than stacking a near-identical second shot.
@@ -1243,6 +1286,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
               items={[{ value: "scenes", label: "Scenes" }, { value: "media", label: "Media" }]}
             />}
             actions={<>
+              <button type="button" className="scene-panel__import" aria-label="Add Motion" onClick={addMotion} {...tooltipProps("Add empty Motion")}><Sparkle16 /><span className="sr-only">Add Motion</span></button>
               <button
                 type="button"
                 className="scene-panel__import"
@@ -1386,6 +1430,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   selectedClipId={selectedId}
                   transformEditingDisabled={selectedTrack?.locked ?? false}
                   onSelectClip={setSelectedId}
+                  selectedMotionNodeId={motionNodeId} onSelectMotionNode={setMotionNodeId} onMotionChange={selectedAsset?.motion ? updateMotion : undefined}
                   onTransformChange={(clipId, transform) => updateClip(clipId, { transform: roundClipTransform(transform) }, `transform:${clipId}:gesture`)}
                 />
                 : <EmptyState
@@ -1470,6 +1515,8 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 onClick={(event) => menu.open(event.currentTarget, clipMenuItems(selected), { "aria-label": `${selected.label} actions`, placement: "bottom-end", focusFirst: true })}
               ><More16 aria-hidden="true" /></button>}
             />
+            {selectedAsset?.motion && <MotionInspector key={selectedAsset.id} motion={selectedAsset.motion} selectedId={motionNodeId} onSelect={setMotionNodeId} onChange={updateMotion} disabled={visualControlsDisabled} onRenderReference={isTauri() ? () => void renderMotionReference() : undefined} rendering={motionRendering} />}
+            {motionNotice && <p className="panel-hint" role="status">{motionNotice}</p>}
             <PropSection title="Timing" persistKey="timeline.clip.timing" summary={`${shortTimecode(selected.startMs, fps)} → ${shortTimecode(clipEndMs(selected), fps)}`}>
               <PropRow label="Speed" htmlFor="clip-speed" value={clipPlaybackRate(selected)} defaultValue={1}
                 onReset={speedDisabled ? undefined : () => changeSpeed(100)}

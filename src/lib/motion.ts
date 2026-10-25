@@ -52,10 +52,10 @@ export function emptyMotion(width = 1280, height = 720): Motion {
   return motionSchema.parse({ version: 1, space: "2d", width, height, duration: 5, nodes: [], parameters: [],
     source: "// Ask the agent to create this Motion.\n// Time is in seconds. Modify named nodes or add primitives with draw.\nexport function update({ time, duration, parameters, nodes }, draw) {\n}\n" });
 }
-export const motionOverride = (motion: Motion, id: string): MotionOverride => motion.overrides[id] ?? motionOverrideSchema.parse({});
+export const motionOverride = (motion: Motion, id: string): MotionOverride => Object.prototype.hasOwnProperty.call(motion.overrides, id) ? motion.overrides[id] : motionOverrideSchema.parse({});
 export function applyMotionOverrides(nodes: MotionNode[], motion: Motion): MotionNode[] {
   return nodes.map((node) => {
-    const edit = motion.overrides[node.id];
+    const edit = Object.prototype.hasOwnProperty.call(motion.overrides, node.id) ? motion.overrides[node.id] : undefined;
     if (!edit) return node;
     return { ...node, position: node.position.map((v, i) => v + edit.offset[i]) as MotionNode["position"],
       rotation: node.rotation.map((v, i) => v + edit.rotation[i]) as MotionNode["rotation"],

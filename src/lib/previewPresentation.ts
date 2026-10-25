@@ -1,13 +1,15 @@
+import { clipSourceTimeMs } from "./clipTiming";
 import { clipFrameStyle, clipVisualSettings } from "./export";
 import type { Compositor } from "./exportPipeline";
 import type { TimelineClip } from "./project";
 
-type PreviewMediaElement = HTMLVideoElement | HTMLImageElement;
+type PreviewMediaElement = HTMLVideoElement | HTMLImageElement | HTMLCanvasElement;
 
 /** Prepared decoders belong to players; the displayed canvas belongs to the
  * monitor. Media arriving asynchronously requests a redraw of the current cut. */
 export class PreviewMedia {
   private elements = new Map<string, PreviewMediaElement>();
+  private motionTimes = new Map<string, number>();
   private listeners = new Set<() => void>();
   private events = ["loadeddata", "seeked", "load"];
   private changed = () => { this.listeners.forEach((listener) => listener()); };
@@ -19,8 +21,13 @@ export class PreviewMedia {
     if (element) {
       this.elements.set(id, element);
       this.events.forEach((event) => element.addEventListener(event, this.changed));
-    } else this.elements.delete(id);
+    } else { this.elements.delete(id); this.motionTimes.delete(id); }
   }
+
+  setMotionTime(id: string, time: number) { this.motionTimes.set(id, time); }
+  motionTime(id: string) { return this.motionTimes.get(id); }
+
+  invalidate() { this.changed(); }
 
   get(id: string) { return this.elements.get(id); }
 
@@ -37,10 +44,13 @@ export function presentPreviewFrame(compositor: Compositor, media: PreviewMedia,
   const pictures: { frame: VideoFrame; clip: TimelineClip }[] = [];
   try {
     for (const clip of layers) {
-      const element = media.get(playerKeys?.get(clip.id) ?? clip.id);
+      const key = playerKeys?.get(clip.id) ?? clip.id;
+      const element = media.get(key);
       if (!element) return false;
+      const canvas = element instanceof HTMLCanvasElement;
       const video = element instanceof HTMLVideoElement;
-      if (video ? element.readyState < 2 || element.seeking || !element.videoWidth || !element.videoHeight
+      if (canvas && media.motionTime(key) !== undefined && Math.abs(media.motionTime(key)! - clipSourceTimeMs(clip, playheadMs) / 1000) > 0.1) return false;
+      if (canvas ? !element.width || !element.height : video ? element.readyState < 2 || element.seeking || !element.videoWidth || !element.videoHeight
         : !element.complete || !element.naturalWidth || !element.naturalHeight) return false;
       pictures.push({ frame: new VideoFrame(element, { timestamp: Math.round(playheadMs * 1000) }), clip });
     }

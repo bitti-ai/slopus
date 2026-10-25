@@ -268,3 +268,23 @@ export function resetExportJobForTests() {
   jobs = []; pending = []; running = false;
   listeners.forEach((listener) => listener());
 }
+
+/** Uses the normal export queue so Motion baking participates in cancellation,
+ * work status and the app's exit guard, including after its view unmounts. */
+export async function startMotionReferenceJob(options: Omit<StartExportOptions, "destination">): Promise<{ relativePath: string; bytes: number } | null> {
+  const snapshot = structuredClone(options);
+  let saved: { relativePath: string; bytes: number } | null = null;
+  await enqueueExport({ folderPath: options.folderPath, projectName: `${options.config.name} - Motion reference`, destination: null, kind: "video" }, async () => {
+    try {
+      const result = await runExport({ ...snapshot, cancelled: () => cancelRequested, onProgress: (progress) => set({ progress }) });
+      if (cancelRequested) throw new ExportCancelled();
+      saved = await invoke<{ relativePath: string; bytes: number }>("write_generated_video", result.bytes, { headers: {
+        "x-generated-folder": encodeURIComponent(snapshot.folderPath), "x-generated-job": `motion-${crypto.randomUUID()}`,
+      } });
+      set({ outcome: { kind: "saved", path: `${snapshot.folderPath}/${saved.relativePath}`, bytes: saved.bytes, audioProblems: [], audioShortfalls: [] } });
+    } catch (reason) {
+      set({ outcome: reason instanceof ExportCancelled ? { kind: "cancelled" } : { kind: "failed", message: String(reason) } });
+    }
+  });
+  return saved;
+}
