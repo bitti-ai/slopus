@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Checkbox, ComboBox, Flyout, PropRow, PropSection, Slider, tooltipProps } from "../ui";
+import { Checkbox, ComboBox, Flyout, PropRow, PropSection, tooltipProps } from "../ui";
+import { SliderNumberInput } from "./SliderNumberInput";
 import { Add16, ChevronDown12, Delete14, Reset16 } from "../ui/icons";
 import { GENERATION_EFFECTS, GENERATION_EFFECT_DEFAULTS, generationEffectsSchema, type GenerationEffectId, type GenerationEffects as Settings } from "../../lib/generationEffects";
 
@@ -33,8 +34,7 @@ export function GenerationEffects({ value, onChange, supported, disabled = false
     const inactive = locked || effects[id]?.enabled === false;
     const change = (next: number) => { if (!inactive) set(id, { [field]: next }); };
     return <PropRow key={field} label={label} value={settings[field]} defaultValue={initial} onReset={inactive ? undefined : () => change(initial)} scrub={inactive ? undefined : { value: settings[field], onChange: change, step: 0.01, min, max }}>
-      <Slider aria-label={label} min={min} max={max} step={0.01} value={settings[field]} disabled={inactive} onChange={change} />
-      <span className="clip-effect__value">{settings[field].toFixed(2)}</span>
+      <SliderNumberInput aria-label={`${label} value`} sliderLabel={label} minimum={min} maximum={max} step={0.01} value={settings[field]} disabled={inactive} onCommit={change} />
     </PropRow>;
   };
   return <PropSection title="Effects" tooltip={supported ? "Applied during generation. The first use prepares a reusable calibration for your VAE." : "This model does not support generation effects. Bypass or remove existing effects to generate."} persistKey="generation.effects" summary={present.length ? `${present.length}` : "None"}>
@@ -74,7 +74,11 @@ export function GenerationEffects({ value, onChange, supported, disabled = false
         <p className="clip-effect__note">Steps start at 0. Leave the last step empty to apply through completion.</p>
         <Checkbox label="Limit to a region" checked={!!effects.region} disabled={locked} onChange={(enabled) => update({ ...effects, region: enabled ? { x: 0, y: 0, width: 100, height: 100, invert: false } : undefined })} />
         {effects.region && <>
-          {(["x", "y", "width", "height"] as const).map((field) => <PropRow key={field} label={`${field[0].toUpperCase()}${field.slice(1)} (%)`}><input className="text-field" aria-label={`Effect region ${field}`} type="number" min={field === "x" || field === "y" ? 0 : 0.1} max={100} step={0.1} disabled={locked} value={effects.region![field]} onChange={(e) => update({ ...effects, region: { ...effects.region!, [field]: Number(e.target.value) } })} /></PropRow>)}
+          {(["x", "y", "width", "height"] as const).map((field) => <PropRow key={field} label={`${field[0].toUpperCase()}${field.slice(1)} (%)`}>
+            <SliderNumberInput aria-label={`Effect region ${field}`} minimum={field === "x" || field === "y" ? 0 : 0.1}
+              maximum={Number((100 - effects.region![field === "x" ? "width" : field === "y" ? "height" : field === "width" ? "x" : "y"]).toFixed(4))} step={0.1}
+              disabled={locked} value={effects.region![field]} onCommit={(value) => update({ ...effects, region: { ...effects.region!, [field]: value } })} />
+          </PropRow>)}
           <Checkbox label="Apply outside region" checked={effects.region.invert} disabled={locked} onChange={(invert) => update({ ...effects, region: { ...effects.region!, invert } })} />
         </>}
       </>}

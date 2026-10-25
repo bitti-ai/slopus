@@ -1,3 +1,4 @@
+import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
 import { useMemo } from "react";
 import { alignExtendBounds, compileExtendImage, initialExtendBounds, EXTEND_GRID, EXTEND_MAX_EDGE, type ExtendOptions } from "../../lib/extendImage";
 import { PROJECT_RESOLUTIONS, type ProjectAsset, type ProjectConfig } from "../../lib/project";
@@ -33,16 +34,15 @@ export function ExtendSettings({ config, source, options, onChange, onResolution
         <p className="image-inspector__caption">Source: {source.name} · {source.width} × {source.height} px</p>
         {(["x", "y", "width", "height"] as const).map((field) => <PropRow key={field} label={field === "x" ? "X" : field === "y" ? "Y" : field === "width" ? "Width" : "Height"} htmlFor={`extend-${field}`}
           tooltip={field === "x" || field === "y" ? "Drag the box or its handles, or drag outside it to draw a new box." : "Sizes use 32-pixel increments. The source is resized to fit the box at the selected generation resolution."}>
-          <input id={`extend-${field}`} aria-label={`Zoom ${field}`} className="text-field" type="number" step={field === "x" || field === "y" ? 1 : EXTEND_GRID} min={field === "x" || field === "y" ? -8192 : EXTEND_GRID} max={field === "x" || field === "y" ? 8192 : EXTEND_MAX_EDGE} required disabled={busy}
-            value={options.bounds[field]} onChange={(event) => {
-              const value = event.target.valueAsNumber; if (!Number.isFinite(value)) return;
+          <SliderNumberInput id={`extend-${field}`} aria-label={`Zoom ${field}`} integer step={field === "x" || field === "y" ? 1 : EXTEND_GRID} minimum={field === "x" || field === "y" ? -8192 : EXTEND_GRID} maximum={field === "x" || field === "y" ? 8192 : EXTEND_MAX_EDGE} required disabled={busy}
+            value={options.bounds[field]} onCommit={(value) => {
               const bounds = { ...options.bounds, [field]: value };
               onChange({ ...options, bounds: field === "width" || field === "height" ? alignExtendBounds(bounds, field === "width" ? "e" : "s") : { ...bounds, [field]: Math.round(value) } });
             }} />
         </PropRow>)}
         <button type="button" className="secondary-button" disabled={busy} onClick={() => onChange({ ...options, bounds: initialExtendBounds(source.width!, source.height!) })}>Reset box</button>
-        <PropRow label="Steps" htmlFor="extend-steps"><input id="extend-steps" className="text-field" type="number" min="2" max="1000" step="1" required disabled={busy}
-          value={Number.isNaN(options.steps) ? "" : options.steps} onChange={(event) => onChange({ ...options, steps: event.target.valueAsNumber })} /></PropRow>
+        <PropRow label="Steps" htmlFor="extend-steps"><SliderNumberInput id="extend-steps" aria-label="Steps" {...GENERATION_STEPS_RANGE} required disabled={busy}
+          value={options.steps} onCommit={(steps) => onChange({ ...options, steps })} /></PropRow>
         <PropRow label="Seed" htmlFor="extend-seed" tooltip="Use -1 for a random seed."><input id="extend-seed" className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} step="1" required disabled={busy}
           value={Number.isNaN(options.seed) ? "" : options.seed} onChange={(event) => onChange({ ...options, seed: event.target.valueAsNumber })} /></PropRow>
         <div className="image-inspector__area"><span>Prompt (optional)</span><PromptTextField aria-label="Zoom prompt" value={options.prompt} onChange={(prompt) => onChange({ ...options, prompt })}

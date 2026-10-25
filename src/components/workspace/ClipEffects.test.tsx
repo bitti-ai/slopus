@@ -43,6 +43,24 @@ async function inTauri(answers: Record<string, (args: unknown) => unknown>, body
 const CUBE = "LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1";
 
 describe("clip effects", () => {
+  it("accepts typed effect values, enforces bounds, and resets both controls", () => {
+    render(<Harness />);
+    add("Basic Corrections");
+    const number = screen.getByRole("spinbutton", { name: "Exposure value" }) as HTMLInputElement;
+    fireEvent.change(number, { target: { value: "-1.3" } });
+    expect(saved().colorCorrection.exposure).toBe(-1.3);
+    expect((screen.getByRole("slider", { name: "Exposure" }) as HTMLInputElement).value).toBe("-1.3");
+    fireEvent.change(number, { target: { value: "9" } });
+    fireEvent.blur(number);
+    expect(saved().colorCorrection.exposure).toBe(4);
+    fireEvent.click(screen.getByRole("button", { name: "Reset exposure" }));
+    expect(number.value).toBe("0");
+    add("Transition");
+    const duration = screen.getByRole("spinbutton", { name: "Transition duration value" });
+    fireEvent.change(duration, { target: { value: "725.5" } });
+    fireEvent.blur(duration);
+    expect(saved().transition.durationMs).toBe(726);
+  });
   it("selects backdrop presets, keeps matte levels valid, and bypasses without losing controls", () => {
     render(<Harness />);
     add("Chroma key");

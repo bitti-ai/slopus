@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { motionOverride, motionOverrideSchema, motionSchema, type Motion } from "../../lib/motion";
 import { PropSection, PropRow } from "../ui";
+import { SliderNumberInput } from "./SliderNumberInput";
 
 export function MotionInspector({ motion, selectedId, onSelect, onChange, disabled = false, onRenderReference, rendering = false }: {
   motion: Motion; selectedId: string | null; onSelect: (id: string | null) => void; onChange: (motion: Motion) => void;
@@ -18,8 +19,8 @@ export function MotionInspector({ motion, selectedId, onSelect, onChange, disabl
   const edit = node ? motionOverride(motion, node.id) : null;
   return <>
     <PropSection title="Motion" persistKey="motion.document">
-      <PropRow label="Duration"><input className="text-field" type="number" aria-label="Motion duration" min={0.1} max={600} step={0.1} disabled={disabled}
-        value={motion.duration} onChange={(e) => change({ ...motion, duration: Number(e.target.value) })} /><span>s</span></PropRow>
+      <PropRow label="Duration"><SliderNumberInput aria-label="Motion duration" minimum={0.1} maximum={600} step={0.1} suffix="s" disabled={disabled}
+        value={motion.duration} onCommit={(duration) => change({ ...motion, duration })} /></PropRow>
       <button className="secondary-button" disabled={rendering || !onRenderReference} onClick={onRenderReference}>{rendering ? "Rendering reference…" : "Render as reference video"}</button>
     </PropSection>
     <PropSection title="Elements" persistKey="motion.elements">
@@ -44,12 +45,14 @@ export function MotionInspector({ motion, selectedId, onSelect, onChange, disabl
     </PropSection>
     <PropSection title="Parameters" persistKey="motion.parameters">
       {motion.parameters.length === 0 && <p className="settings-description">The agent can expose movement, timing, color and text controls here.</p>}
-      {motion.parameters.map((p) => <PropRow key={p.id} label={p.label}><input className="text-field" aria-label={p.label} disabled={disabled}
+      {motion.parameters.map((p) => <PropRow key={p.id} label={p.label}>{p.type === "number" && p.min !== undefined && p.max !== undefined ?
+        <SliderNumberInput aria-label={p.label} minimum={p.min} maximum={p.max} step={p.step ?? 0.01} value={Number(p.value)} disabled={disabled}
+          onCommit={(value) => change({ ...motion, parameters: motion.parameters.map(item => item.id === p.id ? { ...item, value } : item) })} /> : <input className="text-field" aria-label={p.label} disabled={disabled}
         type={p.type === "boolean" ? "checkbox" : p.type === "number" ? "number" : "text"}
         min={p.min} max={p.max} step={p.step ?? "any"} checked={p.type === "boolean" ? Boolean(p.value) : undefined}
         value={p.type === "boolean" ? undefined : String(p.value)} onChange={(e) => change({ ...motion, parameters: motion.parameters.map((item) => item.id !== p.id ? item : {
           ...item, value: p.type === "boolean" ? e.target.checked : p.type === "number" ? Number(e.target.value) : e.target.value,
-        }) })} /></PropRow>)}
+        }) })} />}</PropRow>)}
     </PropSection>
     <PropSection title="JavaScript" persistKey="motion.source">
       <textarea className="text-field motion-source" aria-label="Motion JavaScript source" spellCheck={false} disabled={disabled} value={source} onChange={(e) => setSource(e.target.value)} />

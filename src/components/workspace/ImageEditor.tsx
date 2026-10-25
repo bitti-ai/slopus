@@ -1,5 +1,6 @@
 import { activeGenerationEffects } from "../../lib/generationEffects";
 import { GenerationEffects } from "./GenerationEffects";
+import { SliderNumberInput, GENERATION_STEPS_RANGE, CFG_RANGE } from "./SliderNumberInput";
 import { applyLassoStroke } from "../../lib/imageLasso";
 import { EditBox16 } from "../ui/icons";
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from "react";
@@ -828,12 +829,10 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
               onChange={(event) => { if (template) commit({ ...scene, negativePrompts: { ...scene.negativePrompts, [template.modelType]: event.target.value } }); }} />
           </div>}
           <PropSection title="Image generation" persistKey="image.generation" summary={`${generationStepsForTemplate(scene.steps, template)} steps`}>
-            <PropRow label="Steps" htmlFor={rootField("steps")}><input id={rootField("steps")} className="text-field" type="number" min="2" max="1000" value={scene.steps} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 2 && value <= 1000) commit({ ...scene, steps: value }); }} /></PropRow>
+            <PropRow label="Steps" htmlFor={rootField("steps")}><SliderNumberInput id={rootField("steps")} aria-label="Steps" {...GENERATION_STEPS_RANGE} disabled={active} value={scene.steps} onCommit={(steps) => commit({ ...scene, steps })} /></PropRow>
             {model.cfg && template && <PropRow label="CFG" htmlFor={rootField("cfg")} tooltip="Classifier-free guidance. 1 uses only the positive prompt; higher values strengthen guidance." value={scene.cfgScales?.[template.modelType] ?? model.cfg.default} defaultValue={model.cfg.default} onReset={active ? undefined : () => commit({ ...scene, cfgScales: { ...scene.cfgScales, [template.modelType]: model.cfg!.default } })}>
-              <input id={rootField("cfg")} className="text-field" type="number" min="0" max={3.4028234663852886e38} step="0.1" disabled={active} value={scene.cfgScales?.[template.modelType] ?? model.cfg.default} onChange={(event) => {
-                const value = event.target.valueAsNumber;
-                if (Number.isFinite(value) && value >= 0 && value <= 3.4028234663852886e38) commit({ ...scene, cfgScales: { ...scene.cfgScales, [template.modelType]: value } });
-              }} />
+              <SliderNumberInput id={rootField("cfg")} aria-label="CFG" {...CFG_RANGE} disabled={active} value={scene.cfgScales?.[template.modelType] ?? model.cfg.default}
+                onCommit={(value) => commit({ ...scene, cfgScales: { ...scene.cfgScales, [template.modelType]: value } })} />
             </PropRow>}
             <PropRow label="Seed" htmlFor={rootField("seed")} tooltip="-1 picks a random seed"><input id={rootField("seed")} className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} value={scene.seed} onChange={(event) => { const value = Number(event.target.value); if (Number.isSafeInteger(value) && value >= -1) commit({ ...scene, seed: value }); }} /></PropRow>
             {generatedImage && <UsedImageSeed id={rootField("used-seed")} seed={usedSeed} onError={setError} />}
@@ -854,7 +853,10 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         {!isMiniMaxH3 && selected.kind !== "root" && <PropSection title="Placement (0–1000)" persistKey="image.placement">
           <label className="image-check"><input type="checkbox" disabled={Boolean(selected.lasso)} checked={Boolean(selected.box)} onChange={(event) => patchNode({ box: event.target.checked ? { x: 250, y: 250, width: 500, height: 500 } : null })} />Explicit placement</label>
           {selected.box && (["x", "y", "width", "height"] as const).map((field) => <PropRow key={field} label={field === "x" ? "X" : field === "y" ? "Y" : field === "width" ? "Width" : "Height"} htmlFor={rootField(field)}>
-            <input id={rootField(field)} className="text-field" type="number" min={field === "x" || field === "y" ? 0 : 1} max="1000" disabled={Boolean(selected.lasso) && (field === "width" || field === "height")} value={selected.box![field]} onChange={(event) => { const value = Number(event.target.value); const box = { ...selected.box!, [field]: value }; if (Number.isFinite(value) && box.x >= 0 && box.y >= 0 && box.width > 0 && box.height > 0 && box.x + box.width <= 1000 && box.y + box.height <= 1000) commit(resizeImageNode(scene, selected.id, box)); }} />
+            <SliderNumberInput id={rootField(field)} aria-label={field === "x" ? "X" : field === "y" ? "Y" : field === "width" ? "Width" : "Height"}
+              minimum={field === "x" || field === "y" ? 0 : 1} maximum={1000 - selected.box![field === "x" ? "width" : field === "y" ? "height" : field === "width" ? "x" : "y"]}
+              disabled={Boolean(selected.lasso) && (field === "width" || field === "height")} value={selected.box![field]}
+              onCommit={(value) => commit(resizeImageNode(scene, selected.id, { ...selected.box!, [field]: value }))} />
           </PropRow>)}
         </PropSection>}
         {!isMiniMaxH3 && (!imageRoot || selected.colors.length > 0) && <PropSection title="Color palette" persistKey="image.palette">

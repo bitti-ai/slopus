@@ -1,10 +1,11 @@
+import { SliderNumberInput } from "./SliderNumberInput";
 import { imageSettings } from "../../lib/imageSettings";
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { closestExportAspectRatio, exportSizeChoices } from "../../lib/export";
 import type { ProjectConfig } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
-import { ComboBox, EmptyState, InfoBar, ProgressBar, PropRow, PropSection, Slider, Splitter, tooltipProps, usePaneSize } from "../ui";
+import { ComboBox, EmptyState, InfoBar, ProgressBar, PropRow, PropSection, Splitter, tooltipProps, usePaneSize } from "../ui";
 import { Image32 } from "../ui/icons";
 import { ImageBar } from "./ImageBar";
 import { ReferenceImage } from "./ReferenceImage";
@@ -124,8 +125,7 @@ export function ImageExportView({ config, folderPath }: { config: ProjectConfig;
                 options={[...UPSCALERS]} onChange={(value) => setUpscaler(value as Upscaler)} />
             </PropRow>
             {preferences.format === "jpg" && <PropRow label="Quality" value={preferences.quality} defaultValue={DEFAULT_QUALITY} onReset={exporting ? undefined : () => choose({ quality: DEFAULT_QUALITY })} resetLabel="Reset quality">
-              <Slider aria-label="JPG quality" min={1} max={100} step={1} value={preferences.quality} disabled={exporting} onChange={(quality) => choose({ quality })} />
-              <span className="export-quality__value">{preferences.quality}</span>
+              <SliderNumberInput aria-label="JPG quality value" sliderLabel="JPG quality" minimum={1} maximum={100} integer suffix="%" value={preferences.quality} disabled={exporting} onCommit={(quality) => choose({ quality })} />
             </PropRow>}
           </PropSection>
           <div className="export-messages">

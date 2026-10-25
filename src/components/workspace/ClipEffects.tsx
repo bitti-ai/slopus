@@ -4,7 +4,8 @@ import { DEFAULT_CLIP_CHROMA_KEY, DEFAULT_CLIP_LOOK, type TimelineClip } from ".
 import { CREATIVE_LOOKS, DEFAULT_CREATIVE, DEFAULT_WHEELS, isEffectOn, parseCube } from "../../lib/effectSettings";
 import { readLutFile } from "../../lib/exportPipeline";
 import { inTauri, pickFile } from "../../lib/nativeShell";
-import { Checkbox, ComboBox, Flyout, PropRow, Slider, tooltipProps, useContextMenu } from "../ui";
+import { Checkbox, ComboBox, Flyout, PropRow, tooltipProps, useContextMenu } from "../ui";
+import { SliderNumberInput } from "./SliderNumberInput";
 import { CurveEditor } from "./CurveEditor";
 import { GradingWheel } from "./GradingWheel";
 import { ColorSwatch } from "./ColorPicker";
@@ -32,9 +33,9 @@ type EffectDefinition = {
 /** One numeric parameter as an inspector row: the label scrubs, the slider
  *  drags, the value reads in tabular figures, and Reset appears once it moves
  *  off its default. */
-function Param({ label, value, min = 0, max = 100, step = 1, suffix = "%", defaultValue, ariaLabel, disabled, format, onChange }: {
+function Param({ label, value, min = 0, max = 100, step = 1, suffix = "%", defaultValue, ariaLabel, disabled, integer, onChange }: {
   label: string; value: number; min?: number; max?: number; step?: number; suffix?: string; defaultValue: number;
-  ariaLabel?: string; disabled?: boolean; format?: (value: number) => string; onChange: (value: number) => void;
+  ariaLabel?: string; disabled?: boolean; integer?: boolean; onChange: (value: number) => void;
 }) {
   return <PropRow
     label={label}
@@ -44,8 +45,8 @@ function Param({ label, value, min = 0, max = 100, step = 1, suffix = "%", defau
     resetLabel={`Reset ${label.toLowerCase()}`}
     scrub={disabled ? undefined : { value, onChange, step, min, max }}
   >
-    <Slider aria-label={ariaLabel ?? label} min={min} max={max} step={step} value={value} disabled={disabled} onChange={(next) => onChange(next)} />
-    <span className="clip-effect__value">{format ? format(value) : `${value}${suffix}`}</span>
+    <SliderNumberInput aria-label={`${ariaLabel ?? label} value`} sliderLabel={ariaLabel ?? label} minimum={min} maximum={max}
+      step={step} suffix={suffix} integer={integer} value={value} disabled={disabled} onCommit={onChange} />
   </PropRow>;
 }
 
@@ -119,7 +120,7 @@ const EFFECTS: readonly EffectDefinition[] = [
               { value: "wipe-left", label: "Wipe from left" }, { value: "wipe-right", label: "Wipe from right" },
             ]} />
         </PropRow>
-        <Param label="Duration" ariaLabel="Transition duration" value={transition.durationMs} min={100} max={3000} step={100} suffix=" ms" defaultValue={500}
+        <Param label="Duration" ariaLabel="Transition duration" value={transition.durationMs} min={100} max={3000} step={100} suffix=" ms" integer defaultValue={500}
           disabled={disabled || transition.type === "cut"} onChange={(durationMs) => update({ transition: { ...transition, durationMs } })} />
       </>;
     },

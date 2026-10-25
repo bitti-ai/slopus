@@ -1,6 +1,6 @@
 import { GenerationEffects } from "./GenerationEffects";
 import { generatorModel } from "../../lib/generatorModels";
-import { DEFAULT_VIDEO_SIGMA_SHIFT, DEFAULT_AUDIO_SIGMA_SHIFT, MIN_SIGMA_SHIFT, MAX_SIGMA_SHIFT } from "../../lib/sampling";
+import { DEFAULT_VIDEO_SIGMA_SHIFT, DEFAULT_AUDIO_SIGMA_SHIFT } from "../../lib/sampling";
 import { sigmaShiftOverridesForTemplate, type GeneratorTemplate } from "../../lib/settings";
 import { Audio16, Dismiss12, Image16, ImageAdd16, Text16, Video16 } from "../ui/icons";
 import { BACKDROP_OPTIONS, type BackdropColor } from "../../lib/backdrop";
@@ -29,7 +29,6 @@ import {
   sceneGenerationReferences,
   splitActionText,
   DEFAULT_SPEECH_LANGUAGE,
-  MAX_GENERATION_STEPS,
   SCENE_MIN_SECONDS,
   SPEECH_LANGUAGES,
   type GenerationJob,
@@ -47,6 +46,7 @@ import {
   type ShotTagSelection,
 } from "../../lib/shot-tags";
 import { CommittedNumberInput } from "./CommittedNumberInput";
+import { SliderNumberInput, GENERATION_STEPS_RANGE, SIGMA_SHIFT_RANGE } from "./SliderNumberInput";
 import { DEFAULT_CONTINUATION_OVERLAP, MAX_CONTINUATION_OVERLAP } from "../../lib/project";
 import { PromptTextField } from "./PromptTextField";
 import { ReferenceIcon } from "./ReferenceIcon";
@@ -513,12 +513,10 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
     <div role="region" aria-label="Generation" className="scene-settings">
       <PropSection title="Generation" persistKey="generator.generation" summary={`${effectiveSteps ?? sceneGenerationSteps(job, defaultSteps)} steps`}>
         <PropRow label="Steps" htmlFor={`${id}-steps`}>
-          <CommittedNumberInput
+          <SliderNumberInput
             id={`${id}-steps`}
             className="text-field"
-            minimum={2}
-            maximum={MAX_GENERATION_STEPS}
-            step={1}
+            {...GENERATION_STEPS_RANGE}
             value={sceneGenerationSteps(job, defaultSteps)}
             integer
             disabled={disabled}
@@ -551,7 +549,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
         {job.audioSteps != null && <>
           <SceneSigmaShift stream="video" job={job} template={template} disabled={disabled} onChange={onChange} />
           <PropRow label="Audio steps" htmlFor={`${id}-audio-steps`}>
-            <CommittedNumberInput id={`${id}-audio-steps`} className="text-field" minimum={2} maximum={MAX_AUDIO_GENERATION_STEPS} step={1}
+            <SliderNumberInput id={`${id}-audio-steps`} {...GENERATION_STEPS_RANGE}
               value={job.audioSteps} integer disabled={disabled} aria-label="Audio step count" onCommit={(value) => onChange({ audioSteps: value })} />
           </PropRow>
           <SceneSigmaShift stream="audio" job={job} template={template} disabled={disabled} onChange={onChange} />
@@ -654,7 +652,7 @@ function SceneSigmaShift({ stream, job, template, disabled, onChange }: {
   const fallback = stream === "audio" ? DEFAULT_AUDIO_SIGMA_SHIFT : template?.mode === "animate" ? 3 : DEFAULT_VIDEO_SIGMA_SHIFT;
   const label = `${stream === "video" ? "Video" : "Audio"} sigma shift`;
   return <PropRow label={label} htmlFor={id} tooltip={override !== undefined ? "Set by active LoRAs. Edit the override in LoRA settings." : "Controls the distribution of denoising timesteps."}>
-    <CommittedNumberInput id={id} className="text-field" aria-label={label} minimum={MIN_SIGMA_SHIFT} maximum={MAX_SIGMA_SHIFT} step={0.1}
+    <SliderNumberInput id={id} aria-label={label} {...SIGMA_SHIFT_RANGE}
       value={override ?? job[key] ?? template?.[key] ?? fallback} disabled={disabled || override !== undefined} onCommit={(value) => onChange({ [key]: value })} />
   </PropRow>;
 }

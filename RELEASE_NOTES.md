@@ -4,6 +4,8 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## What's new
 
+- **Inspector sliders and editable effect values.** Numeric settings such as Steps, sigma shifts, CFG, placement and clip transforms now pair draggable sliders with compact number fields. Timeline and generation effect values can also be typed directly, with defined ranges, reset support and synchronized controls. Seed remains a plain number field.
+
 - **Agent frame inspection.** Agents can view timeline frames, generated scenes and shots, stored scene takes, image/video references and specific generated images. Motions are rendered at the requested time, both directly and in timeline layers. Captures respect scene offsets and reference trims, without changing playback or selection.
 
 - **Scene generation history.** Each Video scene has a thumbnail strip on its right with up to four completed takes and a separate Draft for edits. Select a take to restore its shots, prompts and scene settings, or right-click and choose Make Primary to use its video on the timeline. Duplicate creates a new scene with independent copies of the selected scene's settings and shots.

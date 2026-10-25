@@ -1,5 +1,6 @@
 import { Add16, Audio22, ArrowDown12, ArrowUp12, ChevronLeft16, ChevronRight16, Copy16, CursorClick32, Delete14, Delete16, Export16, FolderOpen16, GridView16, GridView16Filled, ImageAdd14, ImageAdd16, Images32, ListView16, ListView16Filled, OpenExternal16, Refresh16, Refresh20, Rename16, Search16, TextFile14, TextFile16, TextFile24 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
+import { SliderNumberInput } from "./SliderNumberInput";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from "react";
 import { isReferenceDescribed, projectItemPath, referenceImages, sceneFrameInputs, type ProjectConfig, type ProjectReference, type ProjectReferenceImage } from "../../lib/project";
 import { activeReferenceRefmods, isVideoReference } from "../../lib/project";
@@ -683,14 +684,10 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
             <section className="reference-refmods" aria-label="Refmod attachments">
               {selected.refmods!.map((refmod) => <div key={refmod.id}>
                 <b data-tooltip={refmod.name}>{refmod.name}</b>
-                <PropRow label="Strength" htmlFor={`${refmod.id}-strength`} tooltip="Strength 0 turns a refmod off."><input id={`${refmod.id}-strength`} className="text-field" aria-label={`${refmod.name} strength`} type="number" min={0} max={1} step={0.05} value={refmod.strength} onChange={(event) => {
-                  const strength = Number(event.target.value);
-                  if (event.target.value && Number.isFinite(strength) && strength >= 0 && strength <= 1) update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, strength } : entry) });
-                }} /></PropRow>
-                <PropRow label="Copies" htmlFor={`${refmod.id}-copies`} tooltip="More copies use more GPU memory."><input id={`${refmod.id}-copies`} className="text-field" aria-label={`${refmod.name} copies`} type="number" min={1} max={10} step={1} value={refmod.copies} onChange={(event) => {
-                  const copies = Number(event.target.value);
-                  if (Number.isInteger(copies) && copies >= 1 && copies <= 10) update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, copies } : entry) });
-                }} /></PropRow>
+                <PropRow label="Strength" htmlFor={`${refmod.id}-strength`} tooltip="Strength 0 turns a refmod off."><SliderNumberInput id={`${refmod.id}-strength`} aria-label={`${refmod.name} strength`} minimum={0} maximum={1} step={0.05} value={refmod.strength}
+                  onCommit={(strength) => update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, strength } : entry) })} /></PropRow>
+                <PropRow label="Copies" htmlFor={`${refmod.id}-copies`} tooltip="More copies use more GPU memory."><SliderNumberInput id={`${refmod.id}-copies`} aria-label={`${refmod.name} copies`} minimum={1} maximum={10} integer value={refmod.copies}
+                  onCommit={(copies) => update(selected.id, { iconRelativePath: undefined, refmods: selected.refmods!.map((entry) => entry.id === refmod.id ? { ...entry, copies } : entry) })} /></PropRow>
               </div>)}
             </section>
           </PropSection>}
