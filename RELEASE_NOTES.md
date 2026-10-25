@@ -4,7 +4,7 @@ Changes since 0.3.2.
 
 ## What's new
 
-- **Music.** Generate with YuE2 or MiniMax Music3, browse songs in grid or list view, use bottom playback controls, and create references or timeline audio.
+- **Music.** Generate with YuE2 or MiniMax Music3, browse grid/list views, play songs, and create references or timeline audio. YuE2 selects BF16 above 8 GiB VRAM, otherwise INT8.
 - **Motions.** Create JavaScript animations with the agent, edit elements and parameters, and export them on the timeline or as reference videos.
 - **Scene history.** Keep up to four takes and an editable Draft, restore take settings, choose the primary timeline video, and duplicate scenes.
 - **Agent frame inspection.** Agents can view timeline frames, scenes, takes, references, generated images and Motions at a requested time.

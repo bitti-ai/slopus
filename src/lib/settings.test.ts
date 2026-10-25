@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { TURBO_LORA, VIGGLE_ANIMATE_LORA, loadLoras, saveLoras } from "./loras";
 import {
   agentEndpointProviderSettings,
+  chooseWeightSource,
   selectedImageGeneratorTemplate, createGeneratorTemplate, musicTemplates, mossImageTemplate, fiboImageTemplate, fiboBaseTemplate, templateSupportsEditing, templateSupportsOutpainting, defaultGeneratorTemplate, generatorPathFields, templateSupportsVideo,
   engineProviderSetting,
   loadInferenceBackend,
@@ -24,6 +25,48 @@ import {
 
 describe("generator templates", () => {
   beforeEach(() => localStorage.clear());
+
+  it("selects YuE2 BF16 only above 8 GiB, with INT8 for smaller or unknown GPUs", () => {
+    const sources = musicTemplates()[0].sources!.transformer!;
+    for (const [gib, filename] of [[4, "yue2_3b_int8_convrot.safetensors"], [8, "yue2_3b_int8_convrot.safetensors"],
+      [8.01, "yue2_3b_bf16.safetensors"], [12, "yue2_3b_bf16.safetensors"], [31.4, "yue2_3b_bf16.safetensors"]] as const) {
+      expect(chooseWeightSource(sources, [{ name: "GPU", memoryBytes: gib * 1024 ** 3 }])?.url)
+        .toBe(`https://huggingface.co/Comfy-Org/YuE2/resolve/main/checkpoints/${filename}`);
+    }
+    expect(chooseWeightSource(sources, [])?.url).toBe(musicTemplates()[0].paths.transformer);
+  });
+
+  it("uses the supplied MiniMax Music3 weights and only its three required model roles", () => {
+    const template = musicTemplates()[1];
+    const root = "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/";
+    expect(template.paths).toMatchObject({
+      transformer: root + "diffusion_models/minimax_music3_dit_int8_convrot.safetensors",
+      textEncoder: root + "text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+      audioVae: root + "vae/minimax_music3_dav.safetensors",
+    });
+    expect(generatorPathFields(template).map(({ id }) => id)).toEqual(["transformer", "textEncoder", "audioVae"]);
+  });
+
+  it("upgrades existing YuE2 sources once while preserving downloaded and custom choices", () => {
+    const template = musicTemplates()[0];
+    const int8 = template.sources!.transformer![1];
+    const cached = "D:/weights/yue2-int8.safetensors";
+    const previous = { ...template, name: "My music", paths: { ...template.paths, transformer: cached },
+      sources: { transformer: [{ ...int8, downloadedPath: cached }] } };
+    saveGeneratorTemplateSettings({ templates: [previous], defaultTemplateId: previous.id, catalogVersion: 16 });
+    const upgraded = loadGeneratorTemplateSettings();
+    expect(upgraded.catalogVersion).toBe(17);
+    expect(upgraded.templates[0]).toMatchObject({ name: "My music", paths: { transformer: cached },
+      sources: { transformer: [template.sources!.transformer![0], { ...int8, downloadedPath: cached }] } });
+    expect(loadGeneratorTemplateSettings()).toEqual(upgraded);
+
+    const custom = { ...previous, sources: { transformer: [{ url: "https://example.com/custom.safetensors", gpuModel: "", minVramGb: 0 }] } };
+    saveGeneratorTemplateSettings({ templates: [custom], defaultTemplateId: custom.id, catalogVersion: 16 });
+    expect(loadGeneratorTemplateSettings().templates).toEqual([custom]);
+    const remaining = musicTemplates()[1];
+    saveGeneratorTemplateSettings({ ...upgraded, templates: [remaining], defaultTemplateId: "" });
+    expect(loadGeneratorTemplateSettings().templates).toEqual([remaining]);
+  });
 
   it("starts image projects with the remembered Fibo generator's four-step default", async () => {
     const h3 = createGeneratorTemplate("Video"), fibo = createGeneratorTemplate("Fibo", "fibo2");
@@ -215,7 +258,7 @@ describe("generator templates", () => {
     expect(settings.templates[2]).toEqual(minimaxFastTemplate());
     expect(settings.templates[3]).toEqual(minimaxSingularityTemplate());
     expect(settings.defaultTemplateId).toBe(template.id);
-    expect(settings.catalogVersion).toBe(16);
+    expect(settings.catalogVersion).toBe(17);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [settings.templates[0]] });
     expect(loadGeneratorTemplateSettings().templates).toHaveLength(1);
@@ -236,7 +279,7 @@ describe("generator templates", () => {
     const settings = loadGeneratorTemplateSettings();
     expect(settings.templates).toEqual([expect.objectContaining(custom), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates()]);
     expect(settings.defaultTemplateId).toBe(custom.id);
-    expect(settings.catalogVersion).toBe(16);
+    expect(settings.catalogVersion).toBe(17);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [custom] });
     expect(loadGeneratorTemplateSettings().templates).toEqual([expect.objectContaining(custom)]);
@@ -301,7 +344,7 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 8 }));
     const settings = loadGeneratorTemplateSettings();
     expect(settings.templates).toEqual([minimaxFastTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates()]);
-    expect(settings.catalogVersion).toBe(16);
+    expect(settings.catalogVersion).toBe(17);
     expect(templateNeedsDownload(settings.templates[0])).toBe(true);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
   });
@@ -316,7 +359,7 @@ describe("generator templates", () => {
     const otherPaths = { ...template.paths };
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 10 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.catalogVersion).toBe(16);
+    expect(settings.catalogVersion).toBe(17);
     expect(settings.templates).toHaveLength(5);
     expect(settings.templates[0]).toMatchObject({ id: template.id, name: "FastH3 Omni", defaultSteps: 8,
       paths: { ...otherPaths, transformer: minimaxFastTemplate().paths.transformer },
@@ -412,7 +455,7 @@ describe("generator templates", () => {
     template.paths[field] = downloadedPath;
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 1 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.catalogVersion).toBe(16);
+    expect(settings.catalogVersion).toBe(17);
     expect(settings.templates[0].paths[field]).toBe(downloadedPath);
     expect(settings.templates[0].sources![field]).toEqual(minimaxOriginalTemplate().sources![field]!.map((source, index) =>
       index === 0 ? { ...source, downloadedPath } : source));
@@ -447,7 +490,7 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 2 }));
     const settings = loadGeneratorTemplateSettings();
     const migrated = settings.templates[0];
-    expect(settings.catalogVersion).toBe(16);
+    expect(settings.catalogVersion).toBe(17);
     expect(migrated.sources!.textEncoder).toEqual([
       { url: originalUrl, gpuModel: "", minVramGb: 0, ...(selection === "cached original" ? { downloadedPath: cachedOriginal } : {}) },
       custom,

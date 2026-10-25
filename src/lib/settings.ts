@@ -257,7 +257,12 @@ export function musicTemplates(): GeneratorTemplate[] {
       textEncoder: root + "text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
       audioVae: root + "vae/minimax_music3_dav.safetensors" }) };
     return { ...createGeneratorTemplate(generatorModel(modelType).label, modelType), id: modelType, paths,
-      sources: Object.fromEntries(Object.entries(paths).filter(([, url]) => url).map(([id, url]) => [id, [{ url, gpuModel: "", minVramGb: 0 }]])) };
+      sources: Object.fromEntries(Object.entries(paths).filter(([, url]) => url).map(([id, url]) => [id, [
+        // Selection rounds detected GiB up: a minimum tier of 9 means strictly
+        // more than 8 GiB, keeping 8 GiB cards on the INT8 fallback.
+        ...(modelType === "yue2" && id === "transformer" ? [{ url: "https://huggingface.co/Comfy-Org/YuE2/resolve/main/checkpoints/yue2_3b_bf16.safetensors", gpuModel: "", minVramGb: 9 }] : []),
+        { url, gpuModel: "", minVramGb: 0 },
+      ]])) };
   });
 }
 
@@ -366,7 +371,7 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
   templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates()],
   defaultTemplateId: "default",
-  catalogVersion: 16,
+  catalogVersion: 17,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -429,7 +434,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? templates.find(templateUsable)?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -626,6 +631,19 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
         if ((normalized.catalogVersion ?? 0) < 16) {
           for (const template of musicTemplates()) if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 16 })!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
+        if ((normalized.catalogVersion ?? 0) < 17) {
+          const yue = musicTemplates()[0];
+          const bf16 = yue.sources!.transformer![0];
+          normalized.templates = normalized.templates.map((template) => {
+            const sources = template.sources?.transformer ?? [];
+            if (template.id !== yue.id || template.modelType !== yue.modelType
+              || !sources.some((source) => source.url === yue.paths.transformer)
+              || sources.some((source) => source.url === bf16.url)) return template;
+            return { ...template, sources: { ...template.sources, transformer: [bf16, ...sources] } };
+          });
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 17 })!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         return normalized;
