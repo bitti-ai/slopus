@@ -1521,9 +1521,8 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
               <PropRow label="Speed" htmlFor="clip-speed" value={clipPlaybackRate(selected)} defaultValue={1}
                 onReset={speedDisabled ? undefined : () => changeSpeed(100)}
                 tooltip="100% is normal speed. Changes duration while keeping the same source range and moving later clips on this track. Audio pitch changes with speed.">
-                <SliderNumberInput id="clip-speed" className="text-field" aria-label="Clip speed" minimum={MIN_CLIP_SPEED * 100} maximum={MAX_CLIP_SPEED * 100} step={1}
+                <SliderNumberInput id="clip-speed" className="text-field" aria-label="Clip speed" minimum={MIN_CLIP_SPEED * 100} maximum={MAX_CLIP_SPEED * 100} step={1} suffix="%"
                   value={Number((clipPlaybackRate(selected) * 100).toFixed(2))} disabled={speedDisabled} onCommit={changeSpeed} />
-                <span className="inspector-unit">%</span>
               </PropRow>
               <PropRow label="Starts at"><span className="inspector-value">{formatTimecode(selected.startMs, fps)}</span></PropRow>
               <PropRow label="Duration" htmlFor="clip-duration">
@@ -1556,8 +1555,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   onReset={visualControlsDisabled ? undefined : () => updateTransform(key, fallback)}
                   scrub={visualControlsDisabled ? undefined : { value, onChange: (next) => updateTransform(key, next), min: minimum, max: maximum, step: 1 }}
                 >
-                  <SliderNumberInput id={`clip-${key}`} className="text-field" aria-label={label} minimum={minimum} maximum={maximum} step={1} value={value} disabled={visualControlsDisabled} onCommit={(next) => updateTransform(key, next)} />
-                  <span className="inspector-unit">{unit}</span>
+                  <SliderNumberInput id={`clip-${key}`} className="text-field" aria-label={label} minimum={minimum} maximum={maximum} step={1} suffix={unit} value={value} disabled={visualControlsDisabled} onCommit={(next) => updateTransform(key, next)} />
                 </PropRow>;
               })}
             </PropSection>

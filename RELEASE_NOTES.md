@@ -13,7 +13,7 @@ Changes since 0.3.2.
 - **Image batches.** Queue up to 100 images with different seeds from the Generate dropdown.
 - **Generation effects.** Added LCS color steering, tone, sharpness and color stabilization, with step ranges and optional regions on supported models.
 - **Generator controls.** Group generators and LoRAs by model, group generator dropdown choices, and enable editing per template.
-- **Inspector controls.** Added bounded sliders, editable effect values and compact, centered action buttons.
+- **Inspector controls.** Added sliders and editable values with consistent widths and practical ranges (up to 100 steps), plus compact, centered action buttons.
 
 ## Fixes and improvements
 

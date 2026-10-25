@@ -25,8 +25,8 @@ it("synchronizes dragging, keyboard edits and range enforcement without erasing 
   fireEvent.change(field, { target: { value: "999" } });
   expect(changed).toHaveBeenLastCalledWith(3.7);
   fireEvent.blur(field);
-  expect(field).toHaveValue(100);
-  expect(bar).toHaveValue("100");
+  expect(field).toHaveValue(20);
+  expect(bar).toHaveValue("20");
   fireEvent.change(field, { target: { value: "-1" } });
   fireEvent.blur(field);
   expect(field).toHaveValue(0.1);
@@ -44,5 +44,5 @@ it("keeps integer controls integral and both controls disabled together", () => 
   expect(field).toBeDisabled();
   expect(screen.getByRole("slider")).toBeDisabled();
   expect(field).toHaveAttribute("min", "2");
-  expect(field).toHaveAttribute("max", "1000");
+  expect(field).toHaveAttribute("max", "100");
 });
