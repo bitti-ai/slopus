@@ -18,73 +18,55 @@
 
 ---
 
-Slopus brings an AI assistant, a scene generator, reusable references, a timeline editor, and a still image editor together. Generate locally with SlopFab (no Python, no FFmpeg) and export finished videos and images.
-
-> **GPU recommendation:** **24 GB of VRAM or more** is currently recommended for local generation. We plan to reduce this in future updates.
+Slopus combines an AI assistant, local image and video generation, reusable references and a timeline editor. SlopFab powers generation without Python; WebCodecs and WebGPU handle media processing without bundled FFmpeg.
 
 ![Slopus application screenshot](marketing/screenshot1.png)
 
 ## Features
 
-- **One workspace.** Every project has **Timeline**, **Video**, **Image**, **References** and **Export** tabs.
-- **Agent.** Plan scenes, create references and edit projects with Claude Code, Codex, OpenRouter or a local OpenAI-compatible model. Open the agent pane with Ctrl+Shift+A.
-- **Scene generator.** Generate scenes with First & last frame, Animate, Pose, Character replace, Extend or Bridge. Set steps, seeds and presets; manage jobs in the **Work queue**. Each scene keeps four takes and an editable Draft in its history strip. Select a take to restore its scene settings, use **Make Primary** to choose its timeline video, or **Duplicate** the scene.
-- **Shot controls.** Set timing, action, dialogue, language, camera and performance. Add scene-wide look, sound and music, and cite references with smart chips.
-- **References.** Reuse descriptions, images and video clips across scenes. Start from searchable presets, see where references are used, and trim clips with optional sound.
-- **RefMods.** Use pre-encoded H3 `.safetensors` references with Ref2VA generators for video, images, edits and icons. Set **Strength** and **Copies** per attachment.
-- **LoRAs.** Combine local or downloadable adapters in generator templates, with ordering, strength and step-count controls.
-- **LAN workers.** Generate on another Windows or Linux computer. Workers download available weights, receive local files as needed, and return results to your project.
-- **Generator templates.** Download weights or use local files. Save model and attention settings per template, with optional **MotionCache** for supported modes. Import and export URL-based templates as portable [`.slop` bundles](docs/generator-weights.md#sharing-generator-templates).
-- **Timeline.** Video and audio tracks with thumbnails, waveforms, snapping, trimming, splitting, zoom and keyboard shortcuts. Transform, opacity, chroma key, fades and wipes, plus GPU effects (sharpen, blur, color correction, vignette, `.cube` LUTs) that can be bypassed.
-- **Motions.** Add an empty Motion on the timeline, then ask the agent to create its animation. Select and move or resize named elements in the video preview; edit parameters and JavaScript in the right panel. Render as reference video adds an MP4 to References for MiniMax generation.
-- **Motions.** Add an empty Motion on the timeline, then ask the agent to create its animation. Select and move or resize named elements in the video preview; edit parameters and JavaScript in the right panel. Render as reference video adds an MP4 to References for MiniMax generation.
-- **Image editor.** Generate images from prompts, objects and text, or open an image and describe whole-image or local edits. Keep originals, drafts and versions in the image bar.
-- **Export.** Video: MP4 in H.264, VP9 or AV1 (as your encoders allow) at a chosen resolution, frame rate and quality; exports keep running in the background. Images: pick one from the image bar and save it as JPG or PNG at a chosen size and quality.
-- **Undo everywhere.** Save, Undo and Redo sit in the title bar; Ctrl+Z and Ctrl+Y cover edits from any view, the agent and project settings.
-- **Your data.** Projects and media stay on disk. API keys stay in this computer's settings, outside project files.
+- **Agent.** Plan scenes, generate media, inspect frames and edit projects with Claude Code, Codex, OpenRouter or a local OpenAI-compatible model. Toggle the pane with Ctrl+Shift+A.
+- **Video.** Generate Prompt, First & last frame and other [scene types](docs/scene-types.md), with shot timing, dialogue, camera and sound controls. Keep up to four takes and an editable Draft; use **Make Primary** to choose the timeline video.
+- **Images.** Generate with MiniMax H3, MOSS Image or Fibo 2.0. Use whole-image, box, lasso and Zoom edits where supported, with drafts and versions in the image bar.
+- **References.** Reuse descriptions, images, trimmed video clips and [H3 RefMods](docs/refmods.md) across scenes.
+- **Generators.** Manage model weights, supported LoRAs, attention and generation effects. Share [generator templates](docs/generator-weights.md#sharing-generator-templates) as `.slop` bundles or run jobs on LAN workers.
+- **Timeline.** Arrange video and audio with trimming, splitting, snapping, waveforms, transitions, chroma key and GPU effects.
+- **Motions.** Ask the agent to create JavaScript animations, edit elements and parameters, and render them on the timeline or as reference videos.
+- **Export.** Save MP4 video with H.264, VP9 or AV1 where encoders are available, or export images as JPG or PNG. Exports run in the background.
+- **Project editing.** Timeline, Video, Image, References and Export views share Save, Undo and Redo. Projects and media are stored locally; agent requests go to the selected provider. API keys stay outside project files.
 
 ## Setup
 
-In **Settings → Generator**, download or select model weights and check that the generator reads **Ready**. Local generation requires a supported GPU. Configure OpenRouter or a local model endpoint in **Settings → Agents**.
+Install a Windows x64 or Linux x86_64 release. In **Settings → Generators**, choose a model and download or select weights until the generator reads **Ready**. Configure OpenRouter or a local endpoint in **Settings → Agents**.
 
-### Linux
+Local generation needs a supported GPU; 24 GB or more VRAM is recommended, with requirements varying by model and settings. MOSS and Fibo require CUDA.
 
-Install the x86_64 `.deb` or `.rpm` package, or make the AppImage executable and run it. The AppImage supports in-app updates.
+| Windows GPU | Backend |
+| --- | --- |
+| NVIDIA RTX 50 series | CUDA 13 |
+| NVIDIA RTX 30/40 series | CUDA 12.8 |
+| AMD/Intel, or NVIDIA without CUDA | Vulkan for supported models |
 
-Requires WebKitGTK 2.42+ for video and GPU features. The bundled generation runtime requires NVIDIA driver libraries and CUDA 13 cuBLAS, even when using Vulkan. See the [Linux guide](docs/linux.md) for details.
+On Linux, install the `.deb` or `.rpm`, or make the AppImage executable and run it. AppImage supports in-app updates. Video and GPU features require WebKitGTK 2.42+; the bundled generation runtime also requires NVIDIA driver libraries and CUDA 13 cuBLAS, even with Vulkan. See the [Linux guide](docs/linux.md).
 
-### Generating on another computer
+### LAN workers
 
-Unpack a worker package on a GPU-equipped computer on your network:
+Unpack a matching worker release on a GPU-equipped computer:
 
 | Platform | Package | Start |
 | --- | --- | --- |
 | Windows x64 | `Slopus-<version>-windows-x64-worker.zip` | `slopus-worker.exe --weights D:\Models` |
 | Linux x86_64 | `Slopus-<version>-linux-x64-worker.tar.gz` | `./slopus-worker --weights ~/models` |
 
-1. Start the worker and allow TCP 47321 and UDP 5353 through the firewall.
-2. In **Settings → Workers**, click **Use** beside the discovered worker, or add it by address. Missing weights download on first use when download links are available.
-3. Select **This computer** to switch back to local generation.
+Allow TCP 47321 and UDP 5353 through the firewall. In **Settings → Workers**, click **Use** beside a discovered worker or add its address. Missing weights download when links are available. Select **This computer** to return to local generation.
 
-Windows workers prefer CUDA 13, then CUDA 12, with Vulkan as a fallback. Linux workers also support `--backend vulkan`, but the bundled runtime still needs the libraries above. No desktop libraries are required. Run `slopus-worker --help` for backend, access-token and port options.
-
-Windows GPU setup:
-
-| GPU | Generation backend |
-| --- | --- |
-| NVIDIA GeForce RTX 50 series (Blackwell) | CUDA 13 |
-| NVIDIA GeForce RTX 30 or RTX 40 series | CUDA 12.8 |
-| AMD/Intel | Vulkan |
-| NVIDIA without CUDA installed | Vulkan fallback |
+Linux workers need the runtime libraries listed above. Run `slopus-worker --help` for backend, access-token and port options.
 
 ## Built with
 
-Slopus uses Tauri 2, Rust, React, and TypeScript. WebCodecs and WebGPU power media processing and rendering, with MP4 export through `mp4-muxer`. SlopFab powers local AI generation.
+Tauri 2, Rust, React, TypeScript, WebCodecs, WebGPU, `mp4box.js`, `mp4-muxer` and SlopFab.
 
 ## Model licensing
 
-Powered by MiniMax H3.
+MiniMax H3 model weights are licensed separately under the **MiniMax H3 COMMUNITY LICENSE AGREEMENT**.
 
-MiniMax H3 model weights are licensed separately under their own **MiniMax H3 COMMUNITY LICENSE AGREEMENT**.
-
-Fibo 2.0 is released under a CC BY-NC 4.0 license for non-commercial use. Commercial use is subject to a commercial agreement with BRIA.
+Fibo 2.0 is released under CC BY-NC 4.0 for non-commercial use. Commercial use is subject to an agreement with BRIA.
