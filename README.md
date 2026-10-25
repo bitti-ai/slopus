@@ -84,3 +84,5 @@ Slopus uses Tauri 2, Rust, React, and TypeScript. WebCodecs and WebGPU power med
 Powered by MiniMax H3.
 
 MiniMax H3 model weights are licensed separately under their own **MiniMax H3 COMMUNITY LICENSE AGREEMENT**.
+
+Fibo 2.0 is released under a CC BY-NC 4.0 license for non-commercial use. Commercial use is subject to a commercial agreement with BRIA.
