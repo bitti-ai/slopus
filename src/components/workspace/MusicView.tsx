@@ -267,7 +267,7 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
             <PropSection title="Song">
               <PropRow label="Title"><input className="text-field" aria-label="Song title" value={selected.title} maxLength={200} disabled={busy} onChange={(event) => edit({ title: event.target.value || "New song" })} /></PropRow>
               <label className="music-prompt">Style<textarea className="text-field" aria-label="Music style" value={selected.style} maxLength={10000} rows={3} disabled={busy} placeholder="Genre, mood, instruments and vocals…" onChange={(event) => edit({ style: event.target.value })} /></label>
-              <label className="music-prompt">Lyrics<textarea className="text-field music-lyrics" aria-label="Music lyrics" value={selected.settings.lyrics} maxLength={30000} rows={10} disabled={busy} placeholder="[Verse]… Leave empty for an instrumental." onChange={(event) => setting({ lyrics: event.target.value })} /></label>
+              <label className="music-prompt">Lyrics<textarea className="text-field music-lyrics" aria-label="Music lyrics" value={selected.settings.lyrics} maxLength={30000} rows={15} disabled={busy} placeholder="[Verse]… Leave empty for an instrumental." onChange={(event) => setting({ lyrics: event.target.value })} /></label>
             </PropSection>
             <PropSection title="Generation" persistKey="music.generation">
               <PropRow label="Duration"><SliderNumberInput aria-label="Song duration" minimum={2} maximum={300} step={1} suffix="s" value={selected.settings.duration} disabled={busy} onCommit={(duration) => setting({ duration })} /></PropRow>
