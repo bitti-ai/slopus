@@ -58,6 +58,16 @@ export function moveSong(config: ProjectConfig, songId: string, folderId: string
   return updateSong(config, songId, { folderId });
 }
 
+export function removeMusicFolder(config: ProjectConfig, id: string): ProjectConfig {
+  const folder = config.musicFolders?.find((item) => item.id === id);
+  if (!folder) return config;
+  const parentId = folder.parentId ?? null;
+  return { ...config,
+    musicFolders: config.musicFolders!.filter((item) => item.id !== id).map((item) => item.parentId === id ? { ...item, parentId } : item),
+    musicSongs: config.musicSongs?.map((song) => song.folderId === id ? { ...song, folderId: parentId } : song),
+  };
+}
+
 export function musicFolderLabel(folders: readonly MusicFolder[], id: string): string {
   const names: string[] = [], visited = new Set<string>();
   let folder = folders.find((item) => item.id === id);

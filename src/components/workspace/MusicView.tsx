@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import type { ProjectAsset, ProjectConfig } from "../../lib/project";
 import { isTauri, readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateSupportsMusic, templateUsable, generatorPathFields, type GeneratorTemplate } from "../../lib/settings";
-import { musicFolderLabel, musicSettingsForModel, moveSong, newMusicFolder, newSong, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
+import { musicFolderLabel, musicSettingsForModel, moveSong, newMusicFolder, newSong, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
-import { ComboBox, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize } from "../ui";
-import { Add16, Audio16, FolderAdd16, FolderOpen16, GoToEnd16, GoToStart16, GridView16, ListView16, Pause16, Play16, References16, Speaker14, Sparkle16, Stop14 } from "../ui/icons";
+import { ComboBox, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
+import { Add16, Audio16, Delete16, FolderAdd16, FolderOpen16, GoToEnd16, GoToStart16, GridView16, ListView16, Pause16, Play16, References16, Speaker14, Sparkle16, Stop14 } from "../ui/icons";
 import { generatorOptions } from "../generatorOptions";
 import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
 import type { ConfigUpdate } from "./TimelineView";
@@ -58,6 +58,20 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
     onChange((current) => ({ ...current, musicSongs: [...(current.musicSongs ?? []), song] }));
     setSelectedId(song.id); setError(null);
   };
+  const beginFolder = () => { setCreatingFolder(true); setFolderName(""); };
+  const newItems = (): MenuEntry[] => [
+    { label: "New song", icon: <Add16 />, onSelect: add },
+    { label: "New folder", icon: <FolderAdd16 />, onSelect: beginFolder },
+  ];
+  const folderContext = (event: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>, id: string | null) => {
+    const folder = folders.find((item) => item.id === id);
+    menu.open(event, [...newItems(), ...(folder ? [{ separator: true } as const,
+      { label: "Remove folder", icon: <Delete16 />, danger: true, onSelect: () => {
+        onChange((current) => removeMusicFolder(current, folder.id));
+        if (currentFolderId === folder.id) setFolderId(folder.parentId ?? null);
+        setNotice(`Removed ${folder.name}. Its contents were moved to the parent folder.`);
+      } }] : [])], { "aria-label": folder ? `${folder.name} actions` : "Music actions" });
+  };
   const createFolder = (event: React.FormEvent) => {
     event.preventDefault();
     try {
@@ -103,6 +117,7 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
   // Capture the folder's order when playback starts. Browsing other folders
   // does not change what plays next; drafts and unavailable assets are skipped.
   const playable = playlist.length ? playlist.flatMap((id) => {
+    if (!config.musicSongs?.some((song) => song.assetId === id)) return [];
     const asset = config.assets.find((item) => item.id === id && item.kind === "audio" && item.relativePath);
     return asset ? [{ asset }] : [];
   }) : visiblePlayable;
@@ -142,14 +157,22 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
   };
   const context = (event: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>, song: MusicSong) => {
     const asset = config.assets.find((item) => item.id === song.assetId);
-    menu.open(event, [{ label: "Create Reference", icon: <References16 />, disabled: !asset?.relativePath || (asset.durationMs ?? 0) < 2000,
+    menu.open(event, [...newItems(), { separator: true }, { label: "Create Reference", icon: <References16 />, disabled: !asset?.relativePath || (asset.durationMs ?? 0) < 2000,
       onSelect: () => {
         try {
           const reference = songReference(song, asset!);
           onChange((current) => ({ ...current, references: [...current.references, reference] }));
           setNotice(`Added ${song.title} to References.`);
         } catch (reason) { setError(String(reason)); }
-      } }], { "aria-label": `${song.title} actions` });
+      } }, { separator: true }, { label: "Remove song", icon: <Delete16 />, danger: true,
+        disabled: workItems.some((item) => item.sceneId === song.id && isWorkActive(item)),
+        onSelect: () => {
+          onChange((current) => ({ ...current, musicSongs: current.musicSongs?.filter((item) => item.id !== song.id) }));
+          if (selectedId === song.id) setSelectedId(undefined);
+          if (song.assetId && playerId === song.assetId) { playWhenReady.current = false; audio.current?.pause(); setPlayerId(null); }
+          setPlaylist((current) => current.filter((id) => id !== song.assetId));
+          setNotice(`Removed ${song.title} from Music.`);
+        } }], { "aria-label": `${song.title} actions` });
   };
 
   return <div className="music-view" style={inspector.style}>
@@ -159,18 +182,22 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
         options={generatorOptions(templates, (item) => ({ disabled: !templateReady(item), description: !templateReady(item) ? "Download in Settings" : undefined }))}
         onChange={chooseGenerator} />
       <button type="button" className="secondary-button" onClick={add}><Add16 />New song</button>
-      <button type="button" className="secondary-button" onClick={() => { setCreatingFolder(true); setFolderName(""); }}><FolderAdd16 />New folder</button>
+      <button type="button" className="secondary-button" onClick={beginFolder}><FolderAdd16 />New folder</button>
       <div className="music-toolbar__views" role="group" aria-label="Song view">
         {(["grid", "list"] as const).map((mode) => <button type="button" className="icon-button" key={mode} aria-label={`${mode === "grid" ? "Grid" : "List"} view`} aria-pressed={view === mode}
           onClick={() => { setView(mode); localStorage.setItem("slopus.music.view", mode); }}>{mode === "grid" ? <GridView16 /> : <ListView16 />}</button>)}
       </div>
     </div>
     <div className="music-body">
-      <div className="music-library">
+      <div className="music-library" tabIndex={0} aria-label="Music library"
+        onContextMenu={(event) => { if (!(event.target as HTMLElement).closest("input, textarea")) folderContext(event, currentFolderId); }}
+        onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "ContextMenu" || event.shiftKey && event.key === "F10")) folderContext(event, currentFolderId); }}>
         <div className="music-library__heading"><h2>{currentFolder?.name ?? "Your music"}</h2><span>{visibleSongs.length} songs</span></div>
         <nav className="music-folders" aria-label="Music folders">
           {[{ id: null, name: "Your music" }, ...folders.map((folder) => ({ id: folder.id, name: musicFolderLabel(folders, folder.id) }))].map((folder) =>
             <button key={folder.id ?? "root"} type="button" className="secondary-button" aria-current={currentFolderId === folder.id ? "page" : undefined}
+              onContextMenu={(event) => folderContext(event, folder.id)}
+              onKeyDown={(event) => { if (event.key === "ContextMenu" || event.shiftKey && event.key === "F10") folderContext(event, folder.id); }}
               data-drop-target={dropFolder === (folder.id ?? "") ? "true" : undefined} onClick={() => { setFolderId(folder.id); setSelectedId(undefined); setNotice(null); }}
               onDragOver={(event) => { if (event.dataTransfer.types.includes(SONG_DRAG_TYPE)) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropFolder(folder.id ?? ""); } }}
               onDragLeave={() => setDropFolder(undefined)} onDrop={(event) => dropSong(event, folder.id)} data-tooltip={folder.name}><FolderOpen16 /><span>{folder.name}</span></button>)}

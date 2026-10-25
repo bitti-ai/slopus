@@ -8,14 +8,15 @@ import { createProjectConfig, type ProjectConfig } from "../../lib/project";
 import { newMusicFolder, newSong, newSongVariation } from "../../lib/music";
 import { readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, musicTemplates, saveGeneratorTemplateSettings } from "../../lib/settings";
+import type { WorkItem } from "../../lib/workQueue";
 
 vi.mock("../../lib/persistence", async (original) => ({ ...await original<typeof import("../../lib/persistence")>(), isTauri: () => true, readMediaFileUrl: vi.fn(async () => "blob:song") }));
 let latest: ProjectConfig;
 const generate = vi.fn();
 const createConfig = () => createProjectConfig({ name: "Music", prompt: "", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 30 });
-function Harness({ initial = createConfig() }: { initial?: ProjectConfig }) {
+function Harness({ initial = createConfig(), workItems = [] }: { initial?: ProjectConfig; workItems?: WorkItem[] }) {
   const [config, setConfig] = useState(initial); latest = config;
-  return <MusicView config={config} folderPath="C:/Music" onChange={setConfig} onGenerate={generate} onCancel={() => {}} workItems={[]} />;
+  return <MusicView config={config} folderPath="C:/Music" onChange={setConfig} onGenerate={generate} onCancel={() => {}} workItems={workItems} />;
 }
 beforeEach(() => {
   vi.clearAllMocks(); localStorage.clear();
@@ -58,6 +59,66 @@ it("creates songs in the browsed folder and moves them between folders by drag a
   fireEvent.dragStart(screen.getAllByRole("listitem")[1], { dataTransfer });
   fireEvent.drop(within(screen.getByRole("navigation", { name: "Music folders" })).getByRole("button", { name: "Your music" }), { dataTransfer });
   expect(latest.musicSongs![1].folderId).toBeNull();
+});
+
+it("creates songs and folders from the library and song context menus in the current folder", () => {
+  render(<Harness />);
+  fireEvent.contextMenu(screen.getByLabelText("Music library"));
+  fireEvent.click(screen.getByRole("menuitem", { name: "New folder" }));
+  fireEvent.change(screen.getByLabelText("Folder name"), { target: { value: "Jazz" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create folder" }));
+  fireEvent.keyDown(screen.getByLabelText("Music library"), { key: "F10", shiftKey: true });
+  fireEvent.click(screen.getByRole("menuitem", { name: "New song" }));
+  expect(latest.musicSongs![0].folderId).toBe(latest.musicFolders![0].id);
+  fireEvent.click(screen.getByRole("button", { name: "List view" }));
+  fireEvent.contextMenu(screen.getByRole("listitem"));
+  expect(screen.getByRole("menuitem", { name: "New folder" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("menuitem", { name: "New song" }));
+  expect(latest.musicSongs).toHaveLength(2);
+  expect(latest.musicSongs![1].folderId).toBe(latest.musicFolders![0].id);
+});
+
+it("removes the context-clicked folder and moves its contents to the parent", () => {
+  const parent = newMusicFolder("Jazz", null), folder = newMusicFolder("Piano", parent.id), child = newMusicFolder("Solo", folder.id);
+  const song = newSong("yue2", 32, folder.id), nested = newSong("yue2", 32, child.id);
+  render(<Harness initial={{ ...createConfig(), musicFolders: [parent, folder, child], musicSongs: [song, nested] }} />);
+  const navigation = within(screen.getByRole("navigation", { name: "Music folders" }));
+  fireEvent.click(navigation.getByRole("button", { name: "Jazz / Piano" }));
+  fireEvent.keyDown(navigation.getByRole("button", { name: "Jazz / Piano" }), { key: "ContextMenu" });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove folder" }));
+  expect(latest.musicFolders).toEqual([parent, { ...child, parentId: parent.id }]);
+  expect(latest.musicSongs).toEqual([{ ...song, folderId: parent.id }, nested]);
+  expect(navigation.getByRole("button", { name: "Jazz" })).toHaveAttribute("aria-current", "page");
+  expect(navigation.getByRole("button", { name: "Jazz / Solo" })).toBeInTheDocument();
+  fireEvent.contextMenu(navigation.getByRole("button", { name: "Your music" }));
+  expect(screen.queryByRole("menuitem", { name: "Remove folder" })).not.toBeInTheDocument();
+});
+
+it("removes the context-clicked playing song, stops playback and preserves timeline media", async () => {
+  const first = { ...newSong(), title: "First", assetId: "audio" }, second = { ...newSong(), title: "Second" };
+  const asset = { id: "audio", kind: "audio" as const, mimeType: "audio/wav", name: "First", relativePath: "media/first.wav", durationMs: 30000, createdAt: first.createdAt };
+  const config = { ...createConfig(), musicSongs: [first, second], assets: [asset] };
+  const { container } = render(<Harness initial={config} />);
+  fireEvent.click(screen.getByRole("button", { name: "Play First" }));
+  await waitFor(() => expect(container.querySelector("audio")).toHaveAttribute("src", "blob:song"));
+  fireEvent.click(screen.getByRole("button", { name: "Select Second" }));
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Select First" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove song" }));
+  expect(latest.musicSongs).toEqual([second]);
+  expect(latest.assets).toEqual(config.assets);
+  expect(latest.timeline).toEqual(config.timeline);
+  expect(screen.getByLabelText("Song title")).toHaveValue("Second");
+  await waitFor(() => expect(container.querySelector("audio")).not.toHaveAttribute("src"));
+  expect(screen.getByRole("button", { name: "Next song" })).toBeDisabled();
+});
+
+it("disables removal for a song with active generation", () => {
+  const song = newSong();
+  render(<Harness initial={{ ...createConfig(), musicSongs: [song] }} workItems={[{ sceneId: song.id, status: "queued", detail: "Waiting", progress: 0 } as WorkItem]} />);
+  fireEvent.contextMenu(screen.getByRole("listitem"));
+  expect(screen.getByRole("menuitem", { name: "Remove song" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove song" }));
+  expect(latest.musicSongs).toEqual([song]);
 });
 
 it("automatically plays the next generated song in the starting folder even after browsing elsewhere", async () => {
