@@ -149,6 +149,7 @@
   --item-header: 48px;                 /* the selected-item header */
   --section-row: 28px;                 /* PropSection header, property rows */
   --prop-label: 104px;                 /* the one label column width */
+  --inspector-action-width: 220px;     /* centered panel actions, shrink in narrow panes */
   --pane-side-default: 340px;          /* a side pane's default width */
   --titlebar-height: 48px;             /* the window caption / app header row */
 

@@ -40,7 +40,7 @@ export function ExtendSettings({ config, source, options, onChange, onResolution
               onChange({ ...options, bounds: field === "width" || field === "height" ? alignExtendBounds(bounds, field === "width" ? "e" : "s") : { ...bounds, [field]: Math.round(value) } });
             }} />
         </PropRow>)}
-        <button type="button" className="secondary-button" disabled={busy} onClick={() => onChange({ ...options, bounds: initialExtendBounds(source.width!, source.height!) })}>Reset box</button>
+        <button type="button" className="secondary-button inspector-action" disabled={busy} onClick={() => onChange({ ...options, bounds: initialExtendBounds(source.width!, source.height!) })}>Reset box</button>
         <PropRow label="Steps" htmlFor="extend-steps"><SliderNumberInput id="extend-steps" aria-label="Steps" {...GENERATION_STEPS_RANGE} required disabled={busy}
           value={options.steps} onCommit={(steps) => onChange({ ...options, steps })} /></PropRow>
         <PropRow label="Seed" htmlFor="extend-seed" tooltip="Use -1 for a random seed."><input id="extend-seed" className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} step="1" required disabled={busy}

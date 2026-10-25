@@ -607,14 +607,14 @@ export function ReferencesView({ config, folderPath, onChange, onRegenerateIcon,
             <section className="reference-video" aria-label="Video reference">
               <ReferenceVideo key={`${selected.id}:${selected.sourcePath ?? selected.relativePath}`} folderPath={folderPath} reference={selected}
                 onChange={(video) => update(selected.id, { video })} />
-              <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined, images: referenceImages(selected) })}><Delete16 aria-hidden="true" /> Remove video</button>
+              <button className="secondary-button inspector-action" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, video: undefined, images: referenceImages(selected) })}><Delete16 aria-hidden="true" /> Remove video</button>
             </section>
           </PropSection>}
           {selected.kind === "audio" && <PropSection title="Sound clip" persistKey="references.audio" tooltip="Needs a Ref2VA generator and an image or video reference in the same scene. Cite it in a shot to place it.">
             <section className="reference-video" aria-label="Sound reference">
               <ReferenceAudio key={`${selected.id}:${selected.sourcePath ?? selected.relativePath}`} folderPath={folderPath} reference={selected}
                 onChange={(audio) => update(selected.id, { audio })} />
-              <button className="secondary-button" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, audio: undefined })}><Delete16 aria-hidden="true" /> Remove sound</button>
+              <button className="secondary-button inspector-action" onClick={() => update(selected.id, { kind: "text", sourcePath: null, relativePath: null, audio: undefined })}><Delete16 aria-hidden="true" /> Remove sound</button>
             </section>
           </PropSection>}
           {/* The picture at a readable size, where the chip is only a glance:

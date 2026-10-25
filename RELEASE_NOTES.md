@@ -4,6 +4,8 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## What's new
 
+- **Centered inspector actions.** Generate, Debug prompt, Export and other panel actions keep a compact default width and shrink to fit narrower panels.
+
 - **Inspector sliders and editable effect values.** Numeric settings such as Steps, sigma shifts, CFG, placement and clip transforms now pair draggable sliders with compact number fields. Timeline and generation effect values can also be typed directly, with defined ranges, reset support and synchronized controls. Seed remains a plain number field.
 
 - **Agent frame inspection.** Agents can view timeline frames, generated scenes and shots, stored scene takes, image/video references and specific generated images. Motions are rendered at the requested time, both directly and in timeline layers. Captures respect scene offsets and reference trims, without changing playback or selection.

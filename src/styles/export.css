@@ -412,13 +412,14 @@ img.export-image {
 
 .export-settings__actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   gap: var(--space-2);
 }
 
 .export-settings__actions .primary-button,
 .export-settings__actions .secondary-button {
-  min-width: 96px;
+  flex: 0 1 var(--inspector-action-width);
+  margin-inline: 0;
 }
 
 .export-progress {

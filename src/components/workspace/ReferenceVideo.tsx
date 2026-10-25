@@ -19,7 +19,7 @@ export function ReferenceVideo(props: ReferenceVideoProps) {
     {!open && (props.reference.video?.mode === "frames"
       ? <div className="reference-trim__summary"><strong>Frames</strong><span>{props.reference.video.frames?.length ?? 0} frames selected</span></div>
       : <div className="reference-trim__summary"><strong>{referenceTime(start)} – {referenceTime(start + length)}</strong><span>{Number(length.toFixed(2))} s selected</span></div>)}
-    <button type="button" className="secondary-button" onClick={() => setOpen(true)}><Cut16 /> Edit video clip</button>
+    <button type="button" className="secondary-button inspector-action" onClick={() => setOpen(true)}><Cut16 /> Edit video clip</button>
     {open && <ReferenceVideoDialog {...props} onClose={() => setOpen(false)} />}
   </>;
 }

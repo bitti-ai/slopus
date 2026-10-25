@@ -892,7 +892,6 @@
 .clip-effect__note--error { color: var(--danger); }
 
 .clip-effects__add.secondary-button {
-  width: 100%;
   gap: var(--space-2);
   margin-top: var(--space-1);
 }

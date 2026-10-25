@@ -72,7 +72,7 @@ export function ReferenceAudio({ folderPath, reference, onChange }: { folderPath
       <CommittedNumberInput id={`${reference.id}-audio-length`} className="text-field" aria-label="Sound length in seconds" step={0.1} disabled={!trim}
         value={Number(length.toFixed(2))} minimum={MIN_REFERENCE_SECONDS} maximum={MAX_REFERENCE_SECONDS} onCommit={(value) => change("duration", value)} />
     </PropRow>
-    <button type="button" className="secondary-button" disabled={!trim} onClick={() => void playSelection()}>
+    <button type="button" className="secondary-button inspector-action" disabled={!trim} onClick={() => void playSelection()}>
       {previewing ? <><Pause14 aria-hidden="true" /> Stop</> : <><Play14 aria-hidden="true" /> Play selection</>}
     </button>
     {error && <p role="alert">{error}</p>}

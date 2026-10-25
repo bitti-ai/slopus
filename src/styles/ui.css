@@ -774,6 +774,27 @@
   column-gap: var(--space-2);
 }
 
+/* Main panel actions keep their size as the inspector grows. Split Generate
+   buttons size as one unit, leaving the options arrow at its normal width. */
+.inspector-action,
+.inspector-actions > button,
+.inspector-actions > .image-generation-controls,
+.image-template-settings__footer > button,
+.export-settings__actions > button,
+.debug-prompt__toggle,
+.clip-effects__add.secondary-button {
+  display: flex;
+  width: min(var(--inspector-action-width), 100%);
+  min-width: 0;
+  max-width: 100%;
+  margin-inline: auto;
+  align-self: center;
+}
+
+.inspector-action {
+  white-space: normal;
+}
+
 .ui-prop-row__label {
   min-width: 0;
   overflow: hidden;
