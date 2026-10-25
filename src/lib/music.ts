@@ -17,6 +17,7 @@ export const musicSettingsSchema = z.object({
   .refine((value) => value.planning !== "off" || !value.abc, "ABC requires full or melody planning.");
 export const musicSongSchema = z.object({
   id: z.string().min(1), title: z.string().min(1).max(200),
+  folderId: z.string().min(1).nullish(),
   style: z.string().max(10000).default(""),
   generatorId: z.string().default("yue2"),
   settings: musicSettingsSchema.default({}),
@@ -28,9 +29,30 @@ export const musicSongSchema = z.object({
 });
 export type MusicSong = z.infer<typeof musicSongSchema>;
 export type MusicSettings = z.infer<typeof musicSettingsSchema>;
+export const musicFolderSchema = z.object({ id: z.string().min(1), name: z.string().trim().min(1).max(200), parentId: z.string().min(1).nullish() });
+export type MusicFolder = z.infer<typeof musicFolderSchema>;
 
-export function newSong(generatorId = "yue2", steps = 32): MusicSong {
-  return musicSongSchema.parse({ id: `song-${crypto.randomUUID()}`, title: "New song", generatorId, steps, createdAt: new Date().toISOString() });
+export function newSong(generatorId = "yue2", steps = 32, folderId?: string | null): MusicSong {
+  return musicSongSchema.parse({ id: `song-${crypto.randomUUID()}`, title: "New song", generatorId, steps, ...(folderId ? { folderId } : {}), createdAt: new Date().toISOString() });
+}
+
+export function newMusicFolder(name: string, parentId: string | null): MusicFolder {
+  return musicFolderSchema.parse({ id: `music-folder-${crypto.randomUUID()}`, name, parentId });
+}
+
+export function moveSong(config: ProjectConfig, songId: string, folderId: string | null): ProjectConfig {
+  if (folderId && !config.musicFolders?.some((folder) => folder.id === folderId)) return config;
+  return updateSong(config, songId, { folderId });
+}
+
+export function musicFolderLabel(folders: readonly MusicFolder[], id: string): string {
+  const names: string[] = [], visited = new Set<string>();
+  let folder = folders.find((item) => item.id === id);
+  while (folder && !visited.has(folder.id)) {
+    visited.add(folder.id); names.unshift(folder.name);
+    folder = folders.find((item) => item.id === folder!.parentId);
+  }
+  return names.join(" / ");
 }
 
 export function musicSettingsForModel(settings: MusicSettings, modelType: string): MusicSettings {

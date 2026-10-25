@@ -20,6 +20,8 @@ pub(crate) enum GenerationType {
 pub(crate) struct ProjectConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) music_songs: Vec<super::music::MusicSong>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) music_folders: Vec<super::music::MusicFolder>,
     pub(crate) schema_version: u32,
     #[serde(default)]
     pub(crate) generation_type: GenerationType,

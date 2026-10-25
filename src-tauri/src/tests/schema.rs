@@ -3,18 +3,28 @@ use super::*;
 #[test]
 fn music_settings_survive_project_validation_and_reopen() {
     let mut config = created_fixture();
+    config.music_folders = serde_json::from_value(serde_json::json!([
+        { "id": "jazz", "name": "Jazz" }, { "id": "piano", "name": "Piano", "parentId": "jazz" }
+    ])).unwrap();
     config.music_songs.push(serde_json::from_value(serde_json::json!({
         "id": "song-1", "title": "Evening", "style": "Quiet jazz", "generatorId": "yue2",
         "settings": { "lyrics": "[Verse]\nHome again", "duration": 30 }, "steps": 32, "seed": -1,
-        "status": "draft", "createdAt": "2026-10-25T00:00:00Z"
+        "status": "draft", "folderId": "piano", "createdAt": "2026-10-25T00:00:00Z"
     })).unwrap());
     let saved = validate_and_normalize_config(config).unwrap();
     let reopened: ProjectConfig = serde_json::from_slice(&serde_json::to_vec(&saved).unwrap()).unwrap();
     assert_eq!(reopened.music_songs, saved.music_songs);
+    assert_eq!(reopened.music_folders, saved.music_folders);
     assert_eq!(reopened.music_songs[0].settings.lyrics, "[Verse]\nHome again");
     let mut invalid = reopened;
     invalid.music_songs[0].steps = 1000;
     assert!(validate_and_normalize_config(invalid).is_err());
+    let mut cycle = saved.clone();
+    cycle.music_folders[0].parent_id = Some("piano".into());
+    assert!(validate_and_normalize_config(cycle).is_err());
+    let mut missing = saved;
+    missing.music_songs[0].folder_id = Some("missing".into());
+    assert!(validate_and_normalize_config(missing).is_err());
 }
 
 #[test]

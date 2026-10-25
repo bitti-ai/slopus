@@ -3,7 +3,7 @@ import { generationEffectsSchema, activeGenerationEffects, type GenerationEffect
 import { MIN_SIGMA_SHIFT, MAX_SIGMA_SHIFT } from "./sampling";
 import { z } from "zod";
 import { backdropDirection, backdropShotDirection, backdropSummary, type BackdropColor } from "./backdrop";
-import { musicSongSchema } from "./music";
+import { musicFolderSchema, musicSongSchema } from "./music";
 import { createImageScene, imageSceneReferenceIds, imageSceneSchema } from "./imageScene";
 import { effectEnabledSchema, effectSchemas, isEffectOn } from "./effectSettings";
 import { normalizeShotTagSelection, shotTagClauses, SHOT_TAG_ID_PATTERN, type ShotTagClauses, type ShotTagSelection } from "./shot-tags";
@@ -695,6 +695,7 @@ export const projectConfigSchema = z.object({
   generationType: generationTypeSchema.default("video"),
   imageScene: imageSceneSchema.nullish(),
   musicSongs: z.array(musicSongSchema).optional(),
+  musicFolders: z.array(musicFolderSchema).optional(),
   imageSettings: z.object({
     resolution: resolutionSchema,
     aspectRatio: aspectRatioSchema,

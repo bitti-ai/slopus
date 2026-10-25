@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { useState } from "react";
 import { MusicView } from "./MusicView";
 import { createProjectConfig, type ProjectConfig } from "../../lib/project";
-import { newSong } from "../../lib/music";
+import { newMusicFolder, newSong } from "../../lib/music";
 import { readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, musicTemplates, saveGeneratorTemplateSettings } from "../../lib/settings";
 
@@ -19,11 +19,73 @@ function Harness({ initial = createConfig() }: { initial?: ProjectConfig }) {
 }
 beforeEach(() => {
   vi.clearAllMocks(); localStorage.clear();
+  vi.mocked(readMediaFileUrl).mockResolvedValue("blob:song");
   const settings = loadGeneratorTemplateSettings();
   saveGeneratorTemplateSettings({ ...settings, templates: settings.templates.map((template) => template.id === "yue2" ? { ...template, paths: { ...template.paths, transformer: "C:/weights/yue2.safetensors" }, sources: {} } : template) });
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
   vi.stubGlobal("URL", Object.assign(URL, { revokeObjectURL: vi.fn() }));
+});
+
+it("creates songs in the browsed folder and moves them between folders by drag and drop", () => {
+  render(<Harness />);
+  const createFolder = (name: string) => {
+    fireEvent.click(screen.getByRole("button", { name: "New folder" }));
+    fireEvent.change(screen.getByLabelText("Folder name"), { target: { value: name } });
+    fireEvent.click(screen.getByRole("button", { name: "Create folder" }));
+  };
+  createFolder("Jazz");
+  fireEvent.click(screen.getAllByRole("button", { name: "New song" })[0]);
+  const jazz = latest.musicFolders![0];
+  expect(latest.musicSongs![0].folderId).toBe(jazz.id);
+  createFolder("Piano");
+  fireEvent.click(screen.getAllByRole("button", { name: "New song" })[0]);
+  const piano = latest.musicFolders![1], song = latest.musicSongs![1];
+  expect(piano.parentId).toBe(jazz.id);
+  expect(song.folderId).toBe(piano.id);
+  const data = new Map<string, string>();
+  const dataTransfer = { effectAllowed: "", dropEffect: "", types: ["application/x-slopus-music-song"],
+    setData: (type: string, value: string) => data.set(type, value), getData: (type: string) => data.get(type) ?? "" };
+  fireEvent.dragStart(screen.getByRole("listitem"), { dataTransfer });
+  const destination = within(screen.getByRole("navigation", { name: "Music folders" })).getByRole("button", { name: "Jazz" });
+  fireEvent.dragOver(destination, { dataTransfer });
+  expect(destination).toHaveAttribute("data-drop-target", "true");
+  fireEvent.drop(destination, { dataTransfer });
+  expect(latest.musicSongs![1].folderId).toBe(jazz.id);
+  expect(screen.getByText("This folder is empty")).toBeInTheDocument();
+  fireEvent.click(destination);
+  expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  fireEvent.dragStart(screen.getAllByRole("listitem")[1], { dataTransfer });
+  fireEvent.drop(within(screen.getByRole("navigation", { name: "Music folders" })).getByRole("button", { name: "Your music" }), { dataTransfer });
+  expect(latest.musicSongs![1].folderId).toBeNull();
+});
+
+it("automatically plays the next generated song in the starting folder even after browsing elsewhere", async () => {
+  const jazz = newMusicFolder("Jazz", null), other = newMusicFolder("Other", null);
+  const songs = [
+    { ...newSong("yue2", 32, jazz.id), title: "First", assetId: "first" },
+    { ...newSong("yue2", 32, jazz.id), title: "Draft" },
+    { ...newSong("yue2", 32, jazz.id), title: "Second", assetId: "second" },
+    { ...newSong("yue2", 32, other.id), title: "Elsewhere", assetId: "other" },
+  ];
+  const assets = songs.flatMap((song) => song.assetId ? [{ id: song.assetId, kind: "audio" as const, name: song.title,
+    relativePath: `media/${song.assetId}.wav`, durationMs: 30000, mimeType: "audio/wav", createdAt: song.createdAt }] : []);
+  vi.mocked(readMediaFileUrl).mockImplementation(async (_, asset) => `blob:${asset.relativePath}`);
+  const { container } = render(<Harness initial={{ ...createConfig(), musicFolders: [jazz, other], musicSongs: songs, assets }} />);
+  const folders = within(screen.getByRole("navigation", { name: "Music folders" }));
+  fireEvent.click(folders.getByRole("button", { name: "Jazz" }));
+  fireEvent.click(screen.getByRole("button", { name: "Play First" }));
+  const audio = container.querySelector("audio")!;
+  await waitFor(() => expect(audio).toHaveAttribute("src", "blob:media/first.wav"));
+  fireEvent.canPlay(audio);
+  fireEvent.click(folders.getByRole("button", { name: "Other" }));
+  fireEvent.ended(audio);
+  await waitFor(() => expect(audio).toHaveAttribute("src", "blob:media/second.wav"));
+  fireEvent.canPlay(audio);
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2);
+  fireEvent.ended(audio);
+  expect(readMediaFileUrl).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole("button", { name: "Select Elsewhere" })).toBeInTheDocument();
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 

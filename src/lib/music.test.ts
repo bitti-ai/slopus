@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { createProjectConfig, parseProjectConfig, type ProjectAsset } from "./project";
-import { musicSettingsForModel, musicSettingsSchema, newSong, songReference } from "./music";
+import { moveSong, musicFolderLabel, musicSettingsForModel, musicSettingsSchema, newMusicFolder, newSong, songReference } from "./music";
 
 describe("music projects", () => {
+  it("persists folders and song moves without moving or rewriting generated audio", () => {
+    const parent = newMusicFolder("Jazz", null), child = newMusicFolder("Piano", parent.id);
+    const song = { ...newSong("yue2", 32, parent.id), assetId: "audio-1" };
+    const config = { ...createProjectConfig({ name: "Music", prompt: "", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 30 }), musicFolders: [parent, child], musicSongs: [song] };
+    const moved = moveSong(config, song.id, child.id);
+    const saved = parseProjectConfig(JSON.parse(JSON.stringify(moved)));
+    expect(saved.musicFolders).toEqual([parent, child]);
+    expect(saved.musicSongs![0]).toMatchObject({ folderId: child.id, assetId: "audio-1" });
+    expect(musicFolderLabel(saved.musicFolders!, child.id)).toBe("Jazz / Piano");
+    expect(moveSong(saved, song.id, "missing")).toBe(saved);
+    expect(moveSong(saved, song.id, null).musicSongs![0].folderId).toBeNull();
+  });
   it("round-trips songs and preserves older projects without songs", () => {
     const config = createProjectConfig({ name: "Music", prompt: "", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 30 });
     expect(parseProjectConfig(JSON.parse(JSON.stringify(config))).musicSongs).toBeUndefined();
