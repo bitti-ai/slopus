@@ -5,10 +5,12 @@ import { loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateSup
 import { musicSettingsForModel, newSong, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import { ComboBox, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize } from "../ui";
-import { Add16, Audio16, GoToEnd16, GoToStart16, GridView16, ListView16, Pause16, Play16, References16, Speaker14 } from "../ui/icons";
+import { Add16, Audio16, GoToEnd16, GoToStart16, GridView16, ListView16, Pause16, Play16, References16, Speaker14, Sparkle16, Stop14 } from "../ui/icons";
 import { generatorOptions } from "../generatorOptions";
 import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
 import type { ConfigUpdate } from "./TimelineView";
+import { GeneratorSelector } from "./GeneratorSelector";
+import { ProjectStatus } from "./ProjectStatus";
 
 const time = (seconds: number) => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
 
@@ -32,7 +34,12 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
   const [notice, setNotice] = useState<string | null>(null);
   const activeWork = selected && workItems.find((item) => item.sceneId === selected.id && isWorkActive(item));
   const busy = Boolean(activeWork);
-  const ready = template && templateUsable(template) && generatorPathFields(template).every((field) => !field.required || template.paths[field.id].trim() || template.sources?.[field.id]?.length);
+  const templateReady = (candidate: GeneratorTemplate) => templateUsable(candidate) && generatorPathFields(candidate).every((field) => !field.required || candidate.paths[field.id].trim() || candidate.sources?.[field.id]?.length);
+  const ready = template && templateReady(template);
+  const generatorStatus = !isTauri()
+    ? { state: "demo", label: "Music generator unavailable", detail: "Generate music in the desktop app." }
+    : !ready ? { state: "modelsMissing", label: "Model weights missing", detail: "Download or select music model weights in Settings → Generators." }
+      : { state: "ready", label: "Music generator ready", detail: template.name };
   const edit = (patch: Partial<MusicSong>) => {
     if (selected && !busy) onChange((current) => updateSong(current, selected.id, patch), `music:${selected.id}`);
   };
@@ -110,7 +117,10 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
 
   return <div className="music-view" style={inspector.style}>
     <div className="music-toolbar" role="toolbar" aria-label="Music tools">
-      <ComboBox aria-label="Music generator" value={template?.id ?? ""} options={generatorOptions(templates)} onChange={chooseGenerator} disabled={busy} />
+      <GeneratorSelector aria-label="Generator" data-tooltip={template?.name ?? "Generator"} status={generatorStatus}
+        value={template?.id ?? ""} placeholder="No music generators" disabled={busy || !templates.length}
+        options={generatorOptions(templates, (item) => ({ disabled: !templateReady(item), description: !templateReady(item) ? "Download in Settings" : undefined }))}
+        onChange={chooseGenerator} />
       <button type="button" className="secondary-button" onClick={add}><Add16 />New song</button>
       <div className="music-toolbar__views" role="group" aria-label="Song view">
         {(["grid", "list"] as const).map((mode) => <button type="button" className="icon-button" key={mode} aria-label={`${mode === "grid" ? "Grid" : "List"} view`} aria-pressed={view === mode}
@@ -168,12 +178,10 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
               </>}
             </PropSection>
           </div>
-          <div className="music-inspector__actions">
+          <div className="inspector-actions">
             {selected.error && <p role="alert">{selected.error}</p>}
-            {!ready && <p>Download or select music model weights in Settings → Generators.</p>}
-            {!isTauri() && <p>Generate music in the desktop app.</p>}
-            {activeWork ? <><progress value={activeWork.progress} max={1} aria-label="Music generation progress" /><button type="button" className="secondary-button inspector-action" disabled={activeWork.cancelling || activeWork.status === "encoding"} onClick={() => onCancel(activeWork.id)}>{activeWork.cancelling ? "Cancelling…" : "Cancel generation"}</button></> :
-              <button type="button" className="primary-button inspector-action" disabled={!ready || !isTauri() || !selected.style.trim()} onClick={generate}>Generate music</button>}
+            {activeWork ? <><progress value={activeWork.progress} max={1} aria-label="Music generation progress" /><button type="button" className="primary-button" disabled={activeWork.cancelling || activeWork.status === "encoding"} onClick={() => onCancel(activeWork.id)}><Stop14 aria-hidden="true" />{activeWork.cancelling ? "Cancelling…" : "Cancel"}</button></> :
+              <button type="button" className="primary-button" data-tooltip={generatorStatus.state !== "ready" ? generatorStatus.detail : undefined} disabled={!ready || !isTauri() || !selected.style.trim()} onClick={generate}><Sparkle16 aria-hidden="true" />Generate</button>}
           </div>
         </> : <p className="music-inspector__empty">Add a song to edit its lyrics, style and generation settings.</p>}
       </aside>
@@ -192,6 +200,10 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
         onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)} onEnded={() => { setPlaying(false); const index = playable.findIndex(({ asset }) => asset.id === playerId); if (index >= 0 && index + 1 < playable.length) playAsset(playable[index + 1].asset); }}
         onError={() => { if (url) { playWhenReady.current = false; setPlaying(false); setPlaybackError("This song could not be played."); } }} />
     </div>
+    <ProjectStatus label="Music status">
+      <span>{config.musicSongs?.length ?? 0} songs</span>
+      {generatorStatus.state !== "ready" && <span className="generator-status__runtime">{generatorStatus.detail}</span>}
+    </ProjectStatus>
     {menu.element}
   </div>;
 }

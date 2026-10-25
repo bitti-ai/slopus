@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { MusicView } from "./MusicView";
 import { createProjectConfig, type ProjectConfig } from "../../lib/project";
 import { newSong } from "../../lib/music";
 import { readMediaFileUrl } from "../../lib/persistence";
-import { loadGeneratorTemplateSettings, saveGeneratorTemplateSettings } from "../../lib/settings";
+import { loadGeneratorTemplateSettings, musicTemplates, saveGeneratorTemplateSettings } from "../../lib/settings";
 
 vi.mock("../../lib/persistence", async (original) => ({ ...await original<typeof import("../../lib/persistence")>(), isTauri: () => true, readMediaFileUrl: vi.fn(async () => "blob:song") }));
 let latest: ProjectConfig;
@@ -36,8 +36,26 @@ it("adds songs, edits lyrics and style, switches layout and queues the selected 
   expect(latest.musicSongs![0]).toMatchObject({ title: "Night drive", style: "Synth pop", settings: { lyrics: "[Verse]\nCity lights" } });
   fireEvent.click(screen.getByRole("button", { name: "List view" }));
   expect(screen.getByRole("list", { name: "Songs" })).toHaveClass("music-songs--list");
-  fireEvent.click(screen.getByRole("button", { name: "Generate music" }));
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
   expect(generate).toHaveBeenCalledWith(latest.musicSongs![0].id, expect.objectContaining({ modelType: "yue2" }));
+});
+
+it("shows missing downloads in the shared selector and status bar, outside the inspector", () => {
+  saveGeneratorTemplateSettings({ ...loadGeneratorTemplateSettings(), templates: musicTemplates() });
+  render(<Harness initial={{ ...createConfig(), musicSongs: [{ ...newSong(), style: "Jazz" }] }} />);
+  const toolbar = screen.getByRole("toolbar", { name: "Music tools" });
+  expect(within(toolbar).getByText("Generator:")).toBeInTheDocument();
+  expect(within(toolbar).getByRole("img", { name: "Model weights missing" })).toHaveAttribute("data-tooltip", expect.stringContaining("Settings"));
+  expect(screen.getByLabelText("Music status")).toHaveTextContent("Download or select music model weights");
+  const inspector = screen.getByRole("complementary", { name: "Song settings" });
+  expect(within(inspector).queryByText(/Download or select/)).not.toBeInTheDocument();
+  expect(within(inspector).getByRole("button", { name: "Generate" })).toBeDisabled();
+  expect(within(inspector).getByRole("button", { name: "Generate" })).toHaveClass("primary-button");
+  const selector = within(toolbar).getByRole("combobox", { name: "Generator" });
+  expect(selector).toHaveClass("generator-template");
+  fireEvent.click(selector);
+  expect(screen.getAllByRole("option").every((option) => option.getAttribute("aria-disabled") === "true")).toBe(true);
+  expect(screen.getAllByText("Download in Settings")).toHaveLength(2);
 });
 
 it("plays generated audio and creates a reference for the context-clicked song", async () => {

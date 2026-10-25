@@ -34,6 +34,7 @@ import styleSuggestions from "../../lib/imageStyleSuggestions.json";
 import { applyImageCommand } from "../../lib/imageCommands";
 import { copyImageNode, getImageNodeClipboard, pasteImageNode, subscribeImageNodeClipboard } from "../../lib/imageNodeClipboard";
 import { HierarchyContextMenu } from "./HierarchyContextMenu";
+import { GeneratorSelector } from "./GeneratorSelector";
 import { useShortcut } from "../../lib/commands";
 import { ComboBox, Flyout, InfoBar, ItemHeader, PaneHeader, ProgressBar, PropRow, PropSection, Splitter, tooltipProps, useContextMenu, usePaneSize } from "../ui";
 import "../../styles/image-editor.css";
@@ -626,10 +627,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       {/* The generator leads; canvas tools and view controls share the centered group. */}
       <div className="image-tools__start">
         {templateInspector && active && generateButton}
-        <span className="generator-runtime image-generator">
-          <span className="generator-runtime__label" aria-hidden="true">Generator:</span>
-          <ComboBox
-            className="generator-template"
+          <GeneratorSelector
+            className="image-generator"
             aria-label="Generator"
             data-tooltip={template?.name ?? "Generator"}
             value={template?.id ?? ""}
@@ -638,7 +637,6 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             options={generatorOptions(imageTemplates, (item) => ({ disabled: !templateUsable(item) || (imageRoot && !templateSupportsEditing(item)), description: imageRoot && !templateSupportsEditing(item) ? "Does not support editing" : !templateUsable(item) ? "Download in Settings" : undefined }))}
             onChange={(id) => { setTemplateId(id); localStorage.setItem("slopus.image-generator-template.v1", id); const next = imageTemplates.find((candidate) => candidate.id === id); if (next) commit({ ...scene, steps: next.defaultSteps }); }}
           />
-        </span>
       </div>
       <div className="image-tools__center">
         {extendMode ? <span className="extend-tool-active"><Boxes16Filled aria-hidden="true" /> Zoom box</span> : <>
