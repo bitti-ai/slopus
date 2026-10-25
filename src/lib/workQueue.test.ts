@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { mossImageTemplate, fiboImageTemplate } from "./settings";
+import { mossImageTemplate, fiboImageTemplate, fiboBaseTemplate } from "./settings";
 import { waitFor } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -451,6 +451,29 @@ describe("image generation work", () => {
     await queue.cancel(queue.getSnapshot()[0].id);
   });
 
+  it.each([false, true])("queues Fibo Zoom without duplicate references or H3 overrides (crop: %s)", async (crop) => {
+    const { queue } = setup();
+    const fibo = { ...fiboImageTemplate(), sources: {}, paths: { transformer: "fibo", textEncoder: "qwen", videoVae: "flux", tokenizer: "", audioVae: "" } };
+    const record = imageProject();
+    const source = { id: "source", name: "Source", kind: "image" as const, mimeType: "image/png", relativePath: "media/source.png", width: 128, height: 96, createdAt: record.config.createdAt };
+    record.config.assets = [source];
+    const session = queue.project(record);
+    const options = { bounds: crop ? { x: 0, y: 0, width: 64, height: 64 } : { x: -32, y: -32, width: 192, height: 160 }, prompt: "Forest", steps: 4, seed: 1 };
+    expect(() => queue.enqueueExtendImage(session, fiboBaseTemplate(), source.id, options)).toThrow(/supports image editing/);
+    queue.enqueueExtendImage(session, fibo, source.id, options);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const [request, config] = vi.mocked(enqueueSlopfabGeneration).mock.calls[0];
+    expect(config.providerSettings.slopfab.options.editingModel).toBe(true);
+    expect(request.referencePaths).toEqual([]);
+    expect(request.prompt).not.toMatch(/Picture|Source scene|Shot|overall_soundscape/);
+    const edit = request.imageEdit!.edits[0];
+    expect(edit.invertMask).toBe(false);
+    expect(edit.outpaintLangevinSteps).toBeUndefined();
+    if (crop) expect(edit.strength).toBe(0.65);
+    else expect(edit.maskContours).toHaveLength(2);
+    await queue.cancel(queue.getSnapshot()[0].id);
+  });
+
   it("routes Fibo source edits once without H3 prompt wrappers or duplicate references", async () => {
     const { queue, first } = setup();
     const fibo = { ...fiboImageTemplate(), sources: {}, paths: { transformer: "fibo", textEncoder: "qwen", videoVae: "flux", tokenizer: "", audioVae: "" } };
@@ -462,6 +485,7 @@ describe("image generation work", () => {
       scene.steps = 4;
       return { ...current, imageScene: scene };
     });
+    expect(() => queue.enqueueImage(session, fiboBaseTemplate())).toThrow(/does not support image editing/);
     queue.enqueueImage(session, fibo);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
     const [request, config] = vi.mocked(enqueueSlopfabGeneration).mock.calls[0];

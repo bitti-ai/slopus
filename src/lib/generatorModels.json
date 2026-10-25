@@ -58,7 +58,7 @@
     "motionCache": false,
     "generationEffects": false,
     "cfg": null,
-    "imageOutpainting": false,
+    "imageOutpainting": true,
     "characterSheets": false,
     "requiresImageInput": false,
     "editImageReferences": false,

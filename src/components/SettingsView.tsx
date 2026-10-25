@@ -449,7 +449,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     probe({ ...EMPTY_ENGINE_SETTINGS });
   };
 
-  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "modelType" | "name" | "defaultSteps" | "videoSigmaShift" | "audioSigmaShift" | "attention" | "motionCache" | "loras" | "mode" | "additionalSafetensors">>) => {
+  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "editingModel" | "modelType" | "name" | "defaultSteps" | "videoSigmaShift" | "audioSigmaShift" | "attention" | "motionCache" | "loras" | "mode" | "additionalSafetensors">>) => {
     setTemplateSettings((current) => {
       const next = {
         ...current,
@@ -578,12 +578,17 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
         <ComboBox aria-label="Generator model" value={selectedTemplate.modelType} options={[
           ...GENERATOR_MODELS,
           ...(!GENERATOR_MODELS.some(({ value }) => value === selectedTemplate.modelType) ? [{ value: selectedTemplate.modelType, label: selectedTemplate.modelType }] : []),
-        ]} onChange={(modelType) => updateTemplate({ modelType, ...(modelType === MOSS_MODEL_TYPE || modelType === FIBO_MODEL_TYPE ? { mode: "prompt", attention: "flash2", defaultSteps: modelType === FIBO_MODEL_TYPE ? 4 : 50, motionCache: false, loras: [], audioSigmaShift: undefined, ...(modelType === FIBO_MODEL_TYPE ? { videoSigmaShift: undefined } : {}) } : {}) })} />
+        ]} onChange={(modelType) => updateTemplate({ modelType, editingModel: generatorModel(modelType).imageEditing, ...(modelType === MOSS_MODEL_TYPE || modelType === FIBO_MODEL_TYPE ? { mode: "prompt", attention: "flash2", defaultSteps: modelType === FIBO_MODEL_TYPE ? 4 : 50, motionCache: false, loras: [], audioSigmaShift: undefined, ...(modelType === FIBO_MODEL_TYPE ? { videoSigmaShift: undefined } : {}) } : {}) })} />
       </SettingsCard>
       {generatorModel(selectedTemplate.modelType).videoGeneration && <SettingsCard icon={<Video20 />} header="Mode">
         <ComboBox aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"} onChange={(value) => updateTemplate({ mode: value === "animate" ? "animate" : "prompt" })}
           options={[{ value: "prompt", label: "Text prompt" }, { value: "animate", label: "Animate (reference video)" }]} />
       </SettingsCard>}
+      <SettingsCard icon={<Options20 />} header="Editing model" description="Enable image editing and Zoom for weights that support editing.">
+        <ToggleSwitch aria-label="Editing model" checked={generatorModel(selectedTemplate.modelType).imageEditing && selectedTemplate.editingModel !== false}
+          disabled={!generatorModel(selectedTemplate.modelType).imageEditing || selectedTemplate.mode === "animate"}
+          onChange={(editingModel) => updateTemplate({ editingModel })} />
+      </SettingsCard>
       <SettingsCard icon={<Steps20 />} header="Default steps">
         <input className="text-field settings-field settings-field--number" aria-label="Generator default steps" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={selectedTemplate.defaultSteps} onChange={(event) => {
           const value = Number(event.target.value);

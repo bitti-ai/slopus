@@ -1601,7 +1601,7 @@ fn fibo_planning_and_execution_requests_keep_the_image_family_and_masks() {
     configuration.model_type = "fibo2".into();
     configuration.attention = "flash2";
     let api = ffi::Api::load(&configuration.dll_path).unwrap();
-    for mask in [false, true] {
+    for mask in 0..3 {
         let mut request: GenerationRequest = serde_json::from_value(serde_json::json!({
             "jobId":"fibo", "prompt":"Make the object blue", "stillImage":true, "frames":1, "steps":4, "seed":1,
             "canvasWidth":64, "canvasHeight":96,
@@ -1609,12 +1609,22 @@ fn fibo_planning_and_execution_requests_keep_the_image_family_and_masks() {
                 "prompt":"Make the object blue", "x":0, "y":0, "width":64, "height":96, "feather":0
             }]}
         })).unwrap();
-        if mask {
+        if mask == 1 {
             request.image_edit.as_mut().unwrap().edits[0].mask_polygon = Some(vec![
                 crate::image_mask::MaskPoint { x: 0.0, y: 0.0 },
                 crate::image_mask::MaskPoint { x: 32.0, y: 0.0 },
                 crate::image_mask::MaskPoint { x: 0.0, y: 32.0 },
             ]);
+        }
+        if mask == 2 {
+            let contours = vec![(0.0, 0.0, 64.0, 96.0), (16.0, 24.0, 48.0, 72.0)].into_iter()
+                .map(|(x, y, right, bottom)| vec![(x,y), (right,y), (right,bottom), (x,bottom)].into_iter()
+                    .map(|(x,y)| crate::image_mask::MaskPoint { x, y }).collect()).collect::<Vec<_>>();
+            let coverage = crate::image_mask::rasterize_contours(&contours, 64, 96).unwrap();
+            for y in 0..96 { for x in 0..64 {
+                assert_eq!(coverage[y * 64 + x], if (16..48).contains(&x) && (24..72).contains(&y) { 0 } else { 255 });
+            }}
+            request.image_edit.as_mut().unwrap().edits[0].mask_contours = Some(contours);
         }
         request.image_edit_pixels = Some(std::sync::Arc::new(vec![100; 64 * 96 * 3]));
         for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
@@ -1697,4 +1707,22 @@ fn fibo_text_only_requests_resolve_without_source_images() {
         let plan = api.resolve(&handle).unwrap();
         assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames, plan.num_model_evaluations), (256, 384, 1, 4));
     }
+}
+
+#[test]
+fn template_editing_flag_is_enforced_without_blocking_text_generation() {
+    let mut settings: BTreeMap<String, ProviderSetting> = serde_json::from_value(serde_json::json!({
+        "slopfab": {"enabled":true, "model":null, "options":{"modelType":"fibo2", "attention":"flash2", "editingModel":false}}
+    })).unwrap();
+    let configuration = Configuration::from_settings(&settings);
+    let mut request = GenerationRequest { still_image: true, frames: 1, steps: 4, prompt: "A forest".into(), canvas_width: 64, canvas_height: 96, ..Default::default() };
+    configuration.validate_inputs(&request).unwrap();
+    request.image_edit = Some(serde_json::from_value(serde_json::json!({"sourceRelativePath":"source.png", "edits":[{
+        "prompt":"Make it blue", "x":0, "y":0, "width":64, "height":96
+    }]})).unwrap());
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("does not support image editing"));
+    settings.get_mut("slopfab").unwrap().options.insert("editingModel".into(), crate::settings::ProviderOption::Boolean(true));
+    Configuration::from_settings(&settings).validate_inputs(&request).unwrap();
+    settings.get_mut("slopfab").unwrap().options.remove("editingModel");
+    Configuration::from_settings(&settings).validate_inputs(&request).unwrap();
 }

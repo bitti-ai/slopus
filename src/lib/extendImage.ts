@@ -1,3 +1,5 @@
+import { FIBO_MODEL_TYPE, MINIMAX_H3_MODEL_TYPE } from "./settings";
+import type { ImageEditStep } from "./imageEditing";
 import { imageSettings } from "./imageSettings";
 import { createImageEditScene } from "./imageScene";
 import { compileImagePrompt } from "./imagePrompt";
@@ -112,23 +114,33 @@ function extendBlendOverlap(context: ExtendBounds, output: { width: number; heig
   return Math.floor(band / 2) * 2 + 1;
 }
 
-export function compileExtendImage(config: ProjectConfig, source: ProjectAsset, sourceRelativePath: string, options: ExtendOptions) {
+export function compileExtendImage(config: ProjectConfig, source: ProjectAsset, sourceRelativePath: string, options: ExtendOptions, modelType = MINIMAX_H3_MODEL_TYPE) {
   if (!source.width || !source.height) throw new Error("Wait for the source image dimensions to load.");
   const layout = extendLayout(config, { width: source.width, height: source.height }, options.bounds);
   const { preserved, output } = layout;
   const regenerate = layout.mode === "regenerate";
-  const context = regenerate ? preserved : extendContext(preserved);
+  const fibo = modelType === FIBO_MODEL_TYPE;
+  const context = regenerate || fibo ? preserved : extendContext(preserved);
   if (!Number.isInteger(options.steps) || options.steps < 2 || options.steps > 1000) throw new Error("Steps must be a whole number from 2 to 1000.");
   if (!Number.isSafeInteger(options.seed) || options.seed < -1) throw new Error("Seed must be -1 for random or a non-negative safe integer.");
   const scene = createImageEditScene({ relativePath: sourceRelativePath, name: source.name, ...output });
   scene.steps = options.steps; scene.seed = options.seed;
-  scene.nodes[0].description = (regenerate
+  scene.nodes[0].description = (fibo
+    ? regenerate ? "Refine the selected crop, preserving its subjects, composition, lighting and style. " : "Extend the image into the blank borders, continuing its scene, perspective, lighting and textures. Preserve the existing subjects and their positions. "
+    : regenerate
     ? "Refine the selected crop in <Picture 1> at the target resolution. Recover natural fine detail and clean textures while preserving the subjects, composition, perspective, lighting and visual style. "
     : "One continuous scene matching Source scene's setting, perspective, subject scale, lighting and textures. The existing subjects remain at their canvas positions. ") + options.prompt.trim();
-  const compiled = compileImagePrompt({ ...config, imageSettings: { ...imageSettings(config), defaultLook: null }, imageScene: scene }, regenerate ? {} : { sourceTreatment: "outpaint" });
+  const compiled = compileImagePrompt({ ...config, imageSettings: { ...imageSettings(config), defaultLook: null }, imageScene: scene }, { modelType, ...(!regenerate && !fibo ? { sourceTreatment: "outpaint" as const } : {}) });
   // Outpainting locks the interior and generates all borders together. Crops
   // refine the whole frame with partial denoising to retain the composition.
-  const edits = [{ ...context, prompt: compiled.prompt, feather: 0, invertMask: !regenerate,
-    ...(regenerate ? { strength: 0.65 } : { outpaintBlendOverlap: extendBlendOverlap(context, output), outpaintLangevinSteps: ZOOM_LANGEVIN_STEPS }) }];
+  const edits: ImageEditStep[] = [{ ...context, prompt: compiled.prompt, feather: 0, invertMask: !regenerate && !fibo,
+    ...(regenerate ? { strength: 0.65 } : fibo ? {
+      // Fibo uses an explicit mask: the outer canvas with the source cut out.
+      // This keeps source pixels intact without H3's inverted-mask conditioning.
+      x: 0, y: 0, ...output,
+      maskContours: [{ x: 0, y: 0, ...output }, preserved].map(({ x, y, width, height }) => [
+        { x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height },
+      ]),
+    } : { outpaintBlendOverlap: extendBlendOverlap(context, output), outpaintLangevinSteps: ZOOM_LANGEVIN_STEPS }) }];
   return { ...compiled, scene, edits, layout };
 }

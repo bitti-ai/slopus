@@ -78,12 +78,19 @@ export const FIBO_MODEL_TYPE = "fibo2";
 export const templateSupportsVideo = (template: Pick<GeneratorTemplate, "modelType">): boolean => generatorModel(template.modelType).videoGeneration;
 export const templateSupportsImages = (template: Pick<GeneratorTemplate, "modelType" | "mode">): boolean => generatorModel(template.modelType).imageGeneration && template.mode !== "animate";
 
+export const templateSupportsEditing = (template: Pick<GeneratorTemplate, "modelType" | "editingModel" | "mode">): boolean =>
+  templateSupportsImages(template) && generatorModel(template.modelType).imageEditing && template.editingModel !== false;
+export const templateSupportsOutpainting = (template: Pick<GeneratorTemplate, "modelType" | "editingModel" | "mode">): boolean =>
+  templateSupportsEditing(template) && generatorModel(template.modelType).imageOutpainting;
+
 export interface GeneratorTemplate extends SigmaShifts {
   id: string;
   name: string;
   /** Stable model-family identifier, independent of template name and mode.
    * Open to new identifiers as other model families are added. */
   modelType: string;
+  /** Whether these weights support editing; omitted legacy values use the model capability. */
+  editingModel?: boolean;
   defaultSteps: number;
   attention: AttentionMode;
   motionCache?: boolean;
@@ -230,6 +237,7 @@ export function createGeneratorTemplate(name = "New template", modelType = MINIM
     id: `generator-template-${crypto.randomUUID()}`,
     name,
     modelType,
+    editingModel: generatorModel(modelType).imageEditing,
     defaultSteps: modelType === MOSS_MODEL_TYPE ? 50 : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS,
     attention: generatorModel(modelType).cudaOnly ? "flash2" : "sage2",
     paths: copyPaths(EMPTY_ENGINE_SETTINGS),
@@ -246,7 +254,7 @@ export function mossImageTemplate(): GeneratorTemplate {
     audioVae: "",
   };
   const sources = Object.fromEntries(Object.entries(paths).filter(([, url]) => url).map(([id, url]) => [id, [{ url, gpuModel: "", minVramGb: 0 }]]));
-  return { id: "moss-image", name: "MOSS Image", modelType: MOSS_MODEL_TYPE, defaultSteps: 50, attention: "flash2", paths, sources };
+  return { id: "moss-image", name: "MOSS Image", modelType: MOSS_MODEL_TYPE, editingModel: false, defaultSteps: 50, attention: "flash2", paths, sources };
 }
 
 export function fiboImageTemplate(): GeneratorTemplate {
@@ -257,7 +265,15 @@ export function fiboImageTemplate(): GeneratorTemplate {
     videoVae: `${root}vae/flux2-vae.safetensors`, tokenizer: "", audioVae: "",
   };
   const sources = Object.fromEntries(Object.entries(paths).filter(([, url]) => url).map(([id, url]) => [id, [{ url, gpuModel: "", minVramGb: 0 }]]));
-  return { id: "fibo2-edit-turbo", name: "Fibo 2.0 Edit Turbo", modelType: FIBO_MODEL_TYPE, defaultSteps: 4, attention: "flash2", paths, sources };
+  return { id: "fibo2-edit-turbo", name: "Fibo 2.0 Edit Turbo", modelType: FIBO_MODEL_TYPE, editingModel: true, defaultSteps: 4, attention: "flash2", paths, sources };
+}
+
+export function fiboBaseTemplate(): GeneratorTemplate {
+  const template = fiboImageTemplate();
+  const transformer = "https://huggingface.co/Comfy-Org/Fibo-2.0/resolve/main/diffusion_models/fibo2_dev_int8_convrot.safetensors";
+  return { ...template, id: "fibo2-base", name: "Fibo 2.0 Base", editingModel: false,
+    paths: { ...template.paths, transformer },
+    sources: { ...template.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 0 }] } };
 }
 
 const MINIMAX_REF2VA_W4A8_URL = "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors";
@@ -331,9 +347,9 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 }
 
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
-  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate()],
+  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 14,
+  catalogVersion: 15,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -382,6 +398,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
           ...(typeof file.downloadedPath === "string" && file.downloadedPath.trim() && !isDownloadUrl(file.downloadedPath) ? { downloadedPath: file.downloadedPath } : {}) }];
       }) : [];
     return [{ id, name, modelType, defaultSteps, attention, paths, sources,
+      ...(typeof candidate.editingModel === "boolean" ? { editingModel: candidate.editingModel } : {}),
       ...(isSigmaShift(candidate.videoSigmaShift) ? { videoSigmaShift: candidate.videoSigmaShift } : {}),
       ...(isSigmaShift(candidate.audioSigmaShift) ? { audioSigmaShift: candidate.audioSigmaShift } : {}),
       ...(typeof candidate.motionCache === "boolean" ? { motionCache: candidate.motionCache } : {}),
@@ -395,7 +412,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? templates.find(templateUsable)?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -583,6 +600,12 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 14 })!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
+        if ((normalized.catalogVersion ?? 0) < 15) {
+          const template = fiboBaseTemplate();
+          if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 15 })!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
         return normalized;
       }
     }
@@ -641,12 +664,13 @@ export function saveEngineSettings(settings: EngineSettings): void {
 /** The `slopfab` provider setting these paths describe, with blanks dropped so
  *  an unset field falls through to whatever the project (or the Rust default)
  *  already had rather than overwriting it with "". */
-export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false, sources = defaultGeneratorTemplate().sources, shifts: SigmaShifts & { modelType?: string } = defaultGeneratorTemplate()): ProviderSetting {
+export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false, sources = defaultGeneratorTemplate().sources, shifts: SigmaShifts & { modelType?: string; editingModel?: boolean } = defaultGeneratorTemplate()): ProviderSetting {
   // A LAN worker receives URLs for weights it should download itself.
   const remote = remoteWorkerSelected();
   const options: ProviderSetting["options"] = { ...(base?.options ?? {}), attention, inferenceBackend: loadInferenceBackend() };
   const imageOnly = !generatorModel(shifts.modelType).videoGeneration;
   options.modelType = shifts.modelType ?? MINIMAX_H3_MODEL_TYPE;
+  options.editingModel = templateSupportsEditing({ modelType: options.modelType, editingModel: shifts.editingModel, mode });
   // Always replace project-carried adapter paths with this machine's selection.
   delete options.loras;
   delete options.schedule;

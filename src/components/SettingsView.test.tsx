@@ -136,6 +136,17 @@ describe("the settings screen", () => {
     expect(screen.getByRole("list", { name: "Other weights" })).toBeTruthy();
   });
 
+  it("persists the editing switch for Fibo Base", () => {
+    open("Fibo 2.0");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Fibo 2.0 Base generator" }));
+    const toggle = screen.getByRole("switch", { name: "Editing model" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "fibo2-base")!.editingModel).toBe(true);
+    fireEvent.click(toggle);
+    expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "fibo2-base")!.editingModel).toBe(false);
+  });
+
   it("offers Fibo settings with embedded tokenizer and no H3-only controls", () => {
     open("Fibo 2.0");
     fireEvent.click(screen.getByRole("button", { name: "Edit Fibo 2.0 Edit Turbo generator" }));

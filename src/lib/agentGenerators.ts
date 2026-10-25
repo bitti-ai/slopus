@@ -3,7 +3,7 @@ import { loadLoras, saveLoras, type Lora } from "./loras";
 import { loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, type GeneratorTemplate, type GeneratorTemplateSettings } from "./settings";
 
 export interface GeneratorContext { settings: GeneratorTemplateSettings; loras: Lora[] }
-export type GeneratorPatch = Partial<Pick<GeneratorTemplate, "name" | "modelType" | "defaultSteps" | "attention" | "mode" | "motionCache" | "loras">>
+export type GeneratorPatch = Partial<Pick<GeneratorTemplate, "name" | "modelType" | "editingModel" | "defaultSteps" | "attention" | "mode" | "motionCache" | "loras">>
   & { paths?: Partial<GeneratorTemplate["paths"]> };
 export type GeneratorCommand =
   | { op: "generator.add" | "generator.set"; id: string; settings: GeneratorPatch; makeDefault?: boolean }

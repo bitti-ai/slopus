@@ -13,7 +13,7 @@ import { compileImagePrompt } from "../../lib/imagePrompt";
 import { createEmptyImage, imageFamily, imageFamilyRoot, makeImagePrimary, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
 import { createDraftGenerationJob, isVideoReference, PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig, type ProjectReference } from "../../lib/project";
-import { defaultGeneratorTemplate, selectedImageGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, generatorModel, templateSupportsImages, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
+import { defaultGeneratorTemplate, selectedImageGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, generatorModel, templateSupportsImages, templateSupportsEditing, templateSupportsOutpainting, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
 import { isWorkActive, MAX_IMAGE_BATCH_COUNT, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
 import { ReferenceImage } from "./ReferenceImage";
@@ -110,9 +110,9 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     try { compileImagePrompt(config, { modelType: template?.modelType }); return null; }
     catch (reason) { return reason instanceof Error ? reason.message : String(reason); }
   }, [config, imageRoot, model.requiresImageInput, template?.modelType]);
-  const outpaintingBlocked = !model.imageOutpainting ? `${model.label} does not support Zoom.` : null;
+  const outpaintingBlocked = !templateSupportsOutpainting(template) ? `${template.name} does not support Zoom.` : null;
   const effectsBlocked = activeGenerationEffects(scene.generationEffects) && !model.generationEffects ? "This model does not support generation effects. Bypass or remove the effects, or choose another generator." : null;
-  const editingBlocked = !model.imageEditing ? `${model.label} does not support image editing. Choose an editing generator.` : null;
+  const editingBlocked = !templateSupportsEditing(template) ? `${template.name} does not support image editing. Choose an editing generator.` : null;
   const referencesBlocked = !model.characterSheets ? `${model.label} does not support character sheets. Choose a character sheet generator.` : null;
   const creationBlocked = !imageRoot && !model.imageCompositionCreation;
   const isMiniMaxH3 = !template || template.modelType === MINIMAX_H3_MODEL_TYPE;
@@ -633,7 +633,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             value={template?.id ?? ""}
             disabled={Boolean(active) || !imageTemplates.length}
             placeholder="No image generators"
-            options={imageTemplates.map((item) => ({ value: item.id, label: item.name, disabled: !templateUsable(item) || (imageRoot && !generatorModel(item.modelType).imageEditing), description: imageRoot && !generatorModel(item.modelType).imageEditing ? "Does not support editing" : !templateUsable(item) ? "Download in Settings" : undefined }))}
+            options={imageTemplates.map((item) => ({ value: item.id, label: item.name, disabled: !templateUsable(item) || (imageRoot && !templateSupportsEditing(item)), description: imageRoot && !templateSupportsEditing(item) ? "Does not support editing" : !templateUsable(item) ? "Download in Settings" : undefined }))}
             onChange={(id) => { setTemplateId(id); localStorage.setItem("slopus.image-generator-template.v1", id); const next = imageTemplates.find((candidate) => candidate.id === id); if (next) commit({ ...scene, steps: next.defaultSteps }); }}
           />
         </span>

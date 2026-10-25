@@ -8,7 +8,7 @@ import { ImageEditor } from "./ImageEditor";
 import { choose, comboValue } from "./comboTestUtils";
 import { imageGenerationSnapshotSchema, parseProjectConfig, referenceImages, sceneFrameInputs, type ProjectConfig } from "../../lib/project";
 import { completeImageDraft, createTemplateImageDraft, imageGenerationSnapshot, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
-import { createGeneratorTemplate, mossImageTemplate, fiboImageTemplate, defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
+import { createGeneratorTemplate, mossImageTemplate, fiboImageTemplate, fiboBaseTemplate, defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "../../lib/imageScene";
 import type { WorkItem } from "../../lib/workQueue";
 import { compileImageEdits } from "../../lib/imageEditing";
@@ -85,7 +85,7 @@ it("allows Fibo text-to-image and editing while disabling unsupported templates"
   expect(screen.getByRole("radio", { name: "Lasso" })).toBeEnabled();
   expect(screen.queryByRole("spinbutton", { name: "CFG" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Template" }));
-  expect(screen.getByRole("menuitem", { name: "Zoom" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Zoom" })).toBeEnabled();
   expect(screen.getByRole("menuitem", { name: "Character sheet" })).toBeDisabled();
 });
 
@@ -1362,4 +1362,25 @@ it("uses Fibo's four-step default for fresh images and imports, preserving saved
   expect(latest().imageScene!.steps).toBe(4);
   fireEvent.change(screen.getByLabelText("Steps"), { target: { value: "8" } });
   expect(latest().imageScene!.steps).toBe(8);
+});
+
+it.each([fiboBaseTemplate(), { ...fiboImageTemplate(), editingModel: false }])("disables editing and Zoom for $name when editing is off", (template) => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  const usable = { ...template, sources: {}, paths: { transformer: "fibo", textEncoder: "qwen", videoVae: "flux", tokenizer: "", audioVae: "" } };
+  saveGeneratorTemplateSettings({ templates: [usable], defaultTemplateId: usable.id, catalogVersion: 15 });
+  const initial = parseProjectConfig(fixture);
+  initial.imageScene = createImageScene("A forest");
+  setup(initial);
+  expect(screen.getByRole("button", { name: "Generate" })).toBeEnabled();
+  cleanup();
+  const source = { id: "source", kind: "image" as const, name: "Source", relativePath: "media/source.png", width: 512, height: 512, mimeType: "image/png", createdAt: initial.createdAt };
+  initial.assets = [source];
+  initial.imageScene = { ...createImageEditScene(source), outputAssetId: source.id };
+  initial.imageScene.nodes[0].description = "Make it blue";
+  setup(initial);
+  expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
+  expect(screen.getByRole("radio", { name: "Edit Box" })).toBeDisabled();
+  expect(screen.getByRole("radio", { name: "Lasso" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Template" }));
+  expect(screen.getByRole("menuitem", { name: "Zoom" })).toBeDisabled();
 });

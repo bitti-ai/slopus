@@ -44,6 +44,7 @@ pub enum GeneratorRead {
 pub struct GeneratorPatch {
     pub name: Option<String>,
     pub model_type: Option<String>,
+    pub editing_model: Option<bool>,
     pub default_steps: Option<u32>,
     pub attention: Option<String>,
     pub mode: Option<String>,
@@ -271,7 +272,13 @@ pub(crate) fn prepare(
                 template["motionCache"] = json!(false);
                 template["loras"] = json!([]);
             }
+            if add || template["modelType"] != model.as_str() {
+                template["editingModel"] = json!(model != "moss");
+            }
             template["modelType"] = json!(model);
+        }
+        if let Some(editing) = patch.editing_model {
+            template["editingModel"] = json!(editing);
         }
         if let Some(steps) = patch.default_steps {
             if !(2..=i32::MAX as u32).contains(&steps) {

@@ -25,6 +25,7 @@ pub(super) struct SigmaShifts {
 #[derive(Clone)]
 pub(super) struct Configuration {
     pub(super) model_type: String,
+    pub(super) editing_model: bool,
     pub(super) dll_path: PathBuf,
     pub(super) vulkan: bool,
     pub(super) attention: &'static str,
@@ -64,6 +65,7 @@ impl Configuration {
             }
         };
         Self {
+            editing_model: !matches!(slopfab.and_then(|setting| setting.options.get("editingModel")), Some(ProviderOption::Boolean(false))),
             model_type: string_option("modelType").unwrap_or("minimax-h3").to_owned(),
             sigma_shifts: (|| Ok(SigmaShifts { video: shift("videoSigmaShift")?, audio: shift("audioSigmaShift")?,
                 video_override: shift("videoSigmaShiftOverride")?, audio_override: shift("audioSigmaShiftOverride")? }))(),
@@ -138,8 +140,8 @@ impl Configuration {
         if request.still_image && !features.image_generation || !request.still_image && !features.video_generation {
             return Err(format!("{} does not support {} generation.", features.label, if request.still_image { "image" } else { "video" }));
         }
-        if !features.image_editing && request.image_edit.is_some() {
-            return Err(format!("{} does not support image editing.", features.label));
+        if (!features.image_editing || !self.editing_model) && request.image_edit.is_some() {
+            return Err(format!("This {} generator does not support image editing.", features.label));
         }
         if features.requires_image_input && request.image_edit.is_none() && request.reference_paths.is_empty() {
             return Err(format!("{} requires a source image or image references.", features.label));
@@ -153,6 +155,9 @@ impl Configuration {
         if let Some(edit) = &request.image_edit {
             if !features.edit_image_references && (!request.reference_paths.is_empty() || edit.edits.iter().any(|step| step.reference_paths.as_ref().is_some_and(|paths| !paths.is_empty()))) {
                 return Err(format!("{} edits use exactly one source image without additional image references.", features.label));
+            }
+            if self.model_type == "fibo2" && edit.edits.iter().any(|step| step.invert_mask) {
+                return Err("Fibo outpainting requires an explicit mask rather than H3 inverted-mask conditioning.".into());
             }
             if !features.image_outpainting && edit.edits.iter().any(|step| step.invert_mask) {
                 return Err(format!("{} does not support Zoom or outpainting.", features.label));

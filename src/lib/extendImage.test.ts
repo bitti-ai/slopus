@@ -139,7 +139,7 @@ it("limits the blend for small source intersections without erasing their interi
     const source = { id: "source", name: "Source", kind: "image" as const, mimeType: "image/png", width, height: width, createdAt: config.createdAt };
     const { edits: [edit] } = compileExtendImage(config, source, "cache/canvas.png",
       { bounds: { x: -32, y: -32, width: 416, height: 416 }, prompt: "", steps: 30, seed: 0 });
-    if (!("outpaintBlendOverlap" in edit)) throw new Error("Expected an outpaint edit");
+    if (edit.outpaintBlendOverlap === undefined) throw new Error("Expected an outpaint edit");
     expect(edit.outpaintBlendOverlap).toBeGreaterThanOrEqual(1);
     expect(edit.outpaintBlendOverlap).toBeLessThanOrEqual(33);
     expect(edit.outpaintBlendOverlap % 2).toBe(1);
@@ -183,4 +183,30 @@ it("regenerates contained crops and full-image boxes at the target budget", () =
 it("rejects an extension that disappears when mapped to a lower resolution", () => {
   const config = createProjectConfig({ name: "Extend", prompt: "", aspectRatio: "1:1", resolution: "416p", targetDurationSeconds: 15 });
   expect(() => extendLayout(config, { width: 1024, height: 1024 }, { x: -1, y: 0, width: 1024, height: 1024 })).toThrow("Expand the box further");
+});
+
+it("extends Fibo with a border mask and refines crops without H3 conditioning", () => {
+  const config = createProjectConfig({ name: "Zoom", prompt: "", aspectRatio: "1:1", resolution: "416p", targetDurationSeconds: 15 });
+  const source = { id: "source", name: "Source", kind: "image" as const, mimeType: "image/png", width: 128, height: 96, createdAt: config.createdAt };
+  for (const bounds of [{ x: -32, y: -32, width: 192, height: 160 }, { x: 0, y: 0, width: 192, height: 96 }, { x: 32, y: 0, width: 64, height: 64 }]) {
+    const result = compileExtendImage(config, source, "cache/canvas.png", { bounds, prompt: "A forest", steps: 4, seed: 1 }, "fibo2");
+    const edit = result.edits[0];
+    expect(result.references).toEqual([]);
+    expect(result.prompt).toContain("A forest");
+    expect(result.prompt).not.toMatch(/Picture|Source scene|Shot|overall_soundscape/);
+    expect(edit.invertMask).toBe(false);
+    expect(edit.outpaintLangevinSteps).toBeUndefined();
+    expect(edit.outpaintBlendOverlap).toBeUndefined();
+    if (result.layout.mode === "regenerate") {
+      expect(edit.strength).toBe(0.65);
+      expect(edit.maskContours).toBeUndefined();
+    } else {
+      const { width, height } = result.layout.output;
+      const { x, y, width: w, height: h } = result.layout.preserved;
+      expect(edit.maskContours).toEqual([
+        [{ x: 0, y: 0 }, { x: width, y: 0 }, { x: width, y: height }, { x: 0, y: height }],
+        [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }],
+      ]);
+    }
+  }
 });

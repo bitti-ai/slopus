@@ -471,7 +471,7 @@ CUDA/Vulkan numerical output and render performance were not revalidated here.
 ## Fibo 2.0 (API 1.34)
 
 The bundled Windows and Linux libraries are updated to Slopfab commit `0a902eb`
-(API 1.36.0), built with FFmpeg disabled. LAN protocol 16 requires updated workers.
+(API 1.36.0), built with FFmpeg disabled. LAN protocol 17 requires updated workers.
 
 The `fibo2` model uses the Edit Turbo transformer, Qwen3-VL 4B text encoder and
 Flux2 VAE. The tokenizer is embedded, and no audio VAE is needed. The generator
@@ -484,7 +484,7 @@ optional structured edit JSON pass through without H3 prompt sections. Lasso
 outlines use the same native masks as H3, including compound contours.
 
 Shared model capabilities disable video, extra references
-on source edits, Zoom, character sheets, LoRAs/refmods, MotionCache, CFG, LCS and
+on source edits, character sheets, LoRAs/refmods, MotionCache, CFG, LCS and
 H3 sampling overrides. Native request validation enforces the same constraints
 for local and LAN jobs.
 
@@ -519,3 +519,24 @@ skips vision feature injection when there are no image tokens. Verification
 includes a real Windows CUDA four-step text-only generation, finite RGB output,
 cancellation, and Linux text-only planning. LAN protocol 16 requires workers
 with the same source-free Fibo support.
+
+## Fibo Base and Zoom
+
+The Fibo 2.0 Base template uses `fibo2_dev_int8_convrot.safetensors` with the same
+Qwen3-VL encoder and Flux2 VAE as Edit Turbo. The per-template `editingModel`
+setting defaults off for Base and MOSS and on for Edit Turbo. Legacy templates
+inherit their model family's editing capability. Settings, portable `.slop`
+files, agent commands and generation requests preserve this flag; both the UI
+and native validation prevent editing when it is off. Family capabilities still
+limit unsupported operations, including MOSS editing.
+
+Fibo Edit Turbo Zoom generates borders using an explicit even-odd mask: the
+output canvas minus the preserved source rectangle. It uses plain Fibo prompts,
+without H3 inverted-mask conditioning, Langevin controls or duplicate image
+references. Crop-only Zoom uses whole-image refinement at strength 0.65.
+The existing runtime (API 1.36.0) supports these masks without a library update.
+LAN protocol 17 enforces template editing capabilities on workers.
+
+Validation covers migration, sharing, editing controls, queued requests and
+native planning, plus a real four-step CUDA border-mask generation that checks
+finite output, exact preserved center pixels and cancellation.

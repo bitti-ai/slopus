@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { importGeneratorSlop, MAX_SLOP_BYTES, mergeGeneratorSlop, parseGeneratorSlop, portableGenerator, serializeGeneratorSlop } from "./slop";
-import { createGeneratorTemplate, mossImageTemplate, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, viggleAnimateTemplate } from "./settings";
+import { createGeneratorTemplate, mossImageTemplate, fiboBaseTemplate, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, viggleAnimateTemplate } from "./settings";
 import { loadLoras, saveLoras, TURBO_LORA } from "./loras";
 
 beforeEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
@@ -122,4 +122,12 @@ describe("slop validation", () => {
     expect(() => importGeneratorSlop(JSON.stringify(bundle))).toThrow();
     expect(loadGeneratorTemplateSettings()).toEqual(settings); expect(loadLoras()).toEqual(loras);
   });
+});
+
+it("keeps the editing setting when sharing and importing Base", () => {
+  const base = fiboBaseTemplate();
+  const data = parseGeneratorSlop(serializeGeneratorSlop([base]));
+  const imported = mergeGeneratorSlop(data, { templates: [], defaultTemplateId: "" }, []).imported[0];
+  expect(imported.editingModel).toBe(false);
+  expect(imported.paths).toEqual(base.paths);
 });

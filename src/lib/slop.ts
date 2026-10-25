@@ -27,7 +27,7 @@ const portableLoraSchema = z.object({
   stepOverride: steps.optional(), samplingPreset: z.literal("dmad-4step").optional(),
 }).strict();
 export const portableGeneratorSchema = z.object({
-  name, modelType: name, defaultSteps: steps, attention: z.enum(["exact", "flash2", "sage2", "sol"]),
+  name, modelType: name, editingModel: z.boolean().optional(), defaultSteps: steps, attention: z.enum(["exact", "flash2", "sage2", "sol"]),
   mode: z.enum(["prompt", "animate"]).default("prompt"), motionCache: z.boolean().default(false),
   sources: sourcesSchema,
   loras: z.array(portableLoraSchema).max(128).default([]),
@@ -81,7 +81,7 @@ export function portableGenerator(template: GeneratorTemplate, library = loadLor
       ...(lora.samplingPreset ? { samplingPreset: lora.samplingPreset } : {}) };
   });
   return validatedGenerator({
-    name: template.name, modelType: template.modelType, defaultSteps: template.defaultSteps, attention: template.attention,
+    name: template.name, modelType: template.modelType, editingModel: template.editingModel, defaultSteps: template.defaultSteps, attention: template.attention,
     mode: template.mode ?? "prompt", motionCache: template.motionCache ?? false, sources, loras,
     additionalSafetensors: (template.additionalSafetensors ?? []).map((file) => ({ name: file.name, url: file.url, ...(file.role ? { role: file.role } : {}) })),
   }, template.name);
@@ -122,7 +122,7 @@ export function mergeGeneratorSlop(document: GeneratorSlop, current: GeneratorTe
     const paths = { ...EMPTY_ENGINE_SETTINGS };
     const usedLoraIds = new Set<string>();
     for (const field of ENGINE_PATH_FIELDS) paths[field.id] = data.sources[field.id]?.[0]?.url ?? "";
-    return { ...template, defaultSteps: data.defaultSteps, attention: data.attention, mode: data.mode, motionCache: data.motionCache,
+    return { ...template, editingModel: data.editingModel, defaultSteps: data.defaultSteps, attention: data.attention, mode: data.mode, motionCache: data.motionCache,
       paths, sources: structuredClone(data.sources),
       additionalSafetensors: data.additionalSafetensors.map((file) => ({ ...file, id: `additional-${crypto.randomUUID()}` })),
       loras: data.loras.map((entry) => {

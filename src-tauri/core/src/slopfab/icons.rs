@@ -110,6 +110,7 @@ pub fn generate_reference_icon_batch(
     };
     let configuration = Configuration {
         model_type: "minimax-h3".into(),
+        editing_model: true,
         dll_path: batch.dll_path.clone(),
         loras: Ok(Vec::new()),
         step_override: Ok(None),

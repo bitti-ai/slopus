@@ -4,7 +4,9 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## What's new
 
-- **Image negative prompts.** MOSS exposes a Negative prompt field below the image root prompt, saved per model with drafts and generated images and applied during local or LAN generation. Fibo Turbo shows the field disabled because its single positive prediction does not support negative prompts. Visibility and support are controlled by model settings. Update LAN workers to protocol 16.
+- **Fibo 2.0 Base and editing capabilities.** Added the Base generator with the Dev transformer and shared Fibo encoder/VAE. A per-template Editing model switch controls image editing and Zoom, defaults off for Base and MOSS, and is preserved when sharing templates. Fibo Edit Turbo now supports Zoom with masked border generation that preserves the source image.
+
+- **Image negative prompts.** MOSS exposes a Negative prompt field below the image root prompt, saved per model with drafts and generated images and applied during local or LAN generation. Fibo Turbo shows the field disabled because its single positive prediction does not support negative prompts. Visibility and support are controlled by model settings. Update LAN workers to protocol 17.
 
 - **Fibo 2.0 image editing.** Added an Edit Turbo generator with transformer, Qwen3-VL encoder and Flux2 VAE downloads. Generate directly from a text prompt, use whole-image, box or lasso edits, or cite up to four images in a new image prompt. Defaults to four steps on CUDA; unsupported video and H3-only controls are disabled.
 

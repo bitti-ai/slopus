@@ -333,3 +333,13 @@ fn fibo_generator_uses_image_defaults_and_needs_no_audio_or_tokenizer() {
     assert_eq!(template["defaultSteps"], 4);
     assert_eq!(template["attention"], "flash2");
 }
+
+#[test]
+fn generator_editing_flag_survives_agent_changes() {
+    let context = prepare(&GeneratorContext::default(), &[command(json!({"op":"generator.add", "id":"fibo-base",
+        "settings":{"name":"Fibo Base", "modelType":"fibo2", "editingModel":false}}))]).unwrap();
+    assert_eq!(context.settings["templates"][0]["editingModel"], false);
+    let updated = prepare(&context, &[command(json!({"op":"generator.set", "id":"fibo-base",
+        "settings":{"editingModel":true}}))]).unwrap();
+    assert_eq!(updated.settings["templates"][0]["editingModel"], true);
+}

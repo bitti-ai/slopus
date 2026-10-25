@@ -12,7 +12,7 @@ import { completeImageDraft, createTemplateImageDraft, imageFamilyRoot, imageGen
 import type { ImageGenerationSnapshot, ProjectAsset } from "./project";
 import { outputDimensions } from "./export";
 import { projectItemPath, referenceDefinition, referenceImages, referenceRefmodInputs } from "./project";
-import { generationSigmaShiftsWithLoras, engineProviderSetting, generatorModel, templateSupportsImages, templateSupportsVideo, type GeneratorTemplate } from "./settings";
+import { generationSigmaShiftsWithLoras, engineProviderSetting, generatorModel, templateSupportsEditing, templateSupportsOutpainting, templateSupportsImages, templateSupportsVideo, type GeneratorTemplate } from "./settings";
 import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
@@ -275,7 +275,7 @@ export class WorkQueue {
     if (!templateSupportsImages(template)) throw new Error("Choose a prompt generator for images.");
     let current = session.getSnapshot().config;
     const scene = current.imageScene ?? createImageScene(current.brief.prompt);
-    if (!generatorModel(template.modelType).imageEditing && scene.rootType === "image") throw new Error(`${generatorModel(template.modelType).label} does not support image editing. Choose an editing generator.`);
+    if (!templateSupportsEditing(template) && scene.rootType === "image") throw new Error(`${generatorModel(template.modelType).label} does not support image editing. Choose an editing generator.`);
     if (activeGenerationEffects(scene.generationEffects) && !generatorModel(template.modelType).generationEffects) throw new Error("This model does not support generation effects. Bypass or remove the effects, or choose another generator.");
     const edit = scene.rootType === "image" ? compileImageEdits(current, { modelType: template.modelType }) : null;
     if (!imageScenePrompt(scene)) throw new Error("Describe the image or add an object before generating.");
@@ -336,7 +336,7 @@ export class WorkQueue {
   }
   enqueueExtendImage(session: ProjectSession, template: GeneratorTemplate, sourceId: string, options: ExtendOptions) {
     if (!isTauri()) throw new Error("Zoom requires the desktop app.");
-    if (!generatorModel(template.modelType).imageOutpainting) throw new Error("Choose a generator that supports image editing for Zoom.");
+    if (!templateSupportsOutpainting(template)) throw new Error("Choose a generator that supports image editing for Zoom.");
     if (template.mode === "animate") throw new Error("Choose a prompt generator for Zoom.");
     const current = session.getSnapshot().config;
     const source = current.assets.find((asset) => asset.id === sourceId && asset.kind === "image" && !asset.imageDraft);
@@ -347,12 +347,12 @@ export class WorkQueue {
       slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
     const id = `extend-${crypto.randomUUID()}`;
     const sourceRelativePath = `cache/extend-images/${id}/canvas.png`;
-    const compiled = compileExtendImage(config, source, sourceRelativePath, options);
+    const compiled = compileExtendImage(config, source, sourceRelativePath, options, template.modelType);
     // Outpainting uses the positioned canvas as context. Crop regeneration
     // also supplies the prepared crop as its composition reference.
     const referencePaths = compiled.references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!));
     const regenerate = compiled.layout.mode === "regenerate";
-    if (regenerate) referencePaths.unshift(projectItemPath(session.record.folderPath, { relativePath: sourceRelativePath })!);
+    if (regenerate && generatorModel(template.modelType).editImageReferences) referencePaths.unshift(projectItemPath(session.record.folderPath, { relativePath: sourceRelativePath })!);
     const resultName = `${regenerate ? "Regenerated" : "Extended"} - ${source.name}`;
     const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: compiled.prompt,
       canvasWidth: compiled.layout.output.width, canvasHeight: compiled.layout.output.height, steps: generationStepsWithLoras(options.steps, config), seed: imageGenerationSeed(options.seed),
