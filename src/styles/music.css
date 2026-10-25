@@ -61,6 +61,7 @@
 .music-player__seek { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 .music-player__seek .ui-slider { flex: 1; min-width: 0; }
 .music-player__volume { display: flex; align-items: center; justify-self: end; gap: var(--space-2); width: min(130px, 100%); min-width: 0; overflow: hidden; }
+.music-player__volume > svg { width: 20px; height: 20px; flex-shrink: 0; }
 .music-player__volume .ui-slider { width: 100%; min-width: 0; }
 .music-player__error { grid-column: 1 / -1; margin: 0; color: var(--text-secondary); }
 .project-content--music { overflow: hidden; }
