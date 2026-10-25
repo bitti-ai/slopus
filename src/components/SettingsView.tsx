@@ -1,3 +1,4 @@
+import { generatorOptions } from "./generatorOptions";
 import { DEFAULT_VIDEO_SIGMA_SHIFT, DEFAULT_AUDIO_SIGMA_SHIFT, MIN_SIGMA_SHIFT, MAX_SIGMA_SHIFT, isSigmaShift } from "../lib/sampling";
 import { AdditionalSafetensorsEditor } from "./AdditionalSafetensorsEditor";
 import { GeneratorSharing } from "./GeneratorSharing";
@@ -119,7 +120,7 @@ function ReferenceIconSetting({ templates }: { templates: GeneratorTemplateSetti
     </SettingsCard>
     <SettingsCard icon={<Image20 />} header="Reference icon generator">
       <ComboBox aria-label="Reference icon generator" disabled={!available.length} value={selected?.id ?? ""} placeholder="No available generators"
-        onChange={saveReferenceIconGeneratorId} options={available.map((template) => ({ value: template.id, label: template.name }))} />
+        onChange={saveReferenceIconGeneratorId} options={generatorOptions(available)} />
     </SettingsCard>
   </SettingsGroup>;
 }

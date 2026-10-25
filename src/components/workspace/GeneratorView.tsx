@@ -1,3 +1,4 @@
+import { generatorOptions } from "../generatorOptions";
 import { duplicateScene, makeSceneGenerationPrimary, saveSceneDrafts, selectSceneGeneration } from "../../lib/sceneHistory";
 import { sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "../../lib/sceneGeneration";
 import { longShotBlocker, longShotDependencies, longShotPosition } from "../../lib/longShot";
@@ -535,7 +536,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             data-tooltip={selectedTemplate.name}
             value={selectedTemplate.id}
             disabled={availableTemplates.length === 0}
-            options={availableTemplates.map((template) => ({ value: template.id, label: template.name }))}
+            options={generatorOptions(availableTemplates)}
             onChange={chooseGeneratorTemplate}
           />
         </span>

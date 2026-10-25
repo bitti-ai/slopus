@@ -1,5 +1,6 @@
 import { activeGenerationEffects } from "../../lib/generationEffects";
 import { GenerationEffects } from "./GenerationEffects";
+import { generatorOptions } from "../generatorOptions";
 import { SliderNumberInput, GENERATION_STEPS_RANGE, CFG_RANGE } from "./SliderNumberInput";
 import { applyLassoStroke } from "../../lib/imageLasso";
 import { EditBox16 } from "../ui/icons";
@@ -634,7 +635,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             value={template?.id ?? ""}
             disabled={Boolean(active) || !imageTemplates.length}
             placeholder="No image generators"
-            options={imageTemplates.map((item) => ({ value: item.id, label: item.name, disabled: !templateUsable(item) || (imageRoot && !templateSupportsEditing(item)), description: imageRoot && !templateSupportsEditing(item) ? "Does not support editing" : !templateUsable(item) ? "Download in Settings" : undefined }))}
+            options={generatorOptions(imageTemplates, (item) => ({ disabled: !templateUsable(item) || (imageRoot && !templateSupportsEditing(item)), description: imageRoot && !templateSupportsEditing(item) ? "Does not support editing" : !templateUsable(item) ? "Download in Settings" : undefined }))}
             onChange={(id) => { setTemplateId(id); localStorage.setItem("slopus.image-generator-template.v1", id); const next = imageTemplates.find((candidate) => candidate.id === id); if (next) commit({ ...scene, steps: next.defaultSteps }); }}
           />
         </span>

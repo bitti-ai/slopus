@@ -4,6 +4,8 @@ This alpha update adds Prompt video scenes, agent image drafts, Sol attention an
 
 ## What's new
 
+- **Generator dropdown sections.** Generator choices are grouped by model in image, video and reference-icon selectors.
+
 - **Centered inspector actions.** Generate, Debug prompt, Export and other panel actions keep a compact default width and shrink to fit narrower panels.
 
 - **Inspector sliders and editable effect values.** Numeric settings such as Steps, sigma shifts, CFG, placement and clip transforms now pair draggable sliders with compact number fields. Timeline and generation effect values can also be typed directly, with defined ranges, reset support and synchronized controls. Seed remains a plain number field.
