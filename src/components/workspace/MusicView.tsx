@@ -236,20 +236,20 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
           </div>
         </> : <p className="music-inspector__empty">Add a song to edit its lyrics, style and generation settings.</p>}
       </aside>
-    </div>
-    <div className="music-player" aria-label="Music player">
-      <div className="music-player__now"><Audio16 /><div><strong>{playerAsset?.name ?? "No song playing"}</strong><span>{playing ? "Playing" : playerAsset ? "Paused" : "Choose a generated song"}</span></div></div>
-      <div className="music-player__transport">
-        <div className="music-player__buttons"><button type="button" className="icon-button" aria-label="Previous song" disabled={!playable.length} onClick={() => move(-1)}><GoToStart16 /></button><button type="button" className="music-player__toggle primary-button" aria-label={playing ? "Pause music" : "Play music"} disabled={!playable.length && !playerAsset} onClick={toggle}>{playing ? <Pause16 /> : <Play16 />}</button><button type="button" className="icon-button" aria-label="Next song" disabled={!playable.length} onClick={() => move(1)}><GoToEnd16 /></button></div>
-        <div className="music-player__seek"><span>{time(position)}</span><Slider aria-label="Song playback position" min={0} max={length || 1} step={0.1} value={position} disabled={!url || !length} onChange={(value) => { if (audio.current) audio.current.currentTime = value; setPosition(value); }} /><span>{time(length)}</span></div>
+      <div className="music-player" aria-label="Music player">
+        <div className="music-player__now"><Audio16 /><div><strong>{playerAsset?.name ?? "No song playing"}</strong><span>{playing ? "Playing" : playerAsset ? "Paused" : "Choose a generated song"}</span></div></div>
+        <div className="music-player__transport">
+          <div className="music-player__buttons"><button type="button" className="icon-button" aria-label="Previous song" disabled={!playable.length} onClick={() => move(-1)}><GoToStart16 /></button><button type="button" className="music-player__toggle primary-button" aria-label={playing ? "Pause music" : "Play music"} disabled={!playable.length && !playerAsset} onClick={toggle}>{playing ? <Pause16 /> : <Play16 />}</button><button type="button" className="icon-button" aria-label="Next song" disabled={!playable.length} onClick={() => move(1)}><GoToEnd16 /></button></div>
+          <div className="music-player__seek"><span>{time(position)}</span><Slider aria-label="Song playback position" min={0} max={length || 1} step={0.1} value={position} disabled={!url || !length} onChange={(value) => { if (audio.current) audio.current.currentTime = value; setPosition(value); }} /><span>{time(length)}</span></div>
+        </div>
+        <div className="music-player__volume"><Speaker14 /><Slider aria-label="Music volume" min={0} max={1} step={0.01} value={volume} onChange={setVolume} /></div>
+        {playbackError && <p className="music-player__error" role="alert">{playbackError}</p>}
+        <audio ref={audio} src={url ?? undefined} preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+          onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; setLength(Number.isFinite(duration) ? duration : 0); }}
+          onCanPlay={() => { if (playWhenReady.current) { playWhenReady.current = false; void play(); } }}
+          onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)} onEnded={() => { setPlaying(false); const index = playable.findIndex(({ asset }) => asset.id === playerId); if (index >= 0 && index + 1 < playable.length) playAsset(playable[index + 1].asset); }}
+          onError={() => { if (url) { playWhenReady.current = false; setPlaying(false); setPlaybackError("This song could not be played."); } }} />
       </div>
-      <div className="music-player__volume"><Speaker14 /><Slider aria-label="Music volume" min={0} max={1} step={0.01} value={volume} onChange={setVolume} /></div>
-      {playbackError && <p className="music-player__error" role="alert">{playbackError}</p>}
-      <audio ref={audio} src={url ?? undefined} preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
-        onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; setLength(Number.isFinite(duration) ? duration : 0); }}
-        onCanPlay={() => { if (playWhenReady.current) { playWhenReady.current = false; void play(); } }}
-        onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)} onEnded={() => { setPlaying(false); const index = playable.findIndex(({ asset }) => asset.id === playerId); if (index >= 0 && index + 1 < playable.length) playAsset(playable[index + 1].asset); }}
-        onError={() => { if (url) { playWhenReady.current = false; setPlaying(false); setPlaybackError("This song could not be played."); } }} />
     </div>
     <ProjectStatus label="Music status">
       <span>{config.musicSongs?.length ?? 0} songs</span>
