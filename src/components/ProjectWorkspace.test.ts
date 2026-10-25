@@ -128,7 +128,7 @@ describe("project workspace timecode", () => {
 
     // The views are tabs in the title bar; the agent is not one of them.
     const tabs = screen.getByRole("tablist", { name: "Project views" });
-    expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["Timeline", "Video", "Image", "References", "Export"]);
+    expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["Timeline", "Video", "Image", "Music", "References", "Export"]);
     expect(within(tabs).getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
     const panel = document.getElementById(within(tabs).getByRole("tab", { name: "Timeline" }).getAttribute("aria-controls")!);
     expect(panel).toHaveAttribute("role", "tabpanel");

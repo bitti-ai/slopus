@@ -17,6 +17,7 @@ pub(super) fn configure_request(
     purpose: RequestPurpose,
     references: &ReferenceVideos,
 ) -> Result<(), String> {
+    if request.music.is_some() { return super::music::configure(api, handle, request, configuration, platform); }
     configuration.validate_inputs(request)?;
     if crate::models::generator_features(&configuration.model_type).cuda_only {
         if platform == ComputePlatform::Vulkan {

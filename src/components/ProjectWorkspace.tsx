@@ -1,4 +1,6 @@
 import { Agent16, Agent16Filled, Back16, ChevronDown12, Download16, Download16Filled, Film16, Film16Filled, Image16, Image16Filled, Redo16, References16, References16Filled, Save16, Sparkle16, Sparkle16Filled, Undo16 } from "./ui/icons";
+import { MusicView } from "./workspace/MusicView";
+import { Audio16 } from "./ui/icons";
 import { ImageEditor } from "./workspace/ImageEditor";
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { GenerationJob, ProjectConfig, ProjectRecord } from "../lib/project";
@@ -24,9 +26,9 @@ import { outputDimensions, videoDurationMs } from "../lib/export";
 
 /** "agent" is not a view any more — the agent is a docked pane — but opening
  *  a project "on the agent" still means something: the pane opens with it. */
-export type ProjectView = "timeline" | "generator" | "references" | "agent" | "export" | "editor";
+export type ProjectView = "music" | "timeline" | "generator" | "references" | "agent" | "export" | "editor";
 type ShownView = Exclude<ProjectView, "agent">;
-export interface WorkspaceNavigation { view: ShownView; sceneId?: string; imageId?: string; referenceId?: string; exportKind?: "video" | "image" }
+export interface WorkspaceNavigation { view: ShownView; sceneId?: string; imageId?: string; songId?: string; referenceId?: string; exportKind?: "video" | "image" }
 
 /** The scene badge includes native generation and the final encoding step. */
 export const isGenerationOngoing = (job: GenerationJob) =>
@@ -67,7 +69,7 @@ const writeAgentPane = (open: boolean) => {
 };
 
 const VIEW_LABELS: Record<ShownView, string> = {
-  timeline: "Timeline", generator: "Video", references: "References", export: "Export", editor: "Image",
+  music: "Music", timeline: "Timeline", generator: "Video", references: "References", export: "Export", editor: "Image",
 };
 
 /* The project window.
@@ -144,6 +146,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
   const [savingProjectSettings, setSavingProjectSettings] = useState(false);
   const [selectedGenerationJobId, setSelectedGenerationJobId] = useState<string | undefined>(project.config.generationJobs[0]?.id);
   const [imageNavigation, setImageNavigation] = useState<{ id: string }>();
+  const [musicNavigation, setMusicNavigation] = useState<{ id: string }>();
   const [referenceNavigation, setReferenceNavigation] = useState<{ id: string }>();
   useEffect(() => {
     if (!navigation) return;
@@ -151,6 +154,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
     if (navigation.view === "export") setMediaMode(navigation.exportKind ?? "video");
     if (navigation.sceneId) setSelectedGenerationJobId(navigation.sceneId);
     if (navigation.imageId) setImageNavigation({ id: navigation.imageId });
+    if (navigation.songId) setMusicNavigation({ id: navigation.songId });
     if (navigation.referenceId) setReferenceNavigation({ id: navigation.referenceId });
     onNavigated?.();
   }, [navigation]);
@@ -194,7 +198,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
   const lengthMs = useMemo(() => videoDurationMs(config), [config]);
   const sequenceFormat = `${frameWidth}×${frameHeight} · ${config.settings.frameRate} fps · ${formatSequenceLength(lengthMs)}`;
 
-  const views: ShownView[] = ["timeline", "generator", "editor", "references", "export"];
+  const views: ShownView[] = ["timeline", "generator", "editor", "music", "references", "export"];
   const running = config.generationJobs.filter(isGenerationOngoing).length;
   const toggleAgent = () => {
     const open = !agentOpen;
@@ -208,7 +212,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
   useShortcut("Ctrl+S", () => { if (dirty && !saving) void save(); }, { enabled: idle, allowInInput: true });
   useShortcut("Ctrl+Z", () => { session.undo(); }, { enabled: idle });
   useShortcut(["Ctrl+Y", "Ctrl+Shift+Z"], () => { session.redo(); }, { enabled: idle });
-  useShortcut(["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+5"], (event) => {
+  useShortcut(["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4", "Ctrl+5", "Ctrl+6"], (event) => {
     const next = views[Number(event.code?.replace("Digit", "") || event.key) - 1];
     if (!next) return false;
     setView(next);
@@ -217,7 +221,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
   useShortcut("Ctrl+Shift+A", toggleAgent, { enabled: idle, allowInInput: true });
   useShortcut("Alt+ArrowLeft", goBack, { enabled: idle });
 
-  const viewIcon = (id: ShownView, selected: boolean) => id === "timeline" ? (selected ? <Film16Filled /> : <Film16 />)
+  const viewIcon = (id: ShownView, selected: boolean) => id === "music" ? <Audio16 /> : id === "timeline" ? (selected ? <Film16Filled /> : <Film16 />)
     : id === "generator" ? (selected ? <Sparkle16Filled /> : <Sparkle16 />)
       : id === "references" ? (selected ? <References16Filled /> : <References16 />)
         : id === "export" ? (selected ? <Download16Filled /> : <Download16 />)
@@ -286,6 +290,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
     <ProjectStatusSlot.Provider value={statusSlot}>
     <div className={`project-body${agentOpen ? " project-body--agent" : ""}`} style={agentPane.style}>
       <div id={`${panelId}-view`} role="tabpanel" aria-label={VIEW_LABELS[view]} className={`project-content project-content--${view}`}>
+        {view === "music" && <MusicView openSong={musicNavigation} onSongOpened={() => setMusicNavigation(undefined)} config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(id, template) => queue.enqueueMusic(session, id, template)} onCancel={(id) => void queue.cancel(id)} workItems={projectItems.filter((item) => item.kind === "music")} />}
         {view === "editor" && <ImageEditor openImage={imageNavigation} onImageOpened={() => setImageNavigation(undefined)} config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(template, count) => queue.enqueueImage(session, template, count)} onGenerateCharacterSheet={(template, sourceId, options) => queue.enqueueCharacterSheet(session, template, sourceId, options)} onGenerateExtend={(template, sourceId, options) => queue.enqueueExtendImage(session, template, sourceId, options)} onCancel={(id) => queue.cancel(id)} workItems={projectItems.filter((item) => item.kind === "image")} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} onOpenReferences={() => setView("references")} />}
         {view === "timeline" && <TimelineView config={config} openSceneId={selectedGenerationJobId} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
         {view === "generator" && <GeneratorView onGenerate={(submissions) => queue.enqueue(session, submissions)} onCancelGeneration={(ids) => queue.cancelScenes(session, ids)} cancellingJobIds={cancellingJobIds} config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.slopfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onSelectedJobChange={setSelectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
@@ -303,7 +308,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
       <aside ref={agentPaneRef} id={`${panelId}-agent`} className="project-agent-pane" aria-label="Agent" hidden={!agentOpen}>
         <AgentDock
           mode={mediaMode}
-          context={view === "editor" ? "this image composition" : view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : view === "references" ? "project references" : "this export"}
+          context={view === "music" ? "the music library" : view === "editor" ? "this image composition" : view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : view === "references" ? "project references" : "this export"}
           record={{ ...project, config }}
           providers={runtime?.providers ?? CHECKING_PROVIDERS}
           onClose={() => { setAgentOpen(false); agentToggle.current?.focus(); }}

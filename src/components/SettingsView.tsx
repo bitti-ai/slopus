@@ -8,7 +8,7 @@ import { useAgentPane } from "../lib/useAgentPane";
 import { useShortcut } from "../lib/commands";
 import { executeGeneratorCommands, type GeneratorCommand } from "../lib/agentGenerators";
 import {
-  Add20, Agent16, Agent16Filled, Agent20, Back16, Check14, Check16, Check20, ChevronRight20, Delete16, Diagnostics16,
+  Add20, Agent16, Agent16Filled, Agent20, Audio22, Back16, Check14, Check16, Check20, ChevronRight20, Delete16, Diagnostics16,
   Diagnostics16Filled, Download16, Download20, Error16, Error20, Flash20, Folder20, Gauge20, Gpu20, Image20, ModelFile20, More16,
   Options20, Palette16, Palette16Filled, Palette20, Refresh16, Refresh16Filled, Rename20, Reset16, Sparkle20, Spinner16,
   Spinner20, Steps20, TextFile20, Video16, Video16Filled, Video20, Worker16, Worker16Filled,
@@ -579,7 +579,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
         <ComboBox aria-label="Generator model" value={selectedTemplate.modelType} options={[
           ...GENERATOR_MODELS,
           ...(!GENERATOR_MODELS.some(({ value }) => value === selectedTemplate.modelType) ? [{ value: selectedTemplate.modelType, label: selectedTemplate.modelType }] : []),
-        ]} onChange={(modelType) => updateTemplate({ modelType, editingModel: generatorModel(modelType).imageEditing, ...(modelType === MOSS_MODEL_TYPE || modelType === FIBO_MODEL_TYPE ? { mode: "prompt", attention: "flash2", defaultSteps: modelType === FIBO_MODEL_TYPE ? 4 : 50, motionCache: false, loras: [], audioSigmaShift: undefined, ...(modelType === FIBO_MODEL_TYPE ? { videoSigmaShift: undefined } : {}) } : {}) })} />
+        ]} onChange={(modelType) => updateTemplate({ modelType, editingModel: generatorModel(modelType).imageEditing, ...(modelType === MOSS_MODEL_TYPE || modelType === FIBO_MODEL_TYPE || generatorModel(modelType).musicGeneration ? { mode: "prompt", attention: "flash2", defaultSteps: modelType === "yue2" ? 32 : modelType === "minimax_music3" ? 30 : modelType === FIBO_MODEL_TYPE ? 4 : 50, motionCache: false, loras: [], audioSigmaShift: undefined, ...(modelType === FIBO_MODEL_TYPE || generatorModel(modelType).musicGeneration ? { videoSigmaShift: undefined } : {}) } : {}) })} />
       </SettingsCard>
       {generatorModel(selectedTemplate.modelType).videoGeneration && <SettingsCard icon={<Video20 />} header="Mode">
         <ComboBox aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"} onChange={(value) => updateTemplate({ mode: value === "animate" ? "animate" : "prompt" })}
@@ -615,7 +615,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     <SettingsGroup heading="Performance">
       <SettingsCard icon={<Gauge20 />} header="Attention" description={selectedTemplate.attention === "sol" ? "Sol attention requires a CUDA GPU on the machine running generation." : undefined}>
         <ComboBox aria-label="Generator attention" value={selectedTemplate.attention} onChange={(value) => updateTemplate({ attention: value as AttentionMode })}
-          options={generatorModel(selectedTemplate.modelType).cudaOnly ? [{ value: "flash2", label: "Flash attention" }] : [{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }, { value: "sol", label: "Sol attention" }]} />
+          options={generatorModel(selectedTemplate.modelType).cudaOnly || generatorModel(selectedTemplate.modelType).musicGeneration ? [{ value: "flash2", label: "Flash attention" }] : [{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }, { value: "sol", label: "Sol attention" }]} />
       </SettingsCard>
       {generatorModel(selectedTemplate.modelType).motionCache && <SettingsCard icon={<Flash20 />} header="Enable MotionCache" description={<span id="motion-cache-help">{selectedTemplate.mode === "animate" ? "Unavailable in Animate mode" : "Reuses similar denoising results to reduce computation. May affect detail and motion."}</span>}>
         <ToggleSwitch aria-label="Enable MotionCache" aria-describedby="motion-cache-help"
@@ -648,7 +648,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
       <ReferenceIconSetting templates={templateSettings} />
       <div className="settings-card-list" role="list" aria-label="Generator models">
         {[...new Set([...GENERATOR_MODELS.map(({ value }) => value), ...templateSettings.templates.map(({ modelType }) => modelType)]), "other"].map((model) =>
-          <OpenableCard key={model} icon={model === "other" ? <ModelFile20 /> : !generatorModel(model).videoGeneration ? <Image20 /> : <Video20 />} header={modelPageLabel(model)}
+          <OpenableCard key={model} icon={model === "other" ? <ModelFile20 /> : generatorModel(model).musicGeneration ? <Audio22 /> : !generatorModel(model).videoGeneration ? <Image20 /> : <Video20 />} header={modelPageLabel(model)}
             openLabel={modelPageLabel(model)} openRef={`model:${model}`} description={model === "other" ? "Other weights" : "Generators and LoRAs"} onOpen={() => setModelPage(model)} />)}
       </div>
     </> : modelPage === "other" ? <OtherWeightsSettings desktop={desktop} /> : <>

@@ -1,6 +1,23 @@
 use super::*;
 
 #[test]
+fn music_settings_survive_project_validation_and_reopen() {
+    let mut config = created_fixture();
+    config.music_songs.push(serde_json::from_value(serde_json::json!({
+        "id": "song-1", "title": "Evening", "style": "Quiet jazz", "generatorId": "yue2",
+        "settings": { "lyrics": "[Verse]\nHome again", "duration": 30 }, "steps": 32, "seed": -1,
+        "status": "draft", "createdAt": "2026-10-25T00:00:00Z"
+    })).unwrap());
+    let saved = validate_and_normalize_config(config).unwrap();
+    let reopened: ProjectConfig = serde_json::from_slice(&serde_json::to_vec(&saved).unwrap()).unwrap();
+    assert_eq!(reopened.music_songs, saved.music_songs);
+    assert_eq!(reopened.music_songs[0].settings.lyrics, "[Verse]\nHome again");
+    let mut invalid = reopened;
+    invalid.music_songs[0].steps = 1000;
+    assert!(validate_and_normalize_config(invalid).is_err());
+}
+
+#[test]
 fn rust_never_emits_a_null_the_frontend_schema_refuses() {
     // The cross-layer direction that went unchecked for nine rounds: Rust
     // WRITING something zod cannot read. Browser mode never touches Rust,

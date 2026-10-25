@@ -661,7 +661,7 @@ impl Worker {
         }
         self.prune_jobs();
         let (mut request, settings) = self.materialize(start.job)?;
-        let latents = if start.save_latents && !request.still_image {
+        let latents = if start.save_latents && !request.still_image && request.music.is_none() {
             let directory = self.data.join("jobs").join(id);
             let _ = fs::remove_dir_all(&directory);
             fs::create_dir_all(&directory).map_err(|error| error.to_string())?;

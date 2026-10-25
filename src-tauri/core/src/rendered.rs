@@ -237,7 +237,8 @@ pub fn from_source(
         .and_then(|value| value.checked_mul(height as usize))
         .and_then(|value| value.checked_mul(channels as usize))
         .ok_or_else(|| "The render's dimensions do not fit in memory.".to_string())?;
-    if frame_count == 0 || width == 0 || height == 0 || channels != 3 {
+    let audio_only = frame_count == 0 && width == 0 && height == 0 && video_float_count == 0 && !audio.is_empty();
+    if !audio_only && (frame_count == 0 || width == 0 || height == 0 || channels != 3) {
         return Err(format!(
             "The render returned {frame_count} frames of {width}x{height}x{channels}."
         ));
@@ -415,6 +416,18 @@ pub fn release(job_id: &str) -> bool {
 mod tests {
     use super::*;
     use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
+
+    #[test]
+    fn audio_only_results_keep_samples_without_requesting_video_frames() {
+        let dropped = Arc::new(AtomicBool::new(false));
+        let result = from_source("music", Box::new(TrackedStill { dropped: dropped.clone(), fail: true }),
+            vec![0.25, -0.25], 0, 0, 0, 0, 0, 0.0, 2, 48000).unwrap();
+        assert!(result.frame(0).unwrap().is_none());
+        assert_eq!(result.audio_bytes(), [0.25_f32.to_le_bytes(), (-0.25_f32).to_le_bytes()].concat());
+        assert_eq!(result.summary().audio_samples, 2);
+        drop(result);
+        assert!(dropped.load(Ordering::Acquire));
+    }
 
     struct TrackedStill {
         dropped: Arc<AtomicBool>,

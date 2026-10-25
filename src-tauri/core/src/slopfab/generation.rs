@@ -174,7 +174,7 @@ fn run_single_generation(
 }
 
 fn collect_output(item: &QueueItem, output: ffi::Output, source: Box<dyn rendered::FrameSource>, timing_profile: String) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
-    let (_, frames) = scene_frame_window(&item.request, output.frames)?;
+    let frames = if item.request.music.is_some() { 0 } else { scene_frame_window(&item.request, output.frames)?.1 };
     // The VAE decoded both sides of the boundary together. Keep that complete
     // output, including the source-side pixels and soundtrack near the join.
     let audio = output.audio;
@@ -191,12 +191,14 @@ fn collect_output(item: &QueueItem, output: ffi::Output, source: Box<dyn rendere
         seconds_total: output.seconds_total,
         steps_computed: output.steps_computed,
         steps_skipped: output.steps_skipped,
-        duration_seconds: if output.fps > 0.0 {
+        duration_seconds: if item.request.music.is_some() && output.audio_channels > 0 && output.audio_sample_rate > 0 {
+            audio.len() as f64 / output.audio_channels as f64 / output.audio_sample_rate as f64
+        } else if output.fps > 0.0 {
             frames as f64 / output.fps
         } else {
             0.0
         },
-        boundary: "Latents are saved in the project. Decoded buffers remain owned by slopfab; the webview encodes the full joined video and audio on demand.",
+        boundary: if item.request.music.is_some() { "Music samples are ready to save as WAV." } else { "Latents are saved in the project. Decoded buffers remain owned by slopfab; the webview encodes the full joined video and audio on demand." },
     };
     let pictures = rendered::from_source(
         &item.request.job_id,

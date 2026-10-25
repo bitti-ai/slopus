@@ -179,6 +179,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             commands::artifacts::save_generated_image,
+            commands::artifacts::save_generated_music,
             commands::character_sheet::save_character_sheet_view,
             commands::character_sheet::combine_character_sheet,
             commands::extend_image::prepare_extend_image,

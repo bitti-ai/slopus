@@ -1,4 +1,6 @@
 import { completeSceneGeneration, sceneInput } from "./sceneHistory";
+import { musicSongSchema, musicSettingsForModel, updateSong, type MusicSong } from "./music";
+import { templateSupportsMusic } from "./settings";
 import { imageCfgScale } from "./generatorModels";
 import { activeGenerationEffects } from "./generationEffects";
 import { imageSettings } from "./imageSettings";
@@ -46,7 +48,7 @@ function imageGenerationSeed(seed: number): number {
 export interface WorkItem {
   imageAssetId?: string | null;
   imageDraftId?: string;
-  kind?: "reference-icons" | "image" | "refmod";
+  kind?: "reference-icons" | "image" | "refmod" | "music";
   id: string;
   projectKey: string;
   folderPath: string;
@@ -64,6 +66,7 @@ export interface WorkItem {
   settings: { frames: number; steps: number; audioSteps?: number; videoSigmaShift?: number; audioSigmaShift?: number; latentUpscale?: boolean; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
+  music?: MusicSong;
   sceneInput?: SceneInput;
   extend?: { sourceId: string; name: string; options: ExtendOptions };
   characterSheet?: {
@@ -150,7 +153,8 @@ export class WorkQueue {
     if (!session) {
       // The queue belongs to this app run. A persisted in-flight status from a
       // previous run has no worker behind it and must be restartable.
-      const config = isTauri() ? { ...record.config, generationJobs: record.config.generationJobs.map((job) =>
+      const config = isTauri() ? { ...record.config, musicSongs: (record.config.musicSongs ?? []).map((song) =>
+        ["queued", "generating"].includes(song.status) ? { ...song, status: "failed" as const, error: "Generation was interrupted when Slopus closed. Generate again to restart." } : song), generationJobs: record.config.generationJobs.map((job) =>
         ["queued", "generating", "ready"].includes(job.status) ? { ...job, status: "failed" as const, stage: "failed" as const, error: "Generation was interrupted when Slopus closed. Generate again to restart." } : job) } : record.config;
       session = new ProjectSession({ ...record, config }, this.writer);
       this.projects.set(key, session);
@@ -275,6 +279,30 @@ export class WorkQueue {
     });
   }
 
+  enqueueMusic(session: ProjectSession, songId: string, template: GeneratorTemplate) {
+    if (!isTauri()) throw new Error("Music generation requires the desktop app and model weights.");
+    if (!templateSupportsMusic(template)) throw new Error("Choose a music generator.");
+    const current = session.getSnapshot().config;
+    const song = musicSongSchema.parse((current.musicSongs ?? []).find((item) => item.id === songId));
+    if (!song.style.trim()) throw new Error("Describe the song's style before generating.");
+    const projectKey = projectQueueKey(session.record);
+    if (this.items.some((item) => item.projectKey === projectKey && item.kind === "music" && item.sceneId === songId && isWorkActive(item))) return;
+    const id = `music-${crypto.randomUUID()}`;
+    const captured = { ...structuredClone(song), generatorId: template.id, seed: imageGenerationSeed(song.seed) };
+    const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, "flash2", [], "prompt", [], false, template.sources, { modelType: template.modelType }) } });
+    const request: SlopfabGenerationRequest = { jobId: id, prompt: song.style, steps: song.steps, seed: captured.seed,
+      music: musicSettingsForModel(song.settings, template.modelType), frames: 0, canvasWidth: 0, canvasHeight: 0, referencePaths: [] };
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => { finish = resolve; });
+    this.work.set(id, { id, music: captured, session, sceneId: songId, request, config, snapshot: JSON.stringify(captured), cancelled: false, submitted: false, done, finish });
+    session.update((value) => updateSong(value, songId, { status: "queued", error: null, generatorId: template.id }));
+    this.items = [...this.items, { id, kind: "music", projectKey, folderPath: session.record.folderPath, projectName: current.name,
+      sceneId: songId, title: song.title, submittedAt: new Date().toISOString(), status: "queued", progress: 0,
+      detail: "Waiting to generate music", error: null, completionAt: null, cancelling: false, needsSave: false,
+      settings: { frames: 0, steps: song.steps, seed: captured.seed, canvasWidth: 0, canvasHeight: 0 } }];
+    this.publish(); void this.pump();
+  }
   enqueueImage(session: ProjectSession, template: GeneratorTemplate, count = 1) {
     if (!Number.isInteger(count) || count < 1 || count > MAX_IMAGE_BATCH_COUNT) throw new Error(`Count must be a whole number from 1 to ${MAX_IMAGE_BATCH_COUNT}.`);
     if (!isTauri()) throw new Error("Image generation requires the desktop app and downloaded model weights.");
@@ -453,6 +481,12 @@ export class WorkQueue {
     this.publish(); this.icons.yieldToVideo(); void this.pump();
   }
   private updateScene(work: PendingWork, patch: Partial<GenerationJob>, dirty = true) {
+    if (work.music) {
+      const id = work.sceneId;
+      const status = patch.status === "ready" ? "generating" : patch.status;
+      work.session.update((current) => updateSong(current, id, { ...(status ? { status } : {}), ...(patch.error !== undefined ? { error: patch.error } : {}) }), dirty);
+      return;
+    }
     if (work.image || work.refmod) return;
     // The undo replay log retains this callback. Do not retain the submitted
     // project snapshot with every progress update.
@@ -523,14 +557,14 @@ export class WorkQueue {
             work.snapshot = sceneGenerationSnapshot(captured, work.request);
             this.updateScene(work, { generationSnapshot: work.snapshot });
           }
-          if (!work.image) await purgeTimelineThumbnails(next.folderPath, work.sceneId).catch(() => undefined);
+          if (!work.image && !work.music) await purgeTimelineThumbnails(next.folderPath, work.sceneId).catch(() => undefined);
           if (work.cancelled) continue;
           await this.prepareReferences(work, next.folderPath);
           if (work.cancelled) continue;
           const plan = await resolveSlopfabPlan(work.request, work.config, next.folderPath);
           if (work.cancelled) continue;
           work.outputFrames = plan.alignedFrames;
-          this.patch(work.id, { status: "generating", detail: `Generating ${work.image ? "image" : `${plan.alignedFrames} frames`} at ${plan.canvasWidth} × ${plan.canvasHeight}` });
+          this.patch(work.id, { status: "generating", detail: work.music ? "Generating music" : `Generating ${work.image ? "image" : `${plan.alignedFrames} frames`} at ${plan.canvasWidth} × ${plan.canvasHeight}` });
           this.updateScene(work, { status: "generating", stage: "preparing" }, false);
           await enqueueSlopfabGeneration(work.request, work.config, next.folderPath);
           work.submitted = true;
@@ -591,7 +625,7 @@ export class WorkQueue {
     try { await cancelSlopfabGeneration(work.request.jobId); }
     catch (reason) {
       work.cancelled = false;
-      this.patch(work.id, { cancelling: false, detail: work.image ? "Generating image" : "Generating video", error: `Could not cancel: ${describeDiagnosticError(reason)}` });
+      this.patch(work.id, { cancelling: false, detail: work.music ? "Generating music" : work.image ? "Generating image" : "Generating video", error: `Could not cancel: ${describeDiagnosticError(reason)}` });
     }
   }
   cancelScenes(session: ProjectSession, sceneIds: string[]) {
@@ -642,7 +676,7 @@ export class WorkQueue {
       return;
     }
     const progress = Math.max(item.progress, event.totalSteps > 0 ? Math.min(0.88, 0.12 + Math.max(0, event.step) / event.totalSteps * 0.76) : event.stage === "delivering" ? 0.88 : 0.08);
-    this.patch(work.id, { status: "generating", progress, completionAt: this.timing.update(event), detail: item.cancelling ? "Cancelling generation" : event.stage === "upscaling" ? "Upscaling video latents" : work.request.imageEdit ? `Applying image edits (${Math.min(work.request.imageEdit.edits.length, Math.floor(event.step / Math.max(1, event.totalSteps) * work.request.imageEdit.edits.length) + 1)} of ${work.request.imageEdit.edits.length})` : event.stage === "starting" || event.stage === "transformerLoad" ? "Loading MiniMax H3" : work.image ? "Generating image" : "Generating video" });
+    this.patch(work.id, { status: "generating", progress, completionAt: this.timing.update(event), detail: item.cancelling ? "Cancelling generation" : event.stage === "upscaling" ? "Upscaling video latents" : work.request.imageEdit ? `Applying image edits (${Math.min(work.request.imageEdit.edits.length, Math.floor(event.step / Math.max(1, event.totalSteps) * work.request.imageEdit.edits.length) + 1)} of ${work.request.imageEdit.edits.length})` : work.music ? "Generating music" : event.stage === "starting" || event.stage === "transformerLoad" ? "Loading MiniMax H3" : work.image ? "Generating image" : "Generating video" });
     this.updateScene(work, { status: "generating", stage: event.stage === "starting" || event.stage === "transformerLoad" ? "preparing" : "generating", progress }, false);
   }
   private event(event: JobEvent) {
@@ -727,6 +761,7 @@ export class WorkQueue {
     }
   }
   private async encode(work: PendingWork) {
+    if (work.music) { await this.saveMusic(work); return; }
     if (work.image) { await this.saveImage(work); return; }
     this.patch(work.id, { status: "encoding", progress: 0.9, detail: "Saving video", completionAt: null });
     this.updateScene(work, { status: "ready", stage: "encoding", progress: 0.9, error: null }, false);
@@ -770,8 +805,24 @@ export class WorkQueue {
     const item = this.items.find((candidate) => candidate.id === id);
     const session = item && this.projects.get(item.projectKey);
     if (!item?.needsSave || !session) return;
-    try { await session.save(); this.patch(id, { status: "completed", needsSave: false, error: null, detail: item.kind === "image" ? "Image saved" : "Video saved" }); }
+    try { await session.save(); this.patch(id, { status: "completed", needsSave: false, error: null, detail: item.kind === "music" ? "Music saved" : item.kind === "image" ? "Image saved" : "Video saved" }); }
     catch (reason) { this.patch(id, { error: describeDiagnosticError(reason) }); }
+  }
+  private async saveMusic(work: PendingWork) {
+    this.patch(work.id, { status: "encoding", progress: 0.9, detail: "Saving music", completionAt: null });
+    try {
+      const saved = await invoke<{ relativePath: string; durationMs: number }>("save_generated_music", { folderPath: work.session.record.folderPath, jobId: work.id });
+      const song = work.music!, id = work.id;
+      const asset: ProjectAsset = { id, kind: "audio", name: song.title, ...saved, mimeType: "audio/wav", hasAudio: true, createdAt: new Date().toISOString() };
+      work.session.update((current) => ({ ...updateSong(current, song.id, { status: "completed", assetId: id, error: null }), assets: [...current.assets.filter((item) => item.id !== id), asset] }));
+      try {
+        await work.session.save();
+        this.patch(id, { status: "completed", progress: 1, detail: "Music saved" });
+      } catch (reason) {
+        this.patch(id, { status: "failed", progress: 1, needsSave: true, detail: "Music created; project save failed", error: describeDiagnosticError(reason) });
+      }
+    } catch (reason) { this.fail(work, reason); }
+    finally { await releaseRendered(work.id); work.finish(); }
   }
   private async saveImage(work: PendingWork) {
     this.patch(work.id, { status: "encoding", progress: 0.9, detail: "Saving image", completionAt: null });

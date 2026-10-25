@@ -20,6 +20,8 @@ import { compileImagePrompt } from "./imagePrompt";
 import { addImageNode, createImageEditScene } from "./imageScene";
 import { createEmptyImage, imageGenerationSnapshot, makeImagePrimary, restoreGeneratedImage } from "./imageHistory";
 import { sceneGenerationRequest } from "./sceneGeneration";
+import { newSong } from "./music";
+import { musicTemplates } from "./settings";
 import { bridgeGapFrames, currentLongShotArchives } from "./longShot";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -62,6 +64,42 @@ const finish = async (queue: WorkQueue, id: string) => {
   emit("slopfab-job", { jobId: id, state: "framesReady", detail: "Frames ready" });
   await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === id)?.status).toBe("completed"));
 };
+
+it("queues an immutable music request and saves its audio into timeline media", async () => {
+  const { queue, first, saved } = setup();
+  const song = { ...newSong(), title: "Evening", style: "Soft jazz", seed: 42 };
+  first.update((config) => ({ ...config, musicSongs: [song] }));
+  const template = musicTemplates()[0];
+  template.paths.transformer = "C:/weights/yue2.safetensors";
+  template.sources = {};
+  vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/song.wav", durationMs: 30000 });
+  queue.enqueueMusic(first, song.id, template);
+  queue.enqueueMusic(first, song.id, template);
+  first.update((config) => ({ ...config, musicSongs: config.musicSongs!.map((item) => ({ ...item, style: "Changed later" })) }));
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+  expect(request).toMatchObject({ prompt: "Soft jazz", seed: 42, steps: 32, music: { duration: 30 }, referencePaths: [] });
+  expect(request).not.toHaveProperty("saveLatentsPath");
+  const id = queue.getSnapshot()[0].id;
+  await finish(queue, id);
+  expect(invoke).toHaveBeenCalledWith("save_generated_music", { folderPath: first.record.folderPath, jobId: id });
+  expect(first.getSnapshot().config.musicSongs![0]).toMatchObject({ status: "completed", assetId: id, style: "Changed later" });
+  expect(first.getSnapshot().config.assets).toContainEqual(expect.objectContaining({ id, kind: "audio", name: "Evening", relativePath: "media/generated/song.wav", durationMs: 30000 }));
+  expect(saved).toHaveBeenCalled();
+  expect(releaseRendered).toHaveBeenCalledWith(id);
+  expect(saveGeneratedScene).not.toHaveBeenCalled();
+});
+
+it("cancels a queued song without altering another song", async () => {
+  const { queue, first } = setup();
+  const songs = [newSong(), newSong()].map((song) => ({ ...song, style: "Jazz" }));
+  first.update((config) => ({ ...config, musicSongs: songs }));
+  for (const song of songs) queue.enqueueMusic(first, song.id, musicTemplates()[0]);
+  const id = queue.getSnapshot()[1].id;
+  await queue.cancel(id);
+  expect(first.getSnapshot().config.musicSongs![1].status).toBe("cancelled");
+  expect(first.getSnapshot().config.musicSongs![0].status).not.toBe("cancelled");
+});
 
 it("releases submitted snapshots after each generation while keeping completed results available", async () => {
   const { queue, first } = setup();

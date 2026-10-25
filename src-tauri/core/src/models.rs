@@ -8,6 +8,7 @@ pub struct GeneratorFeatures {
     pub label: String,
     pub image_generation: bool,
     pub video_generation: bool,
+    pub music_generation: bool,
     pub image_editing: bool,
     pub image_references: bool,
     pub image_outpainting: bool,

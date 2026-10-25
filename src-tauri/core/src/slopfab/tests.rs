@@ -6,6 +6,31 @@ use crate::settings::{ProviderOption, ProviderSetting};
 use std::collections::BTreeMap;
 
 #[test]
+fn music_plans_on_cuda_and_vulkan_without_video_controls() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
+    let api = ffi::Api::load(&path).unwrap();
+    for family in ["yue2", "minimax_music3"] {
+        let mut configuration = Configuration::from_settings(&BTreeMap::new());
+        configuration.model_type = family.into();
+        let mut request = GenerationRequest { prompt: "Quiet piano".into(), steps: 2, seed: 42,
+            music: Some(music::MusicSettings { duration: 2.0, ..Default::default() }), ..Default::default() };
+        for backend in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+            let handle = RequestHandle::new(&api).unwrap();
+            configure_request(&api, &handle, &request, &configuration, backend, RequestPurpose::Plan, &ReferenceVideos::default()).unwrap();
+            let plan = api.resolve(&handle).unwrap();
+            assert!(plan.duration_seconds >= 2.0);
+            assert_eq!(plan.canvas_width, 0);
+            assert_eq!(plan.canvas_height, 0);
+        }
+        request.reference_paths.push("reference.wav".into());
+        assert!(configuration.validate_inputs(&request).unwrap_err().contains("references"));
+        request.reference_paths.clear();
+        request.music.as_mut().unwrap().duration = f64::NAN;
+        assert!(configuration.validate_inputs(&request).is_err());
+    }
+}
+
+#[test]
 fn moss_capabilities_reject_video_edits_and_references() {
     let mut configuration = Configuration::from_settings(&BTreeMap::new());
     configuration.model_type = "moss".into();

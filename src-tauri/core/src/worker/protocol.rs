@@ -23,7 +23,7 @@ pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 // v6 added custom upscale weights.
 // v5 added overlap locking.
 // v4 added SeedVR2 export streams. v3 added inverted image masks.
-pub const PROTOCOL_VERSION: u32 = 17;
+pub const PROTOCOL_VERSION: u32 = 18;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -18,6 +18,7 @@ mod generation;
 mod lcs;
 mod lcs_fingerprint;
 mod h3;
+pub mod music;
 mod icons;
 mod planning;
 mod platform;

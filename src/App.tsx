@@ -230,6 +230,8 @@ function App() {
       if (item.kind === "image") {
         const imageId = [item.imageDraftId, item.id, item.imageAssetId].find((id) => record.config.assets.some((asset) => asset.kind === "image" && asset.id === id));
         navigation = { view: "editor", imageId: imageId ?? undefined };
+      } else if (item.kind === "music") {
+        navigation = { view: "music", songId: item.sceneId };
       } else if (item.kind === "refmod" || item.kind === "reference-icons") {
         navigation = { view: "references", referenceId: item.sceneId };
       } else navigation = { view: "generator", sceneId: item.sceneId };

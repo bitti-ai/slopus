@@ -123,6 +123,7 @@ impl Configuration {
     }
 
     pub(super) fn validate_inputs(&self, request: &GenerationRequest) -> Result<(), String> {
+        if request.music.is_some() { return super::music::validate(request, self); }
         let features = crate::models::generator_features(&self.model_type);
         if let Some(negative) = &request.negative_prompt {
             if negative.contains('\0') { return Err("Negative prompt cannot contain null characters.".into()); }

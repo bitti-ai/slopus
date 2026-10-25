@@ -20,7 +20,8 @@
     "cudaOnly": false,
     "imageCompositionCreation": false,
     "negativePrompt": false,
-    "negativePromptDisabledReason": null
+    "negativePromptDisabledReason": null,
+    "musicGeneration": false
   },
   "moss": {
     "label": "MOSS Image",
@@ -45,7 +46,8 @@
     "cudaOnly": true,
     "imageCompositionCreation": true,
     "negativePrompt": true,
-    "negativePromptDisabledReason": null
+    "negativePromptDisabledReason": null,
+    "musicGeneration": false
   },
   "fibo2": {
     "label": "Fibo 2.0",
@@ -68,6 +70,55 @@
     "cudaOnly": true,
     "imageCompositionCreation": true,
     "negativePrompt": false,
-    "negativePromptDisabledReason": "Fibo 2.0 Turbo uses only the positive prompt. Slopfab does not support negative prompts for this model."
+    "negativePromptDisabledReason": "Fibo 2.0 Turbo uses only the positive prompt. Slopfab does not support negative prompts for this model.",
+    "musicGeneration": false
+  },
+  "yue2": {
+    "label": "YuE2",
+    "description": "Music generation on CUDA or Vulkan",
+    "imageGeneration": false,
+    "videoGeneration": false,
+    "imageEditing": false,
+    "imageReferences": false,
+    "loras": false,
+    "motionCache": false,
+    "generationEffects": false,
+    "cfg": null,
+    "imageOutpainting": false,
+    "characterSheets": false,
+    "requiresImageInput": false,
+    "editImageReferences": false,
+    "maxImageReferences": 0,
+    "refmods": false,
+    "sigmaShifts": false,
+    "cudaOnly": false,
+    "imageCompositionCreation": false,
+    "negativePrompt": false,
+    "negativePromptDisabledReason": null,
+    "musicGeneration": true
+  },
+  "minimax_music3": {
+    "label": "MiniMax Music3",
+    "description": "Music generation on CUDA or Vulkan",
+    "imageGeneration": false,
+    "videoGeneration": false,
+    "imageEditing": false,
+    "imageReferences": false,
+    "loras": false,
+    "motionCache": false,
+    "generationEffects": false,
+    "cfg": null,
+    "imageOutpainting": false,
+    "characterSheets": false,
+    "requiresImageInput": false,
+    "editImageReferences": false,
+    "maxImageReferences": 0,
+    "refmods": false,
+    "sigmaShifts": false,
+    "cudaOnly": false,
+    "imageCompositionCreation": false,
+    "negativePrompt": false,
+    "negativePromptDisabledReason": null,
+    "musicGeneration": true
   }
 }

@@ -40,12 +40,12 @@ pub fn resolve_plan(
     )?;
     let plan = api.resolve(&handle)?;
     let description = api.describe(&handle)?;
-    let (_, frames) = scene_frame_window(request, plan.aligned_frames)?;
+    let frames = if request.music.is_some() { 0 } else { scene_frame_window(request, plan.aligned_frames)?.1 };
     Ok(ResolvedPlan {
         canvas_width: if request.latent_upscale { request.canvas_width } else { plan.canvas_width },
         canvas_height: if request.latent_upscale { request.canvas_height } else { plan.canvas_height },
         aligned_frames: frames,
-        duration_seconds: plan.duration_seconds * frames as f64 / plan.aligned_frames as f64,
+        duration_seconds: if request.music.is_some() { plan.duration_seconds } else { plan.duration_seconds * frames as f64 / plan.aligned_frames as f64 },
         model_evaluations: plan.num_model_evaluations * request.image_edit.as_ref().map_or(1, |edit| edit.edits.len() as i32),
         sequence_rows_without_text: plan.sequence_rows_without_text,
         latent_frames: plan.latent_frames,
@@ -57,6 +57,7 @@ pub fn resolve_plan(
 }
 
 pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Result<(), String> {
+    if let Some(music) = &request.music { return music.validate(); }
     if let Some(scale) = request.guidance_scale { crate::models::validate_cfg_scale(f64::from(scale))?; }
     if let Some(effects) = &request.generation_effects { effects.validate()?; }
     super::continuation::validate(request)?;

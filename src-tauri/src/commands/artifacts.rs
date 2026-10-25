@@ -146,6 +146,62 @@ pub(crate) fn generated_summary(job_id: String) -> Option<rendered::RenderedSumm
     rendered::summary(&job_id)
 }
 
+/// Save audio-only generations as PCM WAV without a media subprocess.
+#[tauri::command]
+pub(crate) async fn save_generated_music(folder_path: String, job_id: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let summary = rendered::summary(&job_id).ok_or("Generated music is no longer available.")?;
+        let samples = rendered::audio(&job_id).ok_or("Generated music has no audio.")?;
+        let wav = music_wav(&samples, summary.audio_channels, summary.audio_sample_rate)?;
+        let root = ProjectRoot::open(&folder_path)?;
+        let stem = generated_file_stem(&job_id)?;
+        let relative_path = format!("media/generated/{stem}.wav");
+        crate::storage::atomic::write_atomically(&root.directory("media/generated")?.join(format!("{stem}.wav")), &wav)?;
+        Ok(serde_json::json!({ "relativePath": relative_path,
+            "durationMs": (samples.len() as f64 / 4.0 / f64::from(summary.audio_channels) / f64::from(summary.audio_sample_rate) * 1000.0).round() as u64 }))
+    }).await.map_err(|e| e.to_string())?
+}
+
+fn music_wav(samples: &[u8], channels: u32, rate: u32) -> Result<Vec<u8>, String> {
+    if !(1..=2).contains(&channels) || !(8000..=192000).contains(&rate) || samples.is_empty()
+        || samples.len() % (4 * channels as usize) != 0 { return Err("Invalid generated audio format.".into()); }
+    let size = u32::try_from(samples.len() / 4 * 3).map_err(|_| "Generated audio is too large.")?;
+    let riff_size = size.checked_add(36).ok_or("Generated audio is too large.")?;
+    let mut wav = Vec::with_capacity(size as usize + 44);
+    wav.extend_from_slice(b"RIFF"); wav.extend_from_slice(&riff_size.to_le_bytes()); wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16_u32.to_le_bytes()); wav.extend_from_slice(&1_u16.to_le_bytes());
+    wav.extend_from_slice(&(channels as u16).to_le_bytes()); wav.extend_from_slice(&rate.to_le_bytes());
+    wav.extend_from_slice(&(rate * channels * 3).to_le_bytes()); wav.extend_from_slice(&((channels * 3) as u16).to_le_bytes());
+    wav.extend_from_slice(&24_u16.to_le_bytes()); wav.extend_from_slice(b"data"); wav.extend_from_slice(&size.to_le_bytes());
+    for bytes in samples.chunks_exact(4) {
+        let sample = f32::from_le_bytes(bytes.try_into().unwrap());
+        if !sample.is_finite() { return Err("Generated audio contains non-finite samples.".into()); }
+        let pcm = (sample.clamp(-1.0, 1.0) * 8_388_607.0).round() as i32;
+        wav.extend_from_slice(&pcm.to_le_bytes()[..3]);
+    }
+    Ok(wav)
+}
+
+#[cfg(test)]
+mod music_tests {
+    use super::music_wav;
+    #[test]
+    fn music_wav_encodes_stereo_pcm_and_rejects_invalid_samples() {
+        let samples: Vec<u8> = [0_f32, 1.0, -1.0, 0.5].into_iter().flat_map(f32::to_le_bytes).collect();
+        let wav = music_wav(&samples, 2, 48000).unwrap();
+        assert_eq!(&wav[..4], b"RIFF");
+        assert_eq!(&wav[8..16], b"WAVEfmt ");
+        assert_eq!(u16::from_le_bytes(wav[22..24].try_into().unwrap()), 2);
+        assert_eq!(u32::from_le_bytes(wav[24..28].try_into().unwrap()), 48000);
+        assert_eq!(u16::from_le_bytes(wav[34..36].try_into().unwrap()), 24);
+        assert_eq!(&wav[44..50], &[0, 0, 0, 255, 255, 127]);
+        assert_eq!(wav.len(), 56);
+        assert!(music_wav(&[0; 3], 2, 48000).is_err());
+        assert!(music_wav(&f32::NAN.to_le_bytes(), 1, 48000).is_err());
+        assert!(music_wav(&samples, 0, 48000).is_err());
+    }
+}
+
 /// Save only a true 256x256 still-image result, directly from the DLL's frame
 /// buffer. Icon artwork is stored separately from conditioning attachments.
 #[tauri::command]

@@ -4,6 +4,7 @@ Changes since 0.3.2.
 
 ## What's new
 
+- **Music.** Generate with YuE2 or MiniMax Music3, browse songs in grid or list view, use bottom playback controls, and create references or timeline audio.
 - **Motions.** Create JavaScript animations with the agent, edit elements and parameters, and export them on the timeline or as reference videos.
 - **Scene history.** Keep up to four takes and an editable Draft, restore take settings, choose the primary timeline video, and duplicate scenes.
 - **Agent frame inspection.** Agents can view timeline frames, scenes, takes, references, generated images and Motions at a requested time.
@@ -21,4 +22,4 @@ Changes since 0.3.2.
 - Image edits preserve source images, prompts and settings; queued results get separate entries, and whole-image edits disable feathering.
 - Imported images now expose steps, seed and resolution; new images use generator step defaults, and renamed image roots retain their names.
 - Generation effects reuse VAE fingerprint checks to avoid repeated calibration work.
-- Updated SlopFab to API 1.36 and LAN protocol 17. Update workers alongside the app.
+- Updated SlopFab to API 1.38 and LAN protocol 18. Update workers alongside the app.

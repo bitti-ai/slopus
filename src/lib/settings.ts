@@ -75,6 +75,7 @@ function migratedStorageItem(key: string, legacyKey: string): string | null {
 export const MINIMAX_H3_MODEL_TYPE = "minimax-h3";
 export const MOSS_MODEL_TYPE = "moss";
 export const FIBO_MODEL_TYPE = "fibo2";
+export const templateSupportsMusic = (template: Pick<GeneratorTemplate, "modelType">): boolean => generatorModel(template.modelType).musicGeneration;
 export const templateSupportsVideo = (template: Pick<GeneratorTemplate, "modelType">): boolean => generatorModel(template.modelType).videoGeneration;
 export const templateSupportsImages = (template: Pick<GeneratorTemplate, "modelType" | "mode">): boolean => generatorModel(template.modelType).imageGeneration && template.mode !== "animate";
 
@@ -119,6 +120,9 @@ export interface WeightSource {
 }
 
 export function generatorPathFields(template: Pick<GeneratorTemplate, "mode"> & { modelType?: string }): EnginePathField[] {
+  if (template.modelType === "yue2" || template.modelType === "minimax_music3") return ENGINE_PATH_FIELDS.filter(({ id }) =>
+    id === "transformer" || template.modelType === "minimax_music3" && (id === "textEncoder" || id === "audioVae")).map((field) =>
+    field.id === "transformer" ? { ...field, hint: "The main model that generates music from your style and lyrics." } : field);
   if (template.modelType === MOSS_MODEL_TYPE || template.modelType === FIBO_MODEL_TYPE) return ENGINE_PATH_FIELDS.filter(({ id }) => id !== "audioVae").map((field) => {
     if (field.id === "transformer") return { ...field, hint: "The main model that turns your description into an image." };
     if (field.id === "videoVae") return { ...field, label: "Image VAE weights", hint: "Decodes the model's internal picture into an image." };
@@ -238,10 +242,23 @@ export function createGeneratorTemplate(name = "New template", modelType = MINIM
     name,
     modelType,
     editingModel: generatorModel(modelType).imageEditing,
-    defaultSteps: modelType === MOSS_MODEL_TYPE ? 50 : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS,
-    attention: generatorModel(modelType).cudaOnly ? "flash2" : "sage2",
+    defaultSteps: modelType === "yue2" ? 32 : modelType === "minimax_music3" ? 30 : modelType === MOSS_MODEL_TYPE ? 50 : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS,
+    attention: generatorModel(modelType).cudaOnly || generatorModel(modelType).musicGeneration ? "flash2" : "sage2",
     paths: copyPaths(EMPTY_ENGINE_SETTINGS),
   };
+}
+
+export function musicTemplates(): GeneratorTemplate[] {
+  const root = "https://huggingface.co/Comfy-Org/MiniMax-Music-3/resolve/main/";
+  return (["yue2", "minimax_music3"] as const).map((modelType) => {
+    const paths = { ...EMPTY_ENGINE_SETTINGS, ...(modelType === "yue2" ? {
+      transformer: "https://huggingface.co/Comfy-Org/YuE2/resolve/main/checkpoints/yue2_3b_int8_convrot.safetensors",
+    } : { transformer: root + "diffusion_models/minimax_music3_dit_int8_convrot.safetensors",
+      textEncoder: root + "text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+      audioVae: root + "vae/minimax_music3_dav.safetensors" }) };
+    return { ...createGeneratorTemplate(generatorModel(modelType).label, modelType), id: modelType, paths,
+      sources: Object.fromEntries(Object.entries(paths).filter(([, url]) => url).map(([id, url]) => [id, [{ url, gpuModel: "", minVramGb: 0 }]])) };
+  });
 }
 
 export function mossImageTemplate(): GeneratorTemplate {
@@ -347,9 +364,9 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 }
 
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
-  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate()],
+  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates()],
   defaultTemplateId: "default",
-  catalogVersion: 15,
+  catalogVersion: 16,
 });
 
 const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
@@ -370,7 +387,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
       && candidate.defaultSteps >= 2
       && candidate.defaultSteps <= MAX_GENERATION_STEPS
       ? candidate.defaultSteps
-      : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS;
+      : modelType === "yue2" ? 32 : modelType === "minimax_music3" ? 30 : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS;
     const attention = candidate.attention === "exact" || candidate.attention === "flash2" || candidate.attention === "sol" ? candidate.attention : "sage2";
     const paths = pathsFrom(candidate.paths);
     const sources: GeneratorTemplate["sources"] = {};
@@ -412,7 +429,7 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
     templates,
     defaultTemplateId: templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? templates.find(templateUsable)?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -606,6 +623,11 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 15 })!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
+        if ((normalized.catalogVersion ?? 0) < 16) {
+          for (const template of musicTemplates()) if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 16 })!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
         return normalized;
       }
     }
@@ -668,7 +690,7 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   // A LAN worker receives URLs for weights it should download itself.
   const remote = remoteWorkerSelected();
   const options: ProviderSetting["options"] = { ...(base?.options ?? {}), attention, inferenceBackend: loadInferenceBackend() };
-  const imageOnly = !generatorModel(shifts.modelType).videoGeneration;
+  const pathFields = generatorPathFields({ modelType: shifts.modelType, mode });
   options.modelType = shifts.modelType ?? MINIMAX_H3_MODEL_TYPE;
   options.editingModel = templateSupportsEditing({ modelType: options.modelType, editingModel: shifts.editingModel, mode });
   // Always replace project-carried adapter paths with this machine's selection.
@@ -687,10 +709,10 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   delete options.workerWeightSources;
   delete options.latentUpscaler;
   const latentUpscaler = latentUpscalerPath();
-  if (latentUpscaler) options.latentUpscaler = latentUpscaler;
+  if (latentUpscaler && !generatorModel(shifts.modelType).musicGeneration) options.latentUpscaler = latentUpscaler;
   if (remote && sources) {
     options.workerWeightSources = JSON.stringify(Object.fromEntries(Object.entries(sources)
-      .filter(([role, entries]) => entries?.length && !(imageOnly && role === "audioVae") && !(mode === "animate" && (role === "textEncoder" || role === "tokenizer")))
+      .filter(([role, entries]) => entries?.length && pathFields.some(({ id }) => id === role))
       .map(([role, entries]) => [role, entries!.map(({ url, gpuModel, minVramGb }) => ({ url, gpuModel, minVramGb }))])));
   }
   if (motionCache && mode !== "animate") options.motionCache = true;
@@ -713,7 +735,7 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
     delete options.motionCache;
   }
   for (const field of ENGINE_PATH_FIELDS) {
-    if ((imageOnly && field.id === "audioVae") || (mode === "animate" && (field.id === "textEncoder" || field.id === "tokenizer"))) {
+    if (!pathFields.some(({ id }) => id === field.id)) {
       delete options[field.id];
       continue;
     }

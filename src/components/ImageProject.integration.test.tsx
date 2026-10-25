@@ -312,11 +312,11 @@ it("creates one project without a separate image or video type", async () => {
   expect(submit.mock.calls[0][0]).not.toHaveProperty("generationType");
 });
 
-it("opens a legacy image project on Image with all five tabs and saves composition edits", async () => {
+it("opens a legacy image project on Image with all six tabs and saves composition edits", async () => {
   const save = vi.fn(async () => undefined);
   render(<ProjectWorkspace project={record()} onBack={vi.fn()} onSave={save} />);
   const navigation = within(screen.getByRole("tablist", { name: "Project views" }));
-  expect(navigation.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Timeline", "Video", "Image", "References", "Export"]);
+  expect(navigation.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Timeline", "Video", "Image", "Music", "References", "Export"]);
   expect(navigation.getByRole("tab", { name: "Image" })).toHaveAttribute("aria-selected", "true");
   fireEvent.contextMenu(screen.getByRole("button", { name: "Image" }));
   fireEvent.click(screen.getByRole("menuitem", { name: "New Text" }));

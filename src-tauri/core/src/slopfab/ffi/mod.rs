@@ -237,6 +237,12 @@ impl Api {
         self.check(r)?;
         self.inner.set_image_guidance(r.pointer.as_ptr(), scale, negative_prompt)
     }
+    pub fn set_music_settings(&self, r: &RequestHandle, settings: &str) -> Result<(), String> {
+        self.check(r)?; self.inner.set_music_settings(r.pointer.as_ptr(), settings)
+    }
+    pub fn set_vulkan_portable(&self, r: &RequestHandle) -> Result<(), String> {
+        self.check(r)?; self.inner.set_vulkan_portable(r.pointer.as_ptr())
+    }
     pub fn set_model_family(&self, r: &RequestHandle, family: &str) -> Result<(), String> {
         self.check(r)?;
         self.inner.set_model_family(r.pointer.as_ptr(), family)

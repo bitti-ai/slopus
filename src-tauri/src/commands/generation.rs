@@ -249,7 +249,7 @@ pub(crate) async fn enqueue_slopfab_generation(
     blocking(move || {
         prepare_continuation_path(&mut request, Some(&folder_path))?;
         prepare_image_edit_path(&mut request, Some(&folder_path))?;
-        if !request.still_image {
+        if !request.still_image && request.music.is_none() {
             request.save_latents_path = Some(generated_latent_destination(&folder_path, &request.job_id)?);
         }
         let job_id = request.job_id.clone();

@@ -2,6 +2,32 @@ use super::*;
 use crate::slopfab::{config::Configuration, events::NativeEvent, references::ReferenceVideos, types::{GenerationRequest, ProgressEvent}};
 use std::sync::{Arc, Mutex, atomic::AtomicBool};
 
+#[test]
+#[ignore = "requires local music weights and a GPU; set SLOPUS_MUSIC_WEIGHTS"]
+fn music_gpu_smoke() {
+    use crate::settings::{ProviderOption, ProviderSetting};
+    let root = std::path::PathBuf::from(std::env::var("SLOPUS_MUSIC_WEIGHTS").unwrap());
+    for family in ["yue2", "minimax_music3"] {
+        let paths = if family == "yue2" { vec![("transformer", "yue2_3b_int8_convrot.safetensors")] } else {
+            vec![("transformer", "minimax_music3_dit_int8_convrot.safetensors"), ("textEncoder", "text_encoder/minimax_music3_text_encoder_pruned_int8_convrot.safetensors"), ("audioVae", "minimax_music3_dav.safetensors")]
+        };
+        let mut options = std::collections::BTreeMap::from([("modelType".into(), ProviderOption::String(family.into()))]);
+        for (key, file) in paths { options.insert(key.into(), ProviderOption::String(root.join(file).to_string_lossy().into_owned())); }
+        let settings = std::collections::BTreeMap::from([("slopfab".into(), ProviderSetting { enabled: true, model: None, options })]);
+        let request = GenerationRequest { job_id: format!("smoke-{family}"), prompt: "Quiet solo piano, instrumental".into(), steps: 2, seed: 42,
+            music: Some(crate::slopfab::music::MusicSettings { duration: 2.0, planning: if family == "yue2" { "off" } else { "full" }.into(), ..Default::default() }), ..Default::default() };
+        let item = QueueItem { request, configuration: Configuration::from_settings(&settings), references: ReferenceVideos::default(),
+            events: Arc::new(|_| {}), cancel: Arc::new(AtomicBool::new(false)) };
+        let (metadata, output) = run_generation(&item).unwrap();
+        assert_eq!(metadata.frames, 0);
+        assert_eq!(metadata.audio_channels, 2);
+        println!("{family}: {} seconds, {} Hz stereo", metadata.duration_seconds, metadata.audio_sample_rate);
+        assert!((1.9..=2.1).contains(&metadata.duration_seconds));
+        assert!(output.frame(0).unwrap().is_none());
+        assert!(!output.audio_bytes().is_empty());
+    }
+}
+
 struct Pixels(u8);
 impl rendered::FrameSource for Pixels {
     fn frame_rgba(&self, _: u32, _: u32, _: u32) -> Result<Vec<u8>, String> { Ok(vec![self.0, 20, 30, 255]) }

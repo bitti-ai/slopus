@@ -55,6 +55,8 @@ pub struct LatentBridgeRequest {
 #[serde(rename_all = "camelCase")]
 pub struct GenerationRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub music: Option<super::music::MusicSettings>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub negative_prompt: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guidance_scale: Option<f32>,

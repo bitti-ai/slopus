@@ -18,6 +18,8 @@ pub(crate) enum GenerationType {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectConfig {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) music_songs: Vec<super::music::MusicSong>,
     pub(crate) schema_version: u32,
     #[serde(default)]
     pub(crate) generation_type: GenerationType,

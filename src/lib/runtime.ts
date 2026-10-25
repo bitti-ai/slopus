@@ -96,6 +96,7 @@ export interface AgentTurnResponse {
 }
 
 export interface SlopfabGenerationRequest {
+  music?: import("./music").MusicSettings;
   jobId: string;
   videoTransition?: "extend" | "bridge";
   latentBridge?: import("./project").SceneGenerationInput["latentBridge"];

@@ -1,5 +1,16 @@
 # Slopfab compatibility
 
+## Music (API 1.38)
+
+Bundled Windows and Linux runtimes support YuE2 and MiniMax Music3 on CUDA and
+Vulkan, with FFmpeg disabled. LAN protocol 18 carries music settings and
+audio-only results. Update workers alongside the app.
+
+Music requests use `slopfab_request_set_music_settings` with style in the prompt,
+model-specific controls and portable Vulkan arithmetic. They bypass H3 video
+settings. Stereo samples are saved as 24-bit PCM WAV in `media/generated` and
+appear in Music and timeline media. Song settings persist in `musicSongs`.
+
 ## Generation effects (API 1.31)
 
 Scene and image root inspectors provide **Effects > Add effect** for native
@@ -45,7 +56,7 @@ with model weights were not evaluated in this integration.
 
 ## MOSS image generation (API 1.30+)
 
-The bundled Windows and Linux libraries expose SlopFab API 1.36.0, including
+The bundled Windows and Linux libraries expose SlopFab API 1.38.0, including
 the MOSS model-family setter introduced in 1.30. Both builds disable FFmpeg.
 MOSS uses CUDA/Flash attention, the image VAE slot, and a separate Qwen3.5
 tokenizer file. It returns one RGB frame through the existing image save path.

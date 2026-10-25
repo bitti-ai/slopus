@@ -77,7 +77,7 @@ describe("the settings screen", () => {
     saveLoras([{ id: "future-adapter", name: "MOSS adapter", modelType: "moss", path: "D:/moss-adapter.safetensors" }]);
     open(null);
     const models = screen.getByRole("list", { name: "Generator models" });
-    expect(within(models).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["MiniMax H3", "MOSS", "Fibo 2.0", "Other"]);
+    expect(within(models).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["MiniMax H3", "MOSS", "Fibo 2.0", "YuE2", "MiniMax Music3", "Other"]);
     expect(screen.queryByRole("button", { name: "Edit Default generator" })).toBeNull();
     fireEvent.click(within(models).getByRole("button", { name: "MiniMax H3" }));
     expect(screen.getByRole("button", { name: "Edit Default generator" })).toBeTruthy();

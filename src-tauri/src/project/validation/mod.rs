@@ -21,6 +21,7 @@ pub(crate) fn validate_and_normalize_config(
 pub(crate) fn validate_checked(
     mut config: ProjectConfig,
 ) -> Result<ProjectConfig, issue::ValidationIssue> {
+    super::music::validate(&config).map_err(|message| issue::ValidationIssue::new("project.invalid", Some(config.id.clone()), "musicSongs", message))?;
     if let Some(scene) = &config.image_scene {
         scene.validate().map_err(|message| {
             issue::ValidationIssue::new(

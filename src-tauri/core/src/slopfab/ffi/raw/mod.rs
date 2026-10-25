@@ -80,6 +80,8 @@ type ExportRefmod = unsafe extern "C" fn(*const Request, *const c_char, *const c
 type SetImageGuidance = unsafe extern "C" fn(*mut Request, f32, *const c_char, *const i32, i32) -> i32;
 
 pub struct Api {
+    set_music_settings: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
+    set_vulkan_arithmetic: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_image_guidance: Option<SetImageGuidance>,
     _library: Library,
     capi_version: unsafe extern "C" fn() -> u32,
@@ -247,6 +249,8 @@ impl Api {
                     unsafe extern "C" fn(*mut Request, u64) -> i32
                 ),
                 set_image_guidance: library.get::<SetImageGuidance>(b"slopfab_request_set_image_guidance\0").ok().map(|symbol| *symbol),
+                set_music_settings: library.get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(b"slopfab_request_set_music_settings\0").ok().map(|symbol| *symbol),
+                set_vulkan_arithmetic: library.get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_vulkan_arithmetic\0").ok().map(|symbol| *symbol),
                 set_model_family: library
                     .get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(b"slopfab_request_set_model_family\0")
                     .ok().map(|symbol| *symbol),
@@ -600,6 +604,15 @@ impl Api {
         let negative = CString::new(negative_prompt).map_err(|_| "Negative prompt cannot contain null characters.")?;
         let skip_layers = [22_i32];
         self.error(unsafe { set(r, scale, negative.as_ptr(), skip_layers.as_ptr(), 1) })
+    }
+    pub fn set_music_settings(&self, r: *mut Request, settings: &str) -> Result<(), String> {
+        let set = self.set_music_settings.ok_or("Music requires SlopFab API 1.38 or newer. Update the app and workers.")?;
+        let json = CString::new(settings).map_err(|e| e.to_string())?;
+        self.error(unsafe { set(r, json.as_ptr()) })
+    }
+    pub fn set_vulkan_portable(&self, r: *mut Request) -> Result<(), String> {
+        let set = self.set_vulkan_arithmetic.ok_or("Music requires SlopFab API 1.38 or newer.")?;
+        self.error(unsafe { set(r, 1) })
     }
     pub fn set_model_family(&self, r: *mut Request, family: &str) -> Result<(), String> {
         let set = self.set_model_family.ok_or("This model requires a newer SlopFab runtime. Update the machine running generation.")?;
