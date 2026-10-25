@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Film16, Edit16 } from "../ui/icons";
+import { Film16, Edit16, Delete16 } from "../ui/icons";
 import { useContextMenu } from "../ui";
 import { sceneHistory } from "../../lib/sceneHistory";
 import { sceneMediaStartSeconds } from "../../lib/continuationMedia";
@@ -16,10 +16,11 @@ function TakePoster({ folderPath, media }: { folderPath: string; media: ProjectA
   return url ? <img src={url} alt="" draggable={false} /> : <Film16 aria-hidden="true" />;
 }
 
-export function SceneHistoryBar({ job, assets, folderPath, onSelect, onMakePrimary }: {
+export function SceneHistoryBar({ job, assets, folderPath, onSelect, onMakePrimary, onRemove }: {
   job: GenerationJob; assets: ProjectAsset[]; folderPath: string;
   onSelect?: (job: GenerationJob, id: string | null) => void;
   onMakePrimary?: (job: GenerationJob, id: string) => void;
+  onRemove?: (job: GenerationJob, id: string) => void;
 }) {
   const history = sceneHistory(job, assets);
   const busy = ["queued", "generating", "ready"].includes(job.status);
@@ -28,7 +29,9 @@ export function SceneHistoryBar({ job, assets, folderPath, onSelect, onMakePrima
     {history.versions.map((version, index) => {
       const primary = version.id === history.primaryId;
       const open = (source: Parameters<typeof menu.open>[0]) => menu.open(source, [{ id: "primary", label: "Make Primary", disabled: busy || primary || !onMakePrimary,
-        onSelect: () => onMakePrimary?.(job, version.id) }], { "aria-label": `Generation ${index + 1} actions` });
+        onSelect: () => onMakePrimary?.(job, version.id) }, { separator: true },
+        { id: "remove", label: "Remove generation", icon: <Delete16 />, danger: true, disabled: busy || !onRemove,
+          onSelect: () => onRemove?.(job, version.id) }], { "aria-label": `Generation ${index + 1} actions` });
       return <button key={version.id} type="button" className="scene-history__take" disabled={busy || !onSelect}
         aria-label={`Generation ${index + 1}${primary ? " (Primary)" : ""} of ${job.title}`} aria-pressed={history.selectedId === version.id}
         data-tooltip={`Generation ${index + 1}${primary ? " - Primary" : ""} - ${new Date(version.createdAt).toLocaleString()}`}

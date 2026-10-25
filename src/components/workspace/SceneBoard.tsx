@@ -84,7 +84,7 @@ export function SceneBoard({
   onMoveShot,
   onRename,
   onRemoveScene,
-  onRemoveShot, onHistorySelect, onMakePrimary, onDuplicate,
+  onRemoveShot, onHistorySelect, onMakePrimary, onRemoveGeneration, onDuplicate,
 }: {
   jobs: GenerationJob[];
   assets?: ProjectAsset[];
@@ -108,6 +108,7 @@ export function SceneBoard({
   onRemoveShot?: (job: GenerationJob, shotId: string) => void;
   onHistorySelect?: (job: GenerationJob, id: string | null) => void;
   onMakePrimary?: (job: GenerationJob, id: string) => void;
+  onRemoveGeneration?: (job: GenerationJob, id: string) => void;
   onDuplicate?: (job: GenerationJob) => void;
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -467,7 +468,7 @@ export function SceneBoard({
             </li>;
           })}
         </ol>
-        <SceneHistoryBar job={job} assets={assets} folderPath={folderPath} onSelect={onHistorySelect} onMakePrimary={onMakePrimary} />
+        <SceneHistoryBar job={job} assets={assets} folderPath={folderPath} onSelect={onHistorySelect} onMakePrimary={onMakePrimary} onRemove={onRemoveGeneration} />
         </div>}
       </section>;
     })}

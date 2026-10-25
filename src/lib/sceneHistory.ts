@@ -91,6 +91,37 @@ export function makeSceneGenerationPrimary(config: ProjectConfig, sceneId: strin
   };
 }
 
+/** Remove history metadata, keeping media files available to Undo and references. */
+export function removeSceneGeneration(config: ProjectConfig, sceneId: string, versionId: string): ProjectConfig {
+  const current = config.generationJobs.find(job => job.id === sceneId);
+  if (!current || ["queued", "generating", "ready"].includes(current.status)
+    || !sceneHistory(current, config.assets).versions.some(version => version.id === versionId)) return config;
+  const saved = saveSceneDrafts(config);
+  const job = saved.generationJobs.find(job => job.id === sceneId)!;
+  const history = sceneHistory(job, saved.assets);
+  const versions = history.versions.filter(version => version.id !== versionId);
+  const primaryId = history.primaryId === versionId ? versions.at(-1)?.id ?? null : history.primaryId;
+  const selectedId = history.selectedId === versionId ? primaryId : history.selectedId;
+  const draft = versions.length ? history.draft : history.draft ?? sceneInput(job);
+  const input = versions.length ? versions.find(version => version.id === selectedId)?.scene ?? draft : draft;
+  const nextJob = { ...(input ? applyInput(job, input) : job), generationHistory: { ...history, versions, primaryId, selectedId, draft } };
+  const next = { ...saved, generationJobs: saved.generationJobs.map(item => item.id === sceneId ? nextJob : item) };
+  if (versions.length) return history.primaryId === versionId && primaryId ? makeSceneGenerationPrimary(next, sceneId, primaryId) : next;
+
+  // Keep timeline placements as draft placeholders so a new generation can
+  // fill them again, without retaining a preview of the removed last take.
+  const assetIds = new Set(saved.assets.filter(asset => asset.id === generationAssetId(sceneId)
+    || asset.kind === "generated" && job.outputRelativePath && asset.relativePath === job.outputRelativePath).map(asset => asset.id));
+  return { ...next,
+    generationJobs: next.generationJobs.map(item => item.id !== sceneId ? item : { ...item, status: "draft", stage: "queued", progress: 0,
+      outputRelativePath: null, latentRelativePath: null, generationSnapshot: null, error: null }),
+    assets: next.assets.map(asset => assetIds.has(asset.id) ? { ...asset, relativePath: null, sourcePath: null, sceneSegments: undefined, hasAudio: false,
+      durationMs: Math.round((nextJob.durationSeconds ?? 5) * 1000) } : asset),
+    timeline: { ...next.timeline, tracks: next.timeline.tracks.map(track => ({ ...track,
+      clips: track.clips.map(clip => assetIds.has(clip.assetId) ? { ...clip, status: "draft" } : clip) })) },
+  };
+}
+
 /** Replay-safe background result: keep live edits and never duplicate a take
  * when an undo replays this callback. Completed takes become primary. */
 export function completeSceneGeneration(config: ProjectConfig, sceneId: string, version: SceneGenerationVersion, note?: string | null): ProjectConfig {

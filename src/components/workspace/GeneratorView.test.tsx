@@ -1253,7 +1253,7 @@ it("shows template shifts and locks active LoRA overrides without replacing save
 });
 
 
-it("restores older takes and drafts, makes a take primary, and duplicates a scene", () => {
+it("restores older takes and drafts, makes a take primary, removes history and duplicates a scene", () => {
   let config = project();
   const id = config.generationJobs[0].id;
   const saveTake = (takeId: string) => {
@@ -1278,6 +1278,15 @@ it("restores older takes and drafts, makes a take primary, and duplicates a scen
   const copy = state.latest().generationJobs[1];
   expect(copy).toMatchObject({ title: "First scene copy", music: "Draft music", steps: 8, status: "draft" });
   expect(copy.generationHistory).toBeUndefined(); expect(copy.outputRelativePath).toBeFalsy();
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Generation 1 (Primary) of First scene" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove generation" }));
+  expect(state.latest().generationJobs[0]).toMatchObject({ music: "Draft music", outputRelativePath: "media/two.mp4", generationHistory: { primaryId: "two", selectedId: null } });
+  expect(state.latest().generationJobs[0].generationHistory!.versions.map(version => version.id)).toEqual(["two"]);
+  fireEvent.keyDown(screen.getByRole("button", { name: "Generation 1 (Primary) of First scene" }), { key: "ContextMenu" });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove generation" }));
+  expect(state.latest().generationJobs[0]).toMatchObject({ status: "draft", outputRelativePath: null, music: "Draft music" });
+  expect(screen.queryByRole("button", { name: /Generation .* of First scene/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Draft of First scene" })).toBeInTheDocument();
 });
 
 

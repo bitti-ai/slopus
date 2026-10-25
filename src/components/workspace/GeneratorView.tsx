@@ -1,5 +1,5 @@
 import { generatorOptions } from "../generatorOptions";
-import { duplicateScene, makeSceneGenerationPrimary, saveSceneDrafts, selectSceneGeneration } from "../../lib/sceneHistory";
+import { duplicateScene, makeSceneGenerationPrimary, removeSceneGeneration, saveSceneDrafts, selectSceneGeneration } from "../../lib/sceneHistory";
 import { sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "../../lib/sceneGeneration";
 import { longShotBlocker, longShotDependencies, longShotPosition } from "../../lib/longShot";
 export { templateSceneBlocker } from "../../lib/sceneGeneration";
@@ -564,6 +564,10 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
             }}
             onMakePrimary={(job, versionId) => {
               onChange(makeSceneGenerationPrimary(configRef.current, job.id, versionId));
+              void purgeSceneThumbnails(job);
+            }}
+            onRemoveGeneration={(job, versionId) => {
+              onChange(removeSceneGeneration(configRef.current, job.id, versionId));
               void purgeSceneThumbnails(job);
             }}
             onDuplicate={(job) => {
