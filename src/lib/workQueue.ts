@@ -1,3 +1,4 @@
+import { completeSceneGeneration, sceneInput } from "./sceneHistory";
 import { imageCfgScale } from "./generatorModels";
 import { activeGenerationEffects } from "./generationEffects";
 import { imageSettings } from "./imageSettings";
@@ -12,12 +13,12 @@ import { completeImageDraft, createTemplateImageDraft, imageFamilyRoot, imageGen
 import type { ImageGenerationSnapshot, ProjectAsset } from "./project";
 import { outputDimensions } from "./export";
 import { projectItemPath, referenceDefinition, referenceImages, referenceRefmodInputs } from "./project";
-import { generationSigmaShiftsWithLoras, engineProviderSetting, generatorModel, templateSupportsEditing, templateSupportsOutpainting, templateSupportsImages, templateSupportsVideo, type GeneratorTemplate } from "./settings";
+import { generationSigmaShiftsWithLoras, engineProviderSetting, generatorModel, templateSupportsEditing, templateSupportsOutpainting, templateSupportsImages, templateSupportsVideo, defaultGeneratorTemplate, loadGeneratorTemplateSettings, type GeneratorTemplate } from "./settings";
 import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
 import { isTauri, saveProject } from "./persistence";
-import { generationAssetId, generationLatentPath, GENERATION_FRAME_RATE, sceneOutputFrames, sceneGenerationSnapshot, type GenerationJob, type ProjectRecord, type ProjectConfig } from "./project";
+import { generationAssetId, generationLatentPath, GENERATION_FRAME_RATE, sceneOutputFrames, sceneGenerationSnapshot, type SceneInput, type GenerationJob, type ProjectRecord, type ProjectConfig } from "./project";
 import { ProjectSession, type ProjectWriter } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan, type SlopfabGenerationRequest } from "./runtime";
 import { generationStepsWithLoras, withEngineSettings } from "./settings";
@@ -32,7 +33,7 @@ import type { SceneMediaSegment } from "./project";
 import { exportReferenceRefmod, refmodExportBlocker, refmodExportRequest, type RefmodExportTarget } from "./refmodExport";
 
 export type WorkStatus = "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed" | "cancelled";
-export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string }
+export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string; template?: GeneratorTemplate }
 export const MAX_IMAGE_BATCH_COUNT = 100;
 
 function imageGenerationSeed(seed: number): number {
@@ -63,6 +64,7 @@ export interface WorkItem {
   settings: { frames: number; steps: number; audioSteps?: number; videoSigmaShift?: number; audioSigmaShift?: number; latentUpscale?: boolean; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
+  sceneInput?: SceneInput;
   extend?: { sourceId: string; name: string; options: ExtendOptions };
   characterSheet?: {
     views: ReturnType<typeof compileCharacterSheet>; sourceId: string; name: string; index: number;
@@ -218,19 +220,22 @@ export class WorkQueue {
     // Take every setting before the first await, including the selected engine
     // template. Planning and native submission consume this same private copy.
     const current = session.getSnapshot().config;
-    const config = structuredClone(template ? { ...current, providerSettings: { ...current.providerSettings,
-      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras ?? [], template.mode ?? "prompt", template.additionalSafetensors ?? [], template.motionCache ?? false, template.sources ?? {}, template),
-    } } : withEngineSettings(current));
     const ids: string[] = [];
     for (const submission of submissions) {
       if (this.items.some((item) => item.projectKey === projectKey && item.sceneId === submission.job.id && isWorkActive(item))) continue;
+      const chosen = template ?? submission.template ?? loadGeneratorTemplateSettings().templates.find(t => t.id === submission.job.generatorTemplateId) ?? defaultGeneratorTemplate(undefined, "video");
+      const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
+        slopfab: engineProviderSetting(chosen.paths, current.providerSettings.slopfab, chosen.attention, chosen.loras ?? [], chosen.mode ?? "prompt", chosen.additionalSafetensors ?? [], chosen.motionCache ?? false, chosen.sources ?? {}, chosen),
+      } });
+      const captured = { ...submission.job, generatorTemplateId: chosen.id || undefined, steps: submission.request.steps, seed: submission.request.seed };
+      config.generationJobs = config.generationJobs.map(j => j.id === captured.id ? structuredClone(captured) : j);
       const id = `work-${crypto.randomUUID()}`;
       ids.push(id);
       let finish!: () => void;
       const done = new Promise<void>((resolve) => { finish = resolve; });
       const request = structuredClone({ ...submission.request, jobId: id, steps: generationStepsWithLoras(submission.request.steps, config),
         ...generationSigmaShiftsWithLoras(submission.request, config) });
-      this.work.set(id, { id, session, sceneId: submission.job.id, request, config, snapshot: submission.snapshot, cancelled: false, submitted: false, done, finish });
+      this.work.set(id, { id, session, sceneId: submission.job.id, sceneInput: sceneInput(captured), request, config, snapshot: submission.snapshot, cancelled: false, submitted: false, done, finish });
       this.items = [...this.items, {
         id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
         sceneId: submission.job.id, title: submission.job.title, submittedAt: new Date().toISOString(),
@@ -238,7 +243,7 @@ export class WorkQueue {
         cancelling: false, needsSave: false,
         settings: { frames: request.frames, steps: request.steps, audioSteps: request.audioSteps, videoSigmaShift: request.videoSigmaShift, audioSigmaShift: request.audioSigmaShift, latentUpscale: request.latentUpscale, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight },
       }];
-      this.updateScene(this.work.get(id)!, { status: "queued", stage: "queued", progress: 0, error: null, generationSnapshot: submission.snapshot });
+      this.updateScene(this.work.get(id)!, { status: "queued", stage: "queued", progress: 0, error: null, generationSnapshot: submission.snapshot, generatorTemplateId: captured.generatorTemplateId, steps: captured.steps, seed: captured.seed });
     }
     this.publish();
     if (this.items.some((item) => item.status === "queued" && item.kind !== "reference-icons")) this.icons.yieldToVideo();
@@ -746,8 +751,10 @@ export class WorkQueue {
           segments: work.continuationSegments, from: work.request.continuationFrom,
         } : undefined);
       const media = { kind: "generated" as const, relativePath: saved.relativePath, sourcePath: null, mimeType: "video/mp4", hasAudio: saved.hasAudio ?? null, width: saved.width ?? work.request.canvasWidth, height: saved.height ?? work.request.canvasHeight, durationMs: saved.durationMs ?? Math.round(totalFrames / GENERATION_FRAME_RATE * 1000), sceneSegments };
-      work.session.update(videoResultUpdate(work.sceneId, assetId, media, { status: "completed", stage: "completed", progress: 1,
-        generationSnapshot: work.snapshot, outputRelativePath: saved.relativePath, latentRelativePath: generationLatentPath(work.id), error: saved.note }));
+      const version = { id: work.id, createdAt: new Date().toISOString(), scene: work.sceneInput!,
+        media: { ...media, id: assetId, name: work.sceneInput!.title, createdAt: new Date().toISOString() },
+        generationSnapshot: work.snapshot, latentRelativePath: generationLatentPath(work.id) };
+      work.session.update(sceneResultUpdate(work.sceneId, version, saved.note));
       try {
         await work.session.save();
         this.patch(work.id, { status: "completed", progress: 1, detail: "Video saved", error: saved.note });
@@ -803,17 +810,8 @@ function derivedImageUpdate(id: string, sourceId: string, asset: ProjectAsset) {
   });
 }
 
-function videoResultUpdate(sceneId: string, assetId: string, media: Omit<ProjectAsset, "id" | "name" | "createdAt">, patch: Partial<GenerationJob>) {
-  const update = sceneUpdate(sceneId, patch);
-  return (current: ProjectConfig): ProjectConfig => ({
-    ...update(current),
-    assets: current.assets.some((asset) => asset.id === assetId)
-      ? current.assets.map((asset) => asset.id === assetId ? { ...asset, ...media } : asset)
-      : current.generationJobs.some((job) => job.id === sceneId)
-        ? [...current.assets, { id: assetId, name: current.generationJobs.find((job) => job.id === sceneId)!.title, createdAt: new Date().toISOString(), ...media }]
-        : current.assets,
-    timeline: { tracks: current.timeline.tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => clip.assetId === assetId ? { ...clip, status: "generated" } : clip) })) },
-  });
+function sceneResultUpdate(sceneId: string, version: Parameters<typeof completeSceneGeneration>[2], note?: string | null) {
+  return (current: ProjectConfig) => completeSceneGeneration(current, sceneId, version, note);
 }
 
 function imageResultUpdate({ id, imageDraftId, imageParentId, imageGeneration, outputAssetId, imageEdit, saved }: {

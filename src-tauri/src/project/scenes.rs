@@ -40,6 +40,10 @@ pub(crate) struct SceneShot {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GenerationJob {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) generator_template_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) generation_history: Option<SceneGenerationHistory>,
     pub(crate) id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) scene_type: Option<String>,
@@ -165,6 +169,8 @@ impl GenerationJob {
     ) -> Self {
         let now = timestamp.to_string();
         Self {
+            generator_template_id: None,
+            generation_history: None,
             id: id.to_string(),
             scene_type: None,
             backdrop_color: None,
@@ -210,4 +216,31 @@ impl GenerationJob {
             updated_at: now,
         }
     }
+}
+
+
+/// Input documents deliberately exclude outputs and nested history. An array
+/// keeps storage independent of the frontend's current retention limit.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SceneGenerationHistory {
+    pub(crate) versions: Vec<SceneGenerationVersion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) primary_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) selected_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) draft: Option<serde_json::Value>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SceneGenerationVersion {
+    pub(crate) id: String,
+    pub(crate) created_at: String,
+    pub(crate) scene: serde_json::Value,
+    pub(crate) media: super::ProjectAsset,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) generation_snapshot: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) latent_relative_path: Option<String>,
 }

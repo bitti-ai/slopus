@@ -1,3 +1,4 @@
+import { saveSceneDrafts } from "./sceneHistory";
 import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import type { ProjectConfig, ProjectRecord } from "./project";
 import { saveImageDraft } from "./imageHistory";
@@ -69,7 +70,7 @@ export class ProjectSession {
   private backgroundSeq = 0;
   constructor(readonly record: ProjectRecord, private writer: ProjectWriter) {
     this.savedConfig = record.config;
-    const config = saveImageDraft(record.config);
+    const config = saveSceneDrafts(saveImageDraft(record.config));
     const stamped = Date.parse(record.config.updatedAt);
     this.state = { config, dirty: config !== record.config, saving: false, saveError: null, canUndo: false, canRedo: false, savedAt: Number.isFinite(stamped) ? stamped : null };
     this.history.subscribe(() => {
@@ -91,7 +92,7 @@ export class ProjectSession {
 
   /** A change the app makes on its own. Never an undo step (see above). */
   update = (next: ProjectUpdate, dirty = true) => {
-    const config = saveImageDraft(typeof next === "function" ? next(this.state.config) : next);
+    const config = saveSceneDrafts(saveImageDraft(typeof next === "function" ? next(this.state.config) : next), this.state.config);
     if (config === this.state.config) return;
     if (typeof next === "function") {
       this.backgroundSeq += 1;
@@ -103,7 +104,7 @@ export class ProjectSession {
 
   /** A change the person made: recorded for undo. Same `key` within 500ms = one step. */
   edit = (next: ProjectUpdate, key = "edit") => {
-    const config = saveImageDraft(addReferenceImageAssets(typeof next === "function" ? next(this.state.config) : next, this.state.config.references));
+    const config = saveSceneDrafts(saveImageDraft(addReferenceImageAssets(typeof next === "function" ? next(this.state.config) : next, this.state.config.references)), this.state.config);
     if (config === this.state.config) return;
     this.history.record({ config: this.state.config, mark: this.backgroundSeq }, key);
     this.apply(config, true);
@@ -119,7 +120,7 @@ export class ProjectSession {
       if (change.seq <= entry.mark) continue;
       try { config = change.apply(config); } catch { /* A patch whose target is gone is simply skipped. */ }
     }
-    return saveImageDraft(config);
+    return saveSceneDrafts(saveImageDraft(config));
   }
 
   undo = (): boolean => {

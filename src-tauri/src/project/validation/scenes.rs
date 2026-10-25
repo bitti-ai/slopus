@@ -3,8 +3,14 @@ use crate::project::paths::*;
 use crate::project::*;
 use std::collections::BTreeSet;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
+    validate_jobs(&mut config.generation_jobs)
+}
+
+fn validate_jobs(jobs: &mut [GenerationJob]) -> Result<(), String> {
     let mut previous_id = None;
-    for job in &mut config.generation_jobs {
+    for job in jobs {
+        validate_history(job)?;
+        if job.generator_template_id.as_ref().is_some_and(|id| id.trim().is_empty()) { return Err("Scene generator template id cannot be empty.".into()); }
         if job.use_previous_scene_last_frame == Some(true)
             && matches!(job.scene_type.as_deref(), None | Some("first-last-frame")) {
             job.scene_type = Some("continue".into());
@@ -213,4 +219,99 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
             .transpose()?;
     }
     Ok(())
+}
+
+
+fn validate_input(input: &serde_json::Value) -> Result<(), String> {
+    let object = input.as_object().ok_or("Scene history inputs must be an object.")?;
+    if ["title", "prompt", "creativeBrief"].iter().any(|key| !input[*key].is_string()) || !object.contains_key("providerId") {
+        return Err("Scene history inputs need their title, prompts and provider.".into());
+    }
+    if ["generationHistory", "id", "status", "stage", "progress", "outputRelativePath", "latentRelativePath", "clipId", "generationSnapshot", "error", "createdAt", "updatedAt"]
+        .iter().any(|key| object.contains_key(*key)) { return Err("Scene history inputs cannot contain identity, outputs or nested history.".into()); }
+    // Reuse the current scene validator, including future model controls.
+    let draft = GenerationJob::draft("history-input", "History", "2026-01-01T00:00:00.000Z", crate::generation::models::default_model().defaults);
+    let mut value = serde_json::to_value(draft).map_err(|e| e.to_string())?;
+    value.as_object_mut().unwrap().extend(object.clone());
+    let mut job: GenerationJob = serde_json::from_value(value).map_err(|e| format!("Invalid scene history input: {e}"))?;
+    validate_jobs(std::slice::from_mut(&mut job))
+}
+
+fn validate_history(job: &mut GenerationJob) -> Result<(), String> {
+    let Some(history) = &mut job.generation_history else { return Ok(()); };
+    let mut ids = BTreeSet::new();
+    for version in &mut history.versions {
+        if version.id.trim().is_empty() || !ids.insert(version.id.clone()) { return Err("Scene generation IDs must be nonempty and unique.".into()); }
+        check_iso_datetime("Scene generation createdAt", &version.created_at)?;
+        validate_input(&version.scene)?;
+        let media = &mut version.media;
+        if media.kind != "generated" || media.mime_type != "video/mp4" || media.id.trim().is_empty() || media.name.trim().is_empty()
+            || media.source_path.is_some() || media.motion.is_some() || media.image_generation.is_some() || media.image_editing.is_some()
+            || media.width == Some(0) || media.height == Some(0) || media.duration_ms == Some(0) {
+            return Err("Scene generations require a saved video asset.".into());
+        }
+        check_iso_datetime("Scene generation media createdAt", &media.created_at)?;
+        media.relative_path = Some(normalize_project_path(media.relative_path.as_deref().ok_or("Scene generation video path is missing.")?)?);
+        version.latent_relative_path = version.latent_relative_path.as_deref().map(normalize_project_path).transpose()?;
+        if let Some(segments) = &mut media.scene_segments {
+            let mut end = 0u64;
+            for segment in segments {
+                if segment.scene_id.trim().is_empty() || segment.frame_count == 0 || u64::from(segment.start_frame) < end { return Err("Invalid scene generation segment.".into()); }
+                segment.latent_relative_path = normalize_project_path(&segment.latent_relative_path)?;
+                end = u64::from(segment.start_frame) + u64::from(segment.frame_count);
+            }
+        }
+    }
+    if [&history.primary_id, &history.selected_id].iter().any(|id| id.as_ref().is_some_and(|id| !ids.contains(id))) {
+        return Err("Scene history selection must name a saved generation.".into());
+    }
+    if let Some(draft) = &history.draft { validate_input(draft)?; }
+    Ok(())
+}
+
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    fn project_with_history() -> ProjectConfig {
+        let mut config: ProjectConfig = serde_json::from_str(include_str!("../../../../fixtures/project-v1-complete.json")).unwrap();
+        let job = &mut config.generation_jobs[0];
+        let mut input = serde_json::to_value(&job).unwrap();
+        for key in ["id", "status", "stage", "progress", "generationSnapshot", "clipId", "outputRelativePath", "latentRelativePath", "error", "createdAt", "updatedAt"] { input.as_object_mut().unwrap().remove(key); }
+        job.generator_template_id = Some("generator-original".into());
+        job.generation_history = Some(SceneGenerationHistory {
+            versions: vec![SceneGenerationVersion { id: "take-one".into(), created_at: job.created_at.clone(), scene: input.clone(),
+                media: config.assets.iter().find(|a| a.kind == "generated").unwrap().clone(), generation_snapshot: Some("saved-inputs".into()), latent_relative_path: Some("latents/one.safetensors".into()) }],
+            primary_id: Some("take-one".into()), selected_id: None, draft: Some(input),
+        });
+        config
+    }
+    #[test]
+    fn scene_history_and_draft_round_trip_without_a_four_take_schema_limit() {
+        let mut config = project_with_history();
+        let history = config.generation_jobs[0].generation_history.as_mut().unwrap();
+        let version = history.versions[0].clone();
+        for i in 2..=6 { let mut take = version.clone(); take.id = format!("take-{i}"); history.versions.push(take); }
+        validate(&mut config).unwrap();
+        let json = serde_json::to_value(&config).unwrap();
+        assert_eq!(json["generationJobs"][0]["generationHistory"]["versions"].as_array().unwrap().len(), 6);
+        let mut restored: ProjectConfig = serde_json::from_value(json).unwrap(); validate(&mut restored).unwrap();
+        assert_eq!(restored.generation_jobs[0].generation_history, config.generation_jobs[0].generation_history);
+        assert_eq!(restored.generation_jobs[0].generator_template_id.as_deref(), Some("generator-original"));
+    }
+    #[test]
+    fn history_rejects_unsafe_paths_invalid_settings_and_nested_history() {
+        for kind in ["path", "settings", "nested", "selection", "duplicate"] {
+            let mut config = project_with_history();
+            let history = config.generation_jobs[0].generation_history.as_mut().unwrap();
+            match kind {
+                "path" => history.versions[0].media.relative_path = Some("../outside.mp4".into()),
+                "settings" => history.versions[0].scene["steps"] = serde_json::json!(-1),
+                "nested" => history.versions[0].scene["generationHistory"] = serde_json::json!({}),
+                "selection" => history.selected_id = Some("missing".into()),
+                _ => history.versions.push(history.versions[0].clone()),
+            }
+            assert!(validate(&mut config).is_err(), "{kind}");
+        }
+    }
 }

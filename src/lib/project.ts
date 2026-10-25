@@ -550,7 +550,8 @@ export function shotReferenceIds(shot: Pick<SceneShot, "action" | "speech">): st
   return [...new Set([...actionReferenceIds(shot.action), ...actionReferenceIds(shot.speech ?? "")])];
 }
 
-export const generationJobSchema = z.object({
+const generationJobBaseSchema = z.object({
+  generatorTemplateId: idSchema.nullish(),
   id: idSchema,
   sceneType: sceneTypeSchema.nullish(),
   backdropColor: z.enum(["green", "blue", "black", "white"]).nullish(),
@@ -627,7 +628,27 @@ export const generationJobSchema = z.object({
   error: z.string().min(1).nullable().optional(),
   createdAt: isoDateSchema,
   updatedAt: isoDateSchema,
-}).superRefine((job, context) => {
+});
+
+/** Input-only snapshots cannot contain history recursively. Keep new scene
+ * controls in the base schema so they automatically participate in history. */
+export const sceneInputSchema = generationJobBaseSchema.omit({ id: true, status: true, stage: true, progress: true,
+  generationSnapshot: true, clipId: true, outputRelativePath: true, latentRelativePath: true, error: true, createdAt: true, updatedAt: true });
+export type SceneInput = z.infer<typeof sceneInputSchema>;
+export const sceneGenerationVersionSchema = z.object({
+  id: idSchema, createdAt: isoDateSchema, scene: sceneInputSchema, media: projectAssetSchema,
+  generationSnapshot: z.string().nullish(), latentRelativePath: projectRelativePathSchema.nullish(),
+});
+export type SceneGenerationVersion = z.infer<typeof sceneGenerationVersionSchema>;
+const sceneGenerationHistorySchema = z.object({
+  versions: z.array(sceneGenerationVersionSchema), primaryId: idSchema.nullish(), selectedId: idSchema.nullish(), draft: sceneInputSchema.nullish(),
+}).superRefine((history, ctx) => {
+  const ids = new Set(history.versions.map(v => v.id));
+  if (ids.size !== history.versions.length || [history.primaryId, history.selectedId].some(id => id && !ids.has(id))
+    || history.versions.some(v => v.media.kind !== "generated" || !v.media.relativePath))
+    ctx.addIssue({ code: "custom", message: "Scene history must contain unique, saved video generations and valid selections." });
+});
+export const generationJobSchema = generationJobBaseSchema.extend({ generationHistory: sceneGenerationHistorySchema.nullish() }).superRefine((job, context) => {
   /* A job carries the user's words in ONE of two places. A scene keeps them on
      its shots; everything written before scenes existed keeps them in `prompt`
      and `creativeBrief`, which is why those two may not both be blank when

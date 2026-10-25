@@ -1307,3 +1307,21 @@ it.each([false, true])("freezes latent upscale %s and saves the selected output 
   await finish(queue, work.id);
   expect(vi.mocked(saveGeneratedScene).mock.calls[0][0].outputSize).toEqual(latentUpscale ? { width: 736, height: 416 } : undefined);
 });
+
+
+it("archives the submitted scene, retains edits made in flight, and preserves history through undo", async () => {
+  const { queue, first } = setup();
+  const run = submission(first);
+  run.job = { ...run.job, shots: run.job.shots!.map(shot => ({ ...shot, action: "Submitted" })), music: "Original music" };
+  first.edit(c => ({ ...c, generationJobs: [run.job] }));
+  const [id] = queue.enqueue(first, [run]);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  first.edit(c => ({ ...c, generationJobs: c.generationJobs.map(job => ({ ...job, music: "Draft music", shots: job.shots!.map(shot => ({ ...shot, action: "Edited while generating" })) })) }));
+  await finish(queue, id);
+  const job = first.getSnapshot().config.generationJobs[0];
+  expect(job.generationHistory).toMatchObject({ primaryId: id, selectedId: null, draft: { music: "Draft music" } });
+  expect(job.generationHistory!.versions[0].scene).toMatchObject({ music: "Original music", shots: [expect.objectContaining({ action: "Submitted" })] });
+  first.undo();
+  expect(first.getSnapshot().config.generationJobs[0].generationHistory!.versions.map(v => v.id)).toEqual([id]);
+  expect(first.getSnapshot().config.assets[0].relativePath).toBe("media/generated/result.mp4");
+});
