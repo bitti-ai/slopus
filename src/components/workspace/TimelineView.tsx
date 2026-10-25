@@ -1085,11 +1085,11 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     } catch (reason) { setMotionNotice(String(reason)); }
     finally { setMotionRendering(false); }
   };
-  const addMotion = () => {
+  const addMotion = (trackId?: string) => {
     const size = outputDimensions(config.settings.resolution, config.settings.aspectRatio);
     const motion = emptyMotion(Math.min(4096, size.width), Math.min(4096, size.height));
     const id = `motion-${crypto.randomUUID()}`, clipId = `clip-${crypto.randomUUID()}`;
-    const track = tracks.find((t) => !t.locked && t.kind === "video");
+    const track = tracks.find((t) => !t.locked && t.kind === "video" && (!trackId || t.id === trackId));
     if (!track) { setImportError("Unlock a video track to add a Motion."); return; }
     const start = Math.max(playhead, ...track.clips.map(clipEndMs));
     const asset: ProjectAsset = { id, name: "Empty Motion", kind: "motion", mimeType: MOTION_MIME, motion, width: motion.width, height: motion.height,
@@ -1146,6 +1146,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
       const at = laneTimeAt(event);
       menu.open(event, [
         { label: "Paste here", shortcut: "Ctrl+V", disabled: !hasClipboard || track.locked, onSelect: () => paste(track.id, at) },
+        { label: "Add New Motion", icon: <Sparkle16 />, disabled: track.locked || track.kind !== "video", onSelect: () => addMotion(track.id) },
         { separator: true },
         { label: track.muted ? "Unmute track" : "Mute track", onSelect: () => toggleTrack(track.id, "muted") },
         { label: track.locked ? "Unlock track" : "Lock track", onSelect: () => toggleTrack(track.id, "locked") },
@@ -1286,7 +1287,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
               items={[{ value: "scenes", label: "Scenes" }, { value: "media", label: "Media" }]}
             />}
             actions={<>
-              <button type="button" className="scene-panel__import" aria-label="Add Motion" onClick={addMotion} {...tooltipProps("Add empty Motion")}><Sparkle16 /><span className="sr-only">Add Motion</span></button>
+              <button type="button" className="scene-panel__import" aria-label="Add Motion" onClick={() => addMotion()} {...tooltipProps("Add empty Motion")}><Sparkle16 /><span className="sr-only">Add Motion</span></button>
               <button
                 type="button"
                 className="scene-panel__import"
