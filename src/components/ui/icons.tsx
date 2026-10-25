@@ -163,11 +163,11 @@ export const Image12 = /*#__PURE__*/ scaled(Image16Regular, 12);
 export const Image22 = /*#__PURE__*/ scaled(Image24Regular, 22);
 export const ImageAdd14 = /*#__PURE__*/ scaled(ImageAdd20Regular, 14);
 export const ImageAdd16 = /*#__PURE__*/ scaled(ImageAdd20Regular, 16);
-/** The rope leaves the loop at its lower-right edge on a 45-degree diagonal. */
+/** A wide rope loop with a knot and loose end at the lower left. */
 export const Lasso16 = ({ className, ...props }: FluentIconsProps) => <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"
   {...props} className={`ui-icon--16${className ? ` ${className}` : ""}`} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-  <circle cx="6.5" cy="6.5" r="4.75" />
-  <path d="m9.86 9.86 2.39 2.39c1.75 1.75 2.5-.25 1.25-1.5" />
+  <ellipse cx="8.25" cy="6" rx="5.75" ry="4" />
+  <path d="M4.3 8.9C2.8 8.3 2.1 9.6 3.1 10.4C4.1 11.2 5.3 9.8 4.3 8.9M3.5 10.7C1.3 12.3 2.3 14.3 4.7 13.8" />
 </svg>;
 export const Lock14Filled = /*#__PURE__*/ scaled(LockClosed16Filled, 14);
 export const More14 = /*#__PURE__*/ scaled(MoreHorizontal16Regular, 14);
