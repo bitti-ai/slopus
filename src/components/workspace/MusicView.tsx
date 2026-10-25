@@ -4,7 +4,7 @@ import { isTauri, readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateSupportsMusic, templateUsable, generatorPathFields, type GeneratorTemplate } from "../../lib/settings";
 import { musicSettingsForModel, moveSong, newMusicFolder, newSong, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
-import { ComboBox, CommandBarButton, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
+import { ComboBox, CommandBarButton, ProgressBar, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
 import { Add16, Audio16, Delete16, FolderAdd16, FolderOpen16, GoToEnd16, GoToStart16, GridView16, ListView16, Pause16, Play16, References16, Speaker14, Sparkle16, Stop14 } from "../ui/icons";
 import { generatorOptions } from "../generatorOptions";
 import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
@@ -310,12 +310,15 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
             </PropSection>
           </div>
           <div className="inspector-actions">
-            {selected.error && <p role="alert">{selected.error}</p>}
-            {activeWork ? <><progress value={activeWork.progress} max={1} aria-label="Music generation progress" /><button type="button" className="primary-button" disabled={activeWork.cancelling || activeWork.status === "encoding"} onClick={() => onCancel(activeWork.id)}><Stop14 aria-hidden="true" />{activeWork.cancelling ? "Cancelling…" : "Cancel"}</button></> :
+            {activeWork ? <button type="button" className="primary-button" disabled={activeWork.cancelling || activeWork.status === "encoding"} onClick={() => onCancel(activeWork.id)}><Stop14 aria-hidden="true" />{activeWork.cancelling ? "Cancelling…" : "Cancel"}</button> :
               <button type="button" className="primary-button" data-tooltip={generatorStatus.state !== "ready" ? generatorStatus.detail : undefined} disabled={!ready || !isTauri() || !selected.style.trim()} onClick={generate}><Sparkle16 aria-hidden="true" />Generate</button>}
           </div>
         </> : <p className="music-inspector__empty">Add a song to edit its lyrics, style and generation settings.</p>}
       </aside>
+      {(activeWork || selected?.error) && <div className="music-generation-status" role={selected?.error ? "alert" : "status"}>
+        {activeWork && <><ProgressBar value={activeWork.progress * 100} aria-label="Music generation progress" /><span>{activeWork.detail}</span></>}
+        {selected?.error && <span>{selected.error}</span>}
+      </div>}
       <div className="music-player" aria-label="Music player">
         <div className="music-player__now"><Audio16 /><div><strong>{playerAsset?.name ?? "No song playing"}</strong><span>{playing ? "Playing" : playerAsset ? "Paused" : "Choose a generated song"}</span></div></div>
         <div className="music-player__transport">
