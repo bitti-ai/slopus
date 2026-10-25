@@ -101,6 +101,34 @@ it("cancels a queued song without altering another song", async () => {
   expect(first.getSnapshot().config.musicSongs![0].status).not.toBe("cancelled");
 });
 
+it.each(["completed", "failed"])("generates a separate song from existing audio and preserves the original when %s", async (outcome) => {
+  const { queue, first } = setup();
+  const original = { ...newSong("yue2", 24, "jazz"), title: "Evening", style: "Soft jazz", seed: 42,
+    status: "completed" as const, assetId: "original-audio", settings: { ...newSong().settings, lyrics: "[Verse]\nGood evening" } };
+  const originalAsset = { id: "original-audio", kind: "audio" as const, name: "Evening", relativePath: "media/original.wav", durationMs: 30000, mimeType: "audio/wav", createdAt: original.createdAt };
+  first.update((config) => ({ ...config, musicFolders: [{ id: "jazz", name: "Jazz" }], musicSongs: [original], assets: [originalAsset] }));
+  const template = musicTemplates()[0];
+  template.paths.transformer = "C:/weights/yue2.safetensors"; template.sources = {};
+  vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/variation.wav", durationMs: 30000 });
+  const songId = queue.enqueueMusic(first, original.id, template);
+  expect(songId).not.toBe(original.id);
+  expect(first.getSnapshot().config.musicSongs).toHaveLength(2);
+  expect(first.getSnapshot().config.musicSongs![1]).toMatchObject({ id: songId, title: "Evening (2)", folderId: "jazz", settings: original.settings, seed: 42, steps: 24, assetId: null });
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  const work = queue.getSnapshot()[0];
+  expect(work.sceneId).toBe(songId);
+  if (outcome === "completed") {
+    await finish(queue, work.id);
+    expect(first.getSnapshot().config.musicSongs![1]).toMatchObject({ status: "completed", assetId: work.id });
+    expect(first.getSnapshot().config.assets).toHaveLength(2);
+  } else {
+    emit("slopfab-job", { jobId: work.id, state: "failed", detail: "Generation failed" });
+    await waitFor(() => expect(first.getSnapshot().config.musicSongs![1].status).toBe("failed"));
+  }
+  expect(first.getSnapshot().config.musicSongs![0]).toEqual(original);
+  expect(first.getSnapshot().config.assets).toContainEqual(originalAsset);
+});
+
 it("releases submitted snapshots after each generation while keeping completed results available", async () => {
   const { queue, first } = setup();
   const pending = (queue as unknown as { work: Map<string, unknown> }).work;

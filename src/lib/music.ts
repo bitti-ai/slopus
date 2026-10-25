@@ -36,6 +36,17 @@ export function newSong(generatorId = "yue2", steps = 32, folderId?: string | nu
   return musicSongSchema.parse({ id: `song-${crypto.randomUUID()}`, title: "New song", generatorId, steps, ...(folderId ? { folderId } : {}), createdAt: new Date().toISOString() });
 }
 
+export function newSongVariation(source: MusicSong, songs: readonly MusicSong[]): MusicSong {
+  const base = source.title.replace(/ \(\d+\)$/, "");
+  let number = 2, title: string;
+  do {
+    const suffix = ` (${number++})`;
+    title = base.slice(0, 200 - suffix.length) + suffix;
+  } while (songs.some((song) => song.title === title));
+  return { ...structuredClone(source), id: `song-${crypto.randomUUID()}`, title,
+    status: "draft", assetId: null, error: null, createdAt: new Date().toISOString() };
+}
+
 export function newMusicFolder(name: string, parentId: string | null): MusicFolder {
   return musicFolderSchema.parse({ id: `music-folder-${crypto.randomUUID()}`, name, parentId });
 }

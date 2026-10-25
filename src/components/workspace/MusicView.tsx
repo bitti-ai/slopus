@@ -18,7 +18,7 @@ const SONG_DRAG_TYPE = "application/x-slopus-music-song";
 export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, workItems, openSong, onSongOpened }: {
   openSong?: { id: string }; onSongOpened?: () => void;
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate, key?: string) => void;
-  onGenerate: (songId: string, template: GeneratorTemplate) => void; onCancel: (id: string) => void;
+  onGenerate: (songId: string, template: GeneratorTemplate) => string | void; onCancel: (id: string) => void;
   workItems: readonly WorkItem[];
 }) {
   const [templates, setTemplates] = useState(() => loadGeneratorTemplateSettings().templates.filter(templateSupportsMusic));
@@ -82,7 +82,7 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
   const generate = () => {
     if (!selected || !template) return;
     setError(null);
-    try { onGenerate(selected.id, template); } catch (reason) { setError(String(reason)); }
+    try { const id = onGenerate(selected.id, template); if (id) setSelectedId(id); } catch (reason) { setError(String(reason)); }
   };
 
   const audio = useRef<HTMLAudioElement>(null);

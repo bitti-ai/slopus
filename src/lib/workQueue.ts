@@ -1,5 +1,5 @@
 import { completeSceneGeneration, sceneInput } from "./sceneHistory";
-import { musicSongSchema, musicSettingsForModel, updateSong, type MusicSong } from "./music";
+import { musicSongSchema, musicSettingsForModel, newSongVariation, updateSong, type MusicSong } from "./music";
 import { templateSupportsMusic } from "./settings";
 import { imageCfgScale } from "./generatorModels";
 import { activeGenerationEffects } from "./generationEffects";
@@ -283,10 +283,12 @@ export class WorkQueue {
     if (!isTauri()) throw new Error("Music generation requires the desktop app and model weights.");
     if (!templateSupportsMusic(template)) throw new Error("Choose a music generator.");
     const current = session.getSnapshot().config;
-    const song = musicSongSchema.parse((current.musicSongs ?? []).find((item) => item.id === songId));
-    if (!song.style.trim()) throw new Error("Describe the song's style before generating.");
+    const source = musicSongSchema.parse((current.musicSongs ?? []).find((item) => item.id === songId));
+    if (!source.style.trim()) throw new Error("Describe the song's style before generating.");
     const projectKey = projectQueueKey(session.record);
-    if (this.items.some((item) => item.projectKey === projectKey && item.kind === "music" && item.sceneId === songId && isWorkActive(item))) return;
+    if (this.items.some((item) => item.projectKey === projectKey && item.kind === "music" && item.sceneId === songId && isWorkActive(item))) return songId;
+    const song = source.assetId || source.status === "completed" ? newSongVariation(source, current.musicSongs ?? []) : source;
+    songId = song.id;
     const id = `music-${crypto.randomUUID()}`;
     const captured = { ...structuredClone(song), generatorId: template.id, seed: imageGenerationSeed(song.seed) };
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
@@ -296,12 +298,14 @@ export class WorkQueue {
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
     this.work.set(id, { id, music: captured, session, sceneId: songId, request, config, snapshot: JSON.stringify(captured), cancelled: false, submitted: false, done, finish });
-    session.update((value) => updateSong(value, songId, { status: "queued", error: null, generatorId: template.id }));
+    session.update((value) => updateSong(value.musicSongs?.some((item) => item.id === songId) ? value
+      : { ...value, musicSongs: [...(value.musicSongs ?? []), song] }, songId, { status: "queued", error: null, generatorId: template.id }));
     this.items = [...this.items, { id, kind: "music", projectKey, folderPath: session.record.folderPath, projectName: current.name,
       sceneId: songId, title: song.title, submittedAt: new Date().toISOString(), status: "queued", progress: 0,
       detail: "Waiting to generate music", error: null, completionAt: null, cancelling: false, needsSave: false,
       settings: { frames: 0, steps: song.steps, seed: captured.seed, canvasWidth: 0, canvasHeight: 0 } }];
     this.publish(); void this.pump();
+    return songId;
   }
   enqueueImage(session: ProjectSession, template: GeneratorTemplate, count = 1) {
     if (!Number.isInteger(count) || count < 1 || count > MAX_IMAGE_BATCH_COUNT) throw new Error(`Count must be a whole number from 1 to ${MAX_IMAGE_BATCH_COUNT}.`);

@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { useState } from "react";
 import { MusicView } from "./MusicView";
 import { createProjectConfig, type ProjectConfig } from "../../lib/project";
-import { newMusicFolder, newSong } from "../../lib/music";
+import { newMusicFolder, newSong, newSongVariation } from "../../lib/music";
 import { readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, musicTemplates, saveGeneratorTemplateSettings } from "../../lib/settings";
 
@@ -118,6 +118,21 @@ it("shows missing downloads in the shared selector and status bar, outside the i
   fireEvent.click(selector);
   expect(screen.getAllByRole("option").every((option) => option.getAttribute("aria-disabled") === "true")).toBe(true);
   expect(screen.getAllByText("Download in Settings")).toHaveLength(2);
+});
+
+it("selects the new song returned by generation while keeping the original visible", () => {
+  const original = { ...newSong(), title: "Evening", style: "Jazz", status: "completed" as const, assetId: "original" };
+  const variation = newSongVariation(original, [original]);
+  function VariationHarness() {
+    const [config, setConfig] = useState<ProjectConfig>({ ...createConfig(), musicSongs: [original] });
+    return <MusicView config={config} folderPath="C:/Music" onChange={setConfig} workItems={[]} onCancel={() => {}}
+      onGenerate={() => { setConfig((current) => ({ ...current, musicSongs: [...current.musicSongs!, variation] })); return variation.id; }} />;
+  }
+  render(<VariationHarness />);
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  expect(screen.getByRole("button", { name: "Select Evening (2)" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "Select Evening" })).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByLabelText("Song title")).toHaveValue("Evening (2)");
 });
 
 it("plays generated audio and creates a reference for the context-clicked song", async () => {
