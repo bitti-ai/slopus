@@ -4,7 +4,7 @@ import { isTauri, readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateSupportsMusic, templateUsable, generatorPathFields, type GeneratorTemplate } from "../../lib/settings";
 import { musicFolderLabel, musicSettingsForModel, moveSong, newMusicFolder, newSong, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
-import { ComboBox, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
+import { ComboBox, CommandBarButton, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
 import { Add16, Audio16, Delete16, FolderAdd16, FolderOpen16, GoToEnd16, GoToStart16, GridView16, ListView16, Pause16, Play16, References16, Speaker14, Sparkle16, Stop14 } from "../ui/icons";
 import { generatorOptions } from "../generatorOptions";
 import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
@@ -181,8 +181,8 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
         value={template?.id ?? ""} placeholder="No music generators" disabled={busy || !templates.length}
         options={generatorOptions(templates, (item) => ({ disabled: !templateReady(item), description: !templateReady(item) ? "Download in Settings" : undefined }))}
         onChange={chooseGenerator} />
-      <button type="button" className="secondary-button" onClick={add}><Add16 />New song</button>
-      <button type="button" className="secondary-button" onClick={beginFolder}><FolderAdd16 />New folder</button>
+      <CommandBarButton icon={<Add16 />} label="New song" showLabel onClick={add} />
+      <CommandBarButton icon={<FolderAdd16 />} label="New folder" showLabel onClick={beginFolder} />
       <div className="music-toolbar__views" role="group" aria-label="Song view">
         {(["grid", "list"] as const).map((mode) => <button type="button" className="icon-button" key={mode} aria-label={`${mode === "grid" ? "Grid" : "List"} view`} aria-pressed={view === mode}
           onClick={() => { setView(mode); localStorage.setItem("slopus.music.view", mode); }}>{mode === "grid" ? <GridView16 /> : <ListView16 />}</button>)}
