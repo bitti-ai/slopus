@@ -1,3 +1,4 @@
+import { motionSchema } from "./motion";
 import { generationEffectsSchema, activeGenerationEffects, type GenerationEffects } from "./generationEffects";
 import { MIN_SIGMA_SHIFT, MAX_SIGMA_SHIFT } from "./sampling";
 import { z } from "zod";
@@ -184,7 +185,8 @@ export type SceneMediaSegment = z.infer<typeof sceneMediaSegmentSchema>;
 
 export const projectAssetSchema = z.object({
   id: idSchema,
-  kind: z.enum(["video", "audio", "image", "caption", "generated"]),
+  kind: z.enum(["video", "audio", "image", "caption", "generated", "motion"]),
+  motion: motionSchema.nullish(),
   name: z.string().min(1),
   // Exactly one of the two. `relativePath` is a file COPIED into the project
   // folder — images, and everything generated here; `sourcePath` is a file left
@@ -217,6 +219,9 @@ export const projectAssetSchema = z.object({
   parentAssetId: idSchema.nullish(),
   createdAt: isoDateSchema,
 }).superRefine((asset, context) => {
+  if (asset.kind === "motion" ? !asset.motion || Boolean(asset.relativePath || asset.sourcePath) : Boolean(asset.motion)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Motion assets require an inline Motion document without a media path." });
+  }
   checkOneLocation(asset, context, `Asset '${asset.id}'`);
   if (asset.sceneSegments) {
     let end = 0;
@@ -241,7 +246,7 @@ export const projectAssetSchema = z.object({
   }
   /* Generated scenes and blank image drafts can exist before rendering.
    * WorkQueue fills their file paths in when generation ends. */
-  if (asset.kind !== "generated" && !asset.imageDraft && !asset.relativePath && !asset.sourcePath) {
+  if (asset.kind !== "generated" && asset.kind !== "motion" && !asset.imageDraft && !asset.relativePath && !asset.sourcePath) {
     context.addIssue({
       code: z.ZodIssueCode.custom, path: ["relativePath"],
       message: `Asset '${asset.id}' must have either a project-relative path or an external source path.`,

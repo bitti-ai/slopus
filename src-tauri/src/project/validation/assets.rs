@@ -3,6 +3,16 @@ use crate::project::paths::*;
 use crate::project::*;
 pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
     for asset in &mut config.assets {
+        if asset.kind == "motion" {
+            let motion = asset.motion.as_ref().ok_or("Motion asset needs its document.")?;
+            crate::project::motion::validate(motion)?;
+            if asset.relative_path.is_some() || asset.source_path.is_some() { return Err("Motion assets store their document inline.".into()); }
+            asset.width = motion["width"].as_u64().map(|v| v as u32);
+            asset.height = motion["height"].as_u64().map(|v| v as u32);
+            asset.duration_ms = motion["duration"].as_f64().map(|v| (v * 1000.0).round() as u64);
+            asset.has_audio = Some(false);
+        } else if asset.motion.is_some() { return Err("Only Motion assets can contain a Motion document.".into()); }
+
         if let Some(segments) = &mut asset.scene_segments {
             if asset.kind != "generated" || segments.is_empty() {
                 return Err("Scene ranges require a generated video.".into());
@@ -53,7 +63,7 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
         }
         if !matches!(
             asset.kind.as_str(),
-            "video" | "audio" | "image" | "caption" | "generated"
+            "video" | "audio" | "image" | "caption" | "generated" | "motion"
         ) {
             return Err(format!("Unsupported asset kind '{}'.", asset.kind));
         }
@@ -82,7 +92,7 @@ pub(super) fn validate(config: &mut ProjectConfig) -> Result<(), String> {
             .transpose()?;
         // Generated scenes and blank image drafts have no file until generation
         // completes. Imported assets still have exactly one stored location.
-        if (asset.kind != "generated" && asset.image_draft != Some(true)) || asset.relative_path.is_some() || asset.source_path.is_some()
+        if (asset.kind != "generated" && asset.kind != "motion" && asset.image_draft != Some(true)) || asset.relative_path.is_some() || asset.source_path.is_some()
         {
             check_one_location(
                 &format!("Asset '{}'", asset.id),

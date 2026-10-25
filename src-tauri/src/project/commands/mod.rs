@@ -17,3 +17,5 @@ pub(crate) use types::{CommandBatch, ProjectCommand};
 #[cfg(test)]
 mod tests;
 pub(crate) use batch::execute_checked;
+
+mod motions;

@@ -1,5 +1,5 @@
 use crate::project::ProjectConfig;
-pub(super) const AGENT_SYSTEM_PROMPT: &str = include_str!("../../assets/agent-system.md");
+pub(super) const AGENT_SYSTEM_PROMPT: &str = concat!(include_str!("../../assets/agent-system.md"), "\n\n", include_str!("../../assets/agent-motion.md"));
 pub(super) fn full_agent_system_prompt() -> String {
     system_prompt_for(crate::generation::models::default_model())
 }

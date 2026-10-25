@@ -62,7 +62,7 @@ pub(super) fn apply(
                             width: None,
                             height: None,
                             has_audio: None,
-                            image_generation: None, image_editing: None,
+                            motion: None, image_generation: None, image_editing: None,
                             scene_segments: None,
                             image_draft: None,
                             parent_asset_id: None,

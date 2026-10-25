@@ -12,6 +12,10 @@ pub const MAX_COMMANDS_PER_TURN: usize = 100;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", deny_unknown_fields)]
 pub enum ProjectCommand {
+    #[serde(rename = "motion.add")]
+    MotionAdd { id: String, name: String, motion: serde_json::Value },
+    #[serde(rename = "motion.set")]
+    MotionSet { id: String, #[serde(default)] name: Option<String>, #[serde(default)] motion: Option<serde_json::Value> },
     #[serde(rename = "image.draft.add")]
     ImageDraftAdd {
         id: String,
@@ -318,6 +322,8 @@ pub(super) struct CommitLine {
 }
 pub(super) fn command_name(command: &ProjectCommand) -> &'static str {
     match command {
+        ProjectCommand::MotionAdd { .. } => "motion.add",
+        ProjectCommand::MotionSet { .. } => "motion.set",
         ProjectCommand::ImageConfigure { .. } => "image.configure",
         ProjectCommand::ImageDraftAdd { .. } => "image.draft.add",
         ProjectCommand::ImageDraftSelect { .. } => "image.draft.select",

@@ -297,3 +297,37 @@ fn commands_cannot_deserialize_protected_scene_fields() {
     .unwrap_err();
     assert!(error.to_string().contains("unknown field"), "{error}");
 }
+
+#[test]
+fn motions_are_agent_editable_inline_assets_with_same_batch_clip_metadata() {
+    let current = fixture();
+    let motion = serde_json::json!({ "version":1, "space":"2d", "width":320, "height":180, "duration":3,
+        "source":"export function update({time,nodes}) {}", "nodes":[{"id":"title","name":"Title","kind":"text","text":"Hello"}],
+        "parameters":[], "overrides":{"title":{"offset":[12,24,0]}} });
+    let commands: Vec<ProjectCommand> = serde_json::from_value(serde_json::json!([
+        {"op":"motion.add", "id":"motion-title", "name":"Title", "motion":motion},
+        {"op":"clip.add", "id":"motion-clip", "asset":"motion-title"}
+    ])).unwrap();
+    let next = execute_commands_at(&current, &commands, "2026-10-25T00:00:00.000Z").unwrap();
+    let asset = next.assets.iter().find(|a| a.id == "motion-title").unwrap();
+    assert_eq!(asset.motion.as_ref(), Some(&motion));
+    assert_eq!(asset.duration_ms, Some(3000));
+    assert_eq!(asset.width, Some(320));
+    let clip = next.timeline.tracks.iter().flat_map(|t| &t.clips).find(|c| c.id == "motion-clip").unwrap();
+    assert_eq!(clip.duration_ms, 3000);
+    let restored: ProjectConfig = serde_json::from_value(serde_json::to_value(&next).unwrap()).unwrap();
+    let restored = validate_and_normalize_config(restored).unwrap();
+    assert_eq!(restored.assets, next.assets);
+    assert_eq!(restored.timeline, next.timeline);
+    let mut longer = motion.clone(); longer["duration"] = serde_json::json!(7);
+    let commands: Vec<ProjectCommand> = serde_json::from_value(serde_json::json!([
+        {"op":"motion.set", "id":"motion-title", "motion":longer},
+        {"op":"clip.add", "id":"motion-longer", "asset":"motion-title"}
+    ])).unwrap();
+    let edited = execute_commands_at(&next, &commands, "2026-10-25T00:00:00.000Z").unwrap();
+    assert_eq!(edited.timeline.tracks.iter().flat_map(|t| &t.clips).find(|c| c.id == "motion-longer").unwrap().duration_ms, 7000);
+    let mut invalid = motion.clone(); invalid["overrides"]["missing"] = serde_json::json!({});
+    let bad: ProjectCommand = serde_json::from_value(serde_json::json!({"op":"motion.set","id":"motion-title","motion":invalid})).unwrap();
+    assert!(execute_commands_at(&next, &[bad], "2026-10-25T00:00:00.000Z").is_err());
+    assert_eq!(current, fixture());
+}

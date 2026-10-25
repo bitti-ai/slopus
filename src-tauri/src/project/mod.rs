@@ -15,3 +15,5 @@ pub(crate) use scenes::*;
 pub(crate) use timeline::*;
 pub(crate) mod commands;
 pub(crate) mod reference_tokens;
+
+pub(crate) mod motion;

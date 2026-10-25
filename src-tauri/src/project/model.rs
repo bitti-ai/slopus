@@ -101,6 +101,8 @@ pub(crate) struct ProjectAsset {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) source_path: Option<String>,
     pub(crate) mime_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) motion: Option<serde_json::Value>,
     // zod now spells these `.nullish()`, so an explicit `null` WOULD parse.
     // Keep skipping anyway: it is the shape the fixtures pin, and it keeps the
     // absent case unambiguous. Do not restate the old reason — the frontend
