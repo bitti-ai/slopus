@@ -1071,9 +1071,9 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
       ...asset, motion, width: motion.width, height: motion.height, durationMs: Math.round(motion.duration * 1000),
     }) }), `motion:${id}`);
   };
-  const renderMotionReference = async () => {
-    if (!selectedAsset?.motion || motionRendering || !isTauri()) return;
-    const asset = structuredClone(selectedAsset);
+  const renderMotionReference = async (source: ProjectAsset) => {
+    if (!source.motion || motionRendering || !isTauri()) return;
+    const asset = structuredClone(source);
     setMotionRendering(true); setMotionNotice(null);
     try {
       const saved = await startMotionReferenceJob({ folderPath, ...motionReferenceExport(config, asset) });
@@ -1112,6 +1112,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
 
   const clipMenuItems = (clip: TimelineClip): MenuEntry[] => {
     const track = tracks.find((item) => item.id === clip.trackId);
+    const asset = assetsById.get(clip.assetId);
     const locked = !track || track.locked;
     return [
       { label: "Cut", shortcut: "Ctrl+X", disabled: locked, onSelect: () => cutClip(clip) },
@@ -1121,6 +1122,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
       { label: "Split at playhead", icon: <Cut16 />, shortcut: "Ctrl+K", disabled: !canSplit(clip), onSelect: () => splitClip(clip) },
       { label: "Duplicate", shortcut: "Ctrl+D", disabled: locked, onSelect: () => duplicateClip(clip) },
       { label: "Rename", shortcut: "F2", onSelect: () => { setSelectedId(clip.id); renameSelected(); } },
+      ...(asset?.motion ? [{ label: "Create Reference", disabled: motionRendering || !isTauri(), onSelect: () => void renderMotionReference(asset) }] : []),
       { separator: true },
       { label: "Delete", icon: <Delete16 />, shortcut: "Delete", danger: true, disabled: locked, onSelect: () => deleteClip(clip.id) },
     ];
@@ -1516,7 +1518,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                 onClick={(event) => menu.open(event.currentTarget, clipMenuItems(selected), { "aria-label": `${selected.label} actions`, placement: "bottom-end", focusFirst: true })}
               ><More16 aria-hidden="true" /></button>}
             />
-            {selectedAsset?.motion && <MotionInspector key={selectedAsset.id} motion={selectedAsset.motion} selectedId={motionNodeId} onSelect={setMotionNodeId} onChange={updateMotion} disabled={visualControlsDisabled} onRenderReference={isTauri() ? () => void renderMotionReference() : undefined} rendering={motionRendering} />}
+            {selectedAsset?.motion && <MotionInspector key={selectedAsset.id} motion={selectedAsset.motion} selectedId={motionNodeId} onChange={updateMotion} disabled={visualControlsDisabled} />}
             {motionNotice && <p className="panel-hint" role="status">{motionNotice}</p>}
             <PropSection title="Timing" persistKey="timeline.clip.timing" summary={`${shortTimecode(selected.startMs, fps)} → ${shortTimecode(clipEndMs(selected), fps)}`}>
               <PropRow label="Speed" htmlFor="clip-speed" value={clipPlaybackRate(selected)} defaultValue={1}
