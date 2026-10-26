@@ -1,5 +1,18 @@
 # Slopfab compatibility
 
+## Bundled runtime (API 1.40.0)
+
+Windows and Linux runtimes use SlopFab commit `af664eb94519fec7604c265a76a602be597fa12b`
+from `D:\Projects\slopfab`, with CUDA and Vulkan enabled and FFmpeg disabled.
+This update includes music performance improvements and additive ending-anchor
+APIs. Slopus's existing requests remain compatible; the new ending-anchor APIs
+are not yet exposed by the app. LAN protocol remains 18. Restart Slopus and
+update workers to load the new runtime.
+
+Both runtimes pass C API and embedded-tokenizer checks. Slopus core and desktop
+Rust tests pass against the Windows DLL. Linux retains the Fibo text-renderer
+linker workaround documented below and passes unresolved-symbol checks.
+
 ## Music (API 1.38)
 
 Bundled Windows and Linux runtimes support YuE2 and MiniMax Music3 on CUDA and
@@ -56,7 +69,7 @@ with model weights were not evaluated in this integration.
 
 ## MOSS image generation (API 1.30+)
 
-The bundled Windows and Linux libraries expose SlopFab API 1.38.0, including
+The bundled Windows and Linux libraries expose SlopFab API 1.40.0, including
 the MOSS model-family setter introduced in 1.30. Both builds disable FFmpeg.
 MOSS uses CUDA/Flash attention, the image VAE slot, and a separate Qwen3.5
 tokenizer file. It returns one RGB frame through the existing image save path.

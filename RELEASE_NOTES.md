@@ -23,4 +23,4 @@ Changes since 0.3.2.
 - Image edits preserve source images, prompts and settings; queued results get separate entries, and whole-image edits disable feathering.
 - Imported images now expose steps, seed and resolution; new images use generator step defaults, and renamed image roots retain their names.
 - Generation effects reuse VAE fingerprint checks to avoid repeated calibration work.
-- Updated SlopFab to API 1.38 and LAN protocol 18. Update workers alongside the app.
+- Updated SlopFab to API 1.40 with music performance improvements; LAN protocol 18. Update workers alongside the app.
