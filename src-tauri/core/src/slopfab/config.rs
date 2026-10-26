@@ -123,6 +123,9 @@ impl Configuration {
     }
 
     pub(super) fn validate_inputs(&self, request: &GenerationRequest) -> Result<(), String> {
+        if request.single_shot.is_some() && (self.model_type != "minimax-h3" || self.animate) {
+            return Err("Single Shot requires a MiniMax H3 prompt generator.".into());
+        }
         if request.music.is_some() { return super::music::validate(request, self); }
         let features = crate::models::generator_features(&self.model_type);
         if let Some(negative) = &request.negative_prompt {

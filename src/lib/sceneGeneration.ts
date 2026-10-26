@@ -6,7 +6,7 @@ import {
   usableAudioReferences, usableVideoReferences, referenceRefmodInputs, compileGenerationJobPrompt,
   danglingReferenceTokens, GENERATION_FRAME_RATE, sceneDurationSeconds, sceneFrameInputs,
   sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSteps, sceneShots, projectItemPath,
-  usableReferenceImages, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneType,
+  usableReferenceImages, compileScenePromptSegments, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneType,
 } from "./project";
 import type { SlopfabGenerationRequest } from "./runtime";
 import { generationSigmaShifts, templateSupportsVideo, type GeneratorTemplate } from "./settings";
@@ -22,12 +22,15 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
   const longShot = longShotInputs(job, config);
   return {
     jobId: job.id,
+    ...(job.sceneType === "single-shot" ? { singleShot: { endingPrompt: job.endingPrompt?.trim()
+      ? compileScenePromptSegments({ shots: [{ id: `${job.id}-ending`, startSeconds: 0, action: job.endingPrompt }], soundscape: job.soundscape, music: job.music }, bound, config.settings.defaultLook).map((segment) => segment.value).join("")
+      : compileGenerationJobPrompt(inputs.job, bound, config.settings.defaultLook) } } : {}),
     ...(longShot ? { latentBridge: longShot.bridge } : {}),
     ...(job.sceneType === "extend" || job.sceneType === "bridge" ? { videoTransition: job.sceneType } : {}),
     // Recompiled from current state so edits to a bound reference or a
     // retimed shot reach the engine, rather than sending a prompt frozen at
-    // draft-creation time. This is the ONE string slopfab is given, and it is
-    // the same string the compiled-prompt panel shows.
+    // draft-creation time. This is the main prompt shown in the compiled-prompt
+    // panel; Single Shot captures its separate ending prompt above.
     prompt: job.sceneType === "animate" ? "" : compileGenerationJobPrompt(inputs.job, bound, config.settings.defaultLook),
     ...(inputs.previousSceneId ? { previousSceneId: inputs.previousSceneId } : {}),
     ...(inputs.continuationRelativePath ? { continuationRelativePath: inputs.continuationRelativePath } : {}),
@@ -65,6 +68,11 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
 /** Validate the inputs required by the selected generator before submission. */
 export function sendBlocker(job: GenerationJob, references: ProjectReference[]): string | null {
   const shots = sceneShots(job);
+  if (job.sceneType === "single-shot") {
+    if (sceneDurationSeconds(job) < 2) return "Single Shot needs at least 2 seconds.";
+    if (danglingReferenceTokens([{ id: "ending", startSeconds: 0, action: job.endingPrompt ?? "" }], references).length)
+      return "A reference in the ending prompt can't be used. Replace it or remove it.";
+  }
   const animate = job.sceneType === "animate";
   const characterReplace = job.sceneType === "character-replace";
   if (job.sceneType === "pose") {

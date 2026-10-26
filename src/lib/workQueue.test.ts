@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
-import { createProjectConfig, parseProjectConfig, type ProjectRecord } from "./project";
+import { createProjectConfig, parseProjectConfig, sceneGenerationSnapshot, type ProjectRecord } from "./project";
 import { ProjectSession } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
 import { saveEngineSettings, saveGeneratorTemplateSettings, loadGeneratorTemplateSettings, EMPTY_ENGINE_SETTINGS, type GeneratorTemplate } from "./settings";
@@ -206,6 +206,44 @@ it("resolves queued Long Shot dependencies after encoding and extends the joined
   expect(saved.assets.find((asset) => asset.id === "asset-4")?.sceneSegments?.map((part) => part.sceneId)).toEqual(["1", "2", "3", "4", "5"]);
   expect(saved.assets.find((asset) => asset.id === "asset-3")?.sceneSegments).toHaveLength(1);
   expect(JSON.parse(saved.generationJobs[1].generationSnapshot!).latentBridge.leftMarginFrames).toBe(17);
+});
+
+it("chains Single Shots from a regular generated scene while capturing prompts and joined scene ranges", async () => {
+  const { queue, first } = setup();
+  first.update((config) => ({ ...config, generationJobs: ["a", "b", "c"].map((id, index) => ({ ...config.generationJobs[0], id,
+    sceneType: index === 0 ? "prompt" as const : "single-shot" as const, endingPrompt: `Ending ${id}`, continuationSceneId: index ? ["a", "b"][index - 1] : null })) }));
+  vi.mocked(resolveSlopfabPlan).mockImplementation(async (request) => {
+    const live = first.getSnapshot().config;
+    const source = live.generationJobs.find((job) => job.latentRelativePath === request.continuationRelativePath);
+    const tail = live.assets.find((asset) => asset.id === `asset-${source?.id}`)?.sceneSegments?.at(-1);
+    return { ...plan, alignedFrames: request.continuationRelativePath ? tail!.startFrame + tail!.frameCount + Math.ceil(request.frames / 17) * 17 : 158 } as Awaited<ReturnType<typeof resolveSlopfabPlan>>;
+  });
+  const config = first.getSnapshot().config;
+  const submissions = config.generationJobs.map((job) => {
+    const request = sceneGenerationRequest(job, config, first.record.folderPath, 8);
+    return { job, request, snapshot: sceneGenerationSnapshot(job, request) };
+  });
+  const ids = queue.enqueue(first, submissions);
+  first.update((current) => ({ ...current, generationJobs: current.generationJobs.map((job) => ({ ...job, endingPrompt: "Edited later" })) }));
+  for (let index = 0; index < ids.length; index++) {
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(index + 1));
+    if (index > 0) {
+      emit("slopfab-progress", { jobId: ids[index], stage: "singleShotEnding", step: 1, totalSteps: 14, plannedSteps: 14, elapsedSeconds: 1, timingProfile: "test" });
+      expect(queue.getSnapshot().find((item) => item.id === ids[index])?.detail).toBe("Generating ending (1 of 2)");
+      emit("slopfab-progress", { jobId: ids[index], stage: "singleShotFull", step: 8, totalSteps: 14, plannedSteps: 14, elapsedSeconds: 2, timingProfile: "test" });
+      expect(queue.getSnapshot().find((item) => item.id === ids[index])?.detail).toBe("Generating full shot (2 of 2)");
+    }
+    await finish(queue, ids[index]);
+  }
+  const requests = vi.mocked(enqueueSlopfabGeneration).mock.calls.map(([request]) => request);
+  expect(requests[0].singleShot).toBeUndefined();
+  expect(requests[1].continuationRelativePath).toBe(`latents/${ids[0]}.safetensors`);
+  expect(requests[2].continuationRelativePath).toBe(`latents/${ids[1]}.safetensors`);
+  expect(requests[2].singleShot?.endingPrompt).toContain("Ending c");
+  expect(requests[2].singleShot?.endingPrompt).not.toContain("Edited later");
+  const saved = first.getSnapshot().config;
+  expect(saved.assets.find((asset) => asset.id === "asset-c")?.sceneSegments?.map((part) => part.sceneId)).toEqual(["a", "b", "c"]);
+  expect(saved.generationJobs.every((job) => job.generationHistory?.versions.length === 1)).toBe(true);
 });
 
 it.each(["failure", "reorder"])("refuses a queued Long Shot bridge after anchor %s", async (reason) => {

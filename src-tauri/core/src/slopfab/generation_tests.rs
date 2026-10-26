@@ -73,6 +73,78 @@ fn item() -> QueueItem {
         events: Arc::new(|_| {}), cancel: Arc::new(AtomicBool::new(false)) }
 }
 
+fn single_shot_item() -> QueueItem {
+    let mut item = item();
+    item.request.image_edit = None;
+    item.request.still_image = false;
+    item.request.frames = 48;
+    item.request.single_shot = Some(crate::slopfab::types::SingleShotRequest { ending_prompt: "Waves goodbye".into(), ending_path: None });
+    item.request.reference_paths = vec!["reference.png".into()];
+    item.request.continuation_path = Some("source.safetensors".into());
+    item.request.continuation_relative_path = Some("latents/source.safetensors".into());
+    item.request.continuation_source_frames = Some(124);
+    item.request.continuation_overlap_frames = Some(22);
+    item.request.continuation_lock_overlap = true;
+    item.request.save_latents_path = Some("final.safetensors".into());
+    item
+}
+
+#[test]
+fn single_shot_generates_ending_first_then_attaches_it_with_the_starting_source() {
+    let item = single_shot_item();
+    let mut calls = 0;
+    let mut ending_path = std::path::PathBuf::new();
+    let (metadata, _) = run_single_shot(&item, |stage| {
+        calls += 1;
+        assert_eq!(stage.request.reference_paths, item.request.reference_paths);
+        assert_eq!(stage.request.seed, item.request.seed);
+        if calls == 1 {
+            assert!(stage.request.single_shot.is_none());
+            assert_eq!(stage.request.prompt, "Waves goodbye");
+            assert_eq!(stage.request.frames, 22);
+            assert!(stage.request.continuation_path.is_none());
+            assert!(stage.request.continuation_relative_path.is_none());
+            ending_path = stage.request.save_latents_path.clone().unwrap();
+            std::fs::write(&ending_path, b"completed ending").unwrap();
+        } else {
+            assert_eq!(stage.request.prompt, item.request.prompt);
+            assert_eq!(stage.request.frames, 48);
+            assert_eq!(stage.request.continuation_path, item.request.continuation_path);
+            assert_eq!(stage.request.save_latents_path, item.request.save_latents_path);
+            assert_eq!(stage.request.single_shot.as_ref().unwrap().ending_path.as_ref(), Some(&ending_path));
+            assert!(ending_path.is_file());
+        }
+        Ok(result(1))
+    }).unwrap();
+    assert_eq!(calls, 2);
+    assert_eq!(metadata.seconds_total, 2.0);
+    assert_eq!(metadata.steps_computed, 4);
+    assert!(!ending_path.exists());
+}
+
+#[test]
+fn single_shot_stops_on_ending_failure_missing_latents_or_cancellation_and_cleans_up() {
+    for mode in ["failure", "missing", "cancel-before", "cancel-between", "full-failure"] {
+        let item = single_shot_item();
+        if mode == "cancel-before" { item.cancel.store(true, Ordering::Release); }
+        let mut calls = 0;
+        let mut path = None;
+        let error = run_single_shot(&item, |stage| {
+            calls += 1;
+            if calls == 2 { return Err("full shot failed".into()); }
+            let ending = stage.request.save_latents_path.clone().unwrap();
+            path = Some(ending.clone());
+            if mode != "missing" { std::fs::write(&ending, b"ending").unwrap(); }
+            if mode == "failure" { return Err("ending failed".into()); }
+            if mode == "cancel-between" { item.cancel.store(true, Ordering::Release); }
+            Ok(result(1))
+        }).err().unwrap();
+        assert!(!error.is_empty());
+        assert_eq!(calls, if mode == "cancel-before" { 0 } else if mode == "full-failure" { 2 } else { 1 });
+        assert!(path.is_none_or(|path| !path.exists()));
+    }
+}
+
 #[test]
 fn sequential_image_edits_feed_previous_pixels_and_report_combined_progress() {
     let mut item = item();

@@ -154,7 +154,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const animate = selected ? sceneTypeFor(selected) === "animate" : false;
   const selectedShots = useMemo(() => (selected ? sceneShots(selected) : []), [selected]);
   const shotIndex = selectedShots.findIndex((shot) => shot.id === selection.shotId);
-  const openShot = !animate && shotIndex >= 0 ? selectedShots[shotIndex] : null;
+  const openShot = !animate && selected?.sceneType !== "single-shot" && shotIndex >= 0 ? selectedShots[shotIndex] : null;
   const shotEndsAt = selected && openShot
     ? shotIndex + 1 < selectedShots.length ? selectedShots[shotIndex + 1].startSeconds : sceneDurationSeconds(selected)
     : 0;
@@ -242,6 +242,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     setShots(job, sceneShots(job).map((shot) => shot.id === shotId ? { ...shot, ...updates } : shot));
 
   const addShot = (job: GenerationJob) => {
+    if (job.sceneType === "single-shot") return;
     const shots = sceneShots(job);
     const duration = sceneDurationSeconds(job);
     const last = shots[shots.length - 1];
@@ -363,7 +364,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
      references already named by its shots. */
   const newScene = () => {
     const job = createDraftGenerationJob("", { steps: defaultGenerationSteps,
-      sceneType: selectedTemplate.mode === "animate" ? "animate" : selected?.sceneType === "long-shot" ? "long-shot" : "prompt" });
+      sceneType: selectedTemplate.mode === "animate" ? "animate" : selected?.sceneType === "single-shot" ? "single-shot" : selected?.sceneType === "long-shot" ? "long-shot" : "prompt" });
     onChange({ ...config, generationJobs: [...jobs, job] });
     setSelection({ jobId: job.id, shotId: null });
   };
@@ -427,7 +428,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
       batchScenesReady.includes(source) || ["queued", "generating", "ready"].includes(source.status));
     if (previousWillRender || sceneGenerationSeed(job) === RANDOM_GENERATION_SEED || job.status !== "completed"
       || !job.outputRelativePath
-      || (!job.latentRelativePath && (job.sceneType === "long-shot" || jobs.some((candidate) => continuationSceneId(candidate, jobs) === job.id)))
+      || (!job.latentRelativePath && (job.sceneType === "long-shot" || job.sceneType === "single-shot" || jobs.some((candidate) => continuationSceneId(candidate, jobs) === job.id)))
       || !job.generationSnapshot
       || job.generationSnapshot !== snapshotFor(job)) batchScenesReady.push(job);
     return true;

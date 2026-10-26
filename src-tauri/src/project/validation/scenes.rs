@@ -20,6 +20,9 @@ fn validate_jobs(jobs: &mut [GenerationJob]) -> Result<(), String> {
             job.use_previous_scene_last_frame = None;
         }
         previous_id = Some(job.id.clone());
+        if job.ending_prompt.as_ref().is_some_and(|prompt| prompt.chars().count() > 30000) {
+            return Err(format!("Scene '{}' has an ending prompt longer than 30000 characters.", job.id));
+        }
         if job.continuation_scene_id.as_deref() == Some("")
             || job.continuation_from.as_deref().is_some_and(|value| !matches!(value, "start" | "end"))
             || job.continuation_overlap_frames.is_some_and(|frames| !(22..=362).contains(&frames) || frames % 17 != 5) {
@@ -28,7 +31,7 @@ fn validate_jobs(jobs: &mut [GenerationJob]) -> Result<(), String> {
         if job.scene_type.as_deref().is_some_and(|value| {
             !matches!(
                 value,
-                "prompt" | "first-last-frame" | "continue" | "animate" | "pose" | "character-replace" | "extend" | "bridge" | "backdrop" | "long-shot"
+                "prompt" | "single-shot" | "first-last-frame" | "continue" | "animate" | "pose" | "character-replace" | "extend" | "bridge" | "backdrop" | "long-shot"
             )
         }) {
             return Err(format!("Scene '{}' has an unsupported scene type.", job.id));
@@ -273,6 +276,18 @@ fn validate_history(job: &mut GenerationJob) -> Result<(), String> {
 #[cfg(test)]
 mod history_tests {
     use super::*;
+    #[test]
+    fn single_shot_fields_survive_native_project_roundtrip() {
+        let mut config: ProjectConfig = serde_json::from_str(include_str!("../../../../fixtures/project-v1-complete.json")).unwrap();
+        config.generation_jobs[0].scene_type = Some("single-shot".into());
+        config.generation_jobs[0].ending_prompt = Some("@[ref:hero] waves goodbye".into());
+        config.generation_jobs[0].continuation_scene_id = Some("start".into());
+        validate(&mut config).unwrap();
+        let restored: ProjectConfig = serde_json::from_slice(&serde_json::to_vec(&config).unwrap()).unwrap();
+        assert_eq!(restored.generation_jobs[0].ending_prompt, config.generation_jobs[0].ending_prompt);
+        assert_eq!(restored.generation_jobs[0].scene_type.as_deref(), Some("single-shot"));
+        assert_eq!(restored.generation_jobs[0].continuation_scene_id.as_deref(), Some("start"));
+    }
     fn project_with_history() -> ProjectConfig {
         let mut config: ProjectConfig = serde_json::from_str(include_str!("../../../../fixtures/project-v1-complete.json")).unwrap();
         let job = &mut config.generation_jobs[0];

@@ -106,6 +106,7 @@ pub struct Api {
     set_outpaint_langevin_steps: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_save_latents: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_continuation_file: Option<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>,
+    set_end_anchor_file: Option<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>,
     set_latent_bridge_files: Option<unsafe extern "C" fn(*mut Request, *const c_char, *const c_char, i32, i32, i32) -> i32>,
     set_continuation_lock_overlap: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_video_transition: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
@@ -281,6 +282,7 @@ impl Api {
                     )
                     .ok()
                     .map(|symbol| *symbol),
+                set_end_anchor_file: library.get::<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>(b"slopfab_request_set_end_anchor_file\0").ok().map(|symbol| *symbol),
                 set_continuation_lock_overlap: library
                     .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_continuation_lock_overlap\0")
                     .ok().map(|symbol| *symbol),
@@ -525,6 +527,14 @@ impl Api {
         let left = path_cstring(left)?;
         let right = path_cstring(right)?;
         self.error(unsafe { set(r, left.as_ptr(), right.as_ptr(), left_margin, right_margin, context) })
+    }
+    pub fn require_end_anchor(&self) -> Result<(), String> {
+        self.set_end_anchor_file.map(|_| ()).ok_or("Single Shot requires SlopFab API 1.40 or newer. Update the app and workers.".into())
+    }
+    pub fn set_end_anchor_file(&self, r: *mut Request, path: &Path) -> Result<(), String> {
+        self.require_end_anchor()?;
+        let path = CString::new(path.to_string_lossy().as_bytes()).map_err(|_| "Ending path contains a null byte.")?;
+        self.error(unsafe { self.set_end_anchor_file.unwrap()(r, path.as_ptr(), 22) })
     }
     pub fn set_continuation_file(
         &self,

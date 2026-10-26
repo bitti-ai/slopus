@@ -25,7 +25,7 @@ Slopus combines an AI assistant, local image, video and music generation, reusab
 ## Features
 
 - **Agent.** Plan scenes, generate media, inspect frames and song inputs, and match Motions to music with Claude Code, Codex, OpenRouter or a local OpenAI-compatible model. Toggle the pane with Ctrl+Shift+A.
-- **Video.** Generate Prompt, First & last frame and other [scene types](docs/scene-types.md), with shot timing, dialogue, camera and sound controls. Keep up to four takes and an editable Draft; use **Make Primary** to choose the timeline video.
+- **Video.** Generate Prompt, Single Shot, First & last frame and other [scene types](docs/scene-types.md), with shot timing, dialogue, camera and sound controls. Keep up to four takes and an editable Draft; use **Make Primary** to choose the timeline video.
 - **Images.** Generate with MiniMax H3, MOSS Image or Fibo 2.0. Use whole-image, box, lasso and Zoom edits where supported, with drafts and versions in the image bar.
 - **Music.** Generate with YuE2 or MiniMax Music3, edit lyrics and style, organize songs in folders, browse grid/list views, and play songs in sequence or reuse them as references and timeline audio.
 - **References.** Reuse descriptions, images, trimmed video clips and [H3 RefMods](docs/refmods.md) across scenes.

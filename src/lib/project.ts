@@ -467,7 +467,7 @@ export const SCENE_MIN_SECONDS = 0;
  *  length is read as — the length every shot has always been generated at. */
 export const DEFAULT_SCENE_SECONDS = 6;
 
-export const sceneTypeSchema = z.enum(["prompt", "first-last-frame", "continue", "animate", "pose", "character-replace", "extend", "bridge", "backdrop", "long-shot"]);
+export const sceneTypeSchema = z.enum(["prompt", "single-shot", "first-last-frame", "continue", "animate", "pose", "character-replace", "extend", "bridge", "backdrop", "long-shot"]);
 export type SceneType = z.infer<typeof sceneTypeSchema>;
 export const DEFAULT_CONTINUATION_OVERLAP = 22;
 export const MAX_CONTINUATION_OVERLAP = 362;
@@ -555,6 +555,7 @@ const generationJobBaseSchema = z.object({
   generatorTemplateId: idSchema.nullish(),
   id: idSchema,
   sceneType: sceneTypeSchema.nullish(),
+  endingPrompt: z.string().max(30000).nullish(),
   backdropColor: z.enum(["green", "blue", "black", "white"]).nullish(),
   bridgeLeftMargin: z.number().int().min(0).max(340).multipleOf(17).nullish(),
   bridgeRightMargin: z.number().int().min(0).max(340).multipleOf(17).nullish(),
@@ -1018,8 +1019,8 @@ export function audioReferenceBlocker(job: GenerationJob, bound: ProjectReferenc
  * order. Frame anchors use their first image, even on a multi-image reference;
  * the same anchor selected for both ends is sent only once. */
 export function sceneGenerationReferences(job: GenerationJob, references: ProjectReference[]): ProjectReference[] {
-  if (job.sceneType === "prompt" || job.sceneType === "backdrop" || job.sceneType === "long-shot") {
-    const cited = sceneShots(job).flatMap(shotReferenceIds);
+  if (job.sceneType === "prompt" || job.sceneType === "backdrop" || job.sceneType === "long-shot" || job.sceneType === "single-shot") {
+    const cited = [...sceneShots(job).flatMap(shotReferenceIds), ...(job.sceneType === "single-shot" ? actionReferenceIds(job.endingPrompt ?? "") : [])];
     return references.filter((reference) => cited.includes(reference.id));
   }
   if (job.sceneType === "pose") {
@@ -1060,15 +1061,16 @@ export function sceneTypeFor(job: GenerationJob): SceneType {
 
 /** Legacy links are resolved only until the project is migrated on load. */
 export function continuationSceneId(job: GenerationJob, jobs: readonly GenerationJob[]): string | undefined {
-  if (job.sceneType === "continue") return job.continuationSceneId ?? undefined;
+  if (job.sceneType === "continue" || job.sceneType === "single-shot") return job.continuationSceneId ?? undefined;
   if ((!job.sceneType || job.sceneType === "first-last-frame") && job.usePreviousSceneLastFrame)
     return jobs[jobs.findIndex((candidate) => candidate.id === job.id) - 1]?.id;
   return undefined;
 }
 
 export function continuationBlocker(job: GenerationJob, jobs: readonly GenerationJob[]): string | null {
-  if (job.sceneType !== "continue" && !job.usePreviousSceneLastFrame) return null;
-  if (job.sceneType && !["continue", "first-last-frame"].includes(job.sceneType)) return null;
+  if (job.sceneType === "single-shot" && !job.continuationSceneId) return null;
+  if (job.sceneType !== "continue" && job.sceneType !== "single-shot" && !job.usePreviousSceneLastFrame) return null;
+  if (job.sceneType && !["continue", "first-last-frame", "single-shot"].includes(job.sceneType)) return null;
   const seen = new Set([job.id]);
   let current = job;
   while (true) {
@@ -1078,6 +1080,7 @@ export function continuationBlocker(job: GenerationJob, jobs: readonly Generatio
     seen.add(id);
     const source = jobs.find((candidate) => candidate.id === id);
     if (!source) return "The selected source scene no longer exists.";
+    if (current.sceneType === "single-shot" && !!source.latentUpscale !== !!current.latentUpscale) return "Use the same Latent upscale setting for the Single Shot and its starting video.";
     if (source.sceneType !== "continue" && !continuationSceneId(source, jobs)) return null;
     current = source;
   }
@@ -1105,9 +1108,9 @@ export function sceneFrameInputs(job: GenerationJob, config: ProjectConfig) {
   const resolved = { ...job, startFrameReferenceId: undefined, endFrameReferenceId: undefined };
   return { job: resolved, references: sceneGenerationReferences(resolved, config.references),
     previousSceneId: sourceId, continuationRelativePath: previous?.latentRelativePath ?? undefined,
-    continuationOverlapFrames: job.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP,
-    continuationFrom: job.continuationFrom ?? "end",
-    continuationLockOverlap: job.continuationLockOverlap ?? false,
+    continuationOverlapFrames: job.sceneType === "single-shot" ? 22 : job.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP,
+    continuationFrom: job.sceneType === "single-shot" ? "end" as const : job.continuationFrom ?? "end",
+    continuationLockOverlap: job.sceneType === "single-shot" || (job.continuationLockOverlap ?? false),
     continuationSourceFrames: previous ? sceneOutputFrames(previous, config) : undefined };
 }
 
@@ -1186,7 +1189,10 @@ function scenePromptTimestamp(seconds: number): string {
  *  scenes existed becomes ONE shot holding the words and tags it already had —
  *  no words are added and none are dropped. */
 export function sceneShots(job: GenerationJob): SceneShot[] {
-  if (job.shots && job.shots.length > 0) return normalizeSceneShots(job.shots);
+  if (job.shots && job.shots.length > 0) {
+    const shots = normalizeSceneShots(job.shots);
+    return job.sceneType === "single-shot" ? [{ ...shots[0], startSeconds: 0, action: sceneBriefText(shots), speech: shots.map((shot) => shot.speech).filter(Boolean).join("\n") }] : shots;
+  }
   return [{ id: `${job.id}-shot-1`, startSeconds: 0, action: job.creativeBrief.trim(), settings: job.shotTags ?? null }];
 }
 
@@ -1207,6 +1213,7 @@ export function sceneGenerationSeed(job: GenerationJob): number {
 }
 
 export interface SceneGenerationInput {
+  singleShot?: { endingPrompt: string };
   generationEffects?: GenerationEffects;
   prompt: string;
   latentBridge?: {
@@ -1249,6 +1256,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
   return JSON.stringify({
     ...(job.sceneType ? { sceneType: job.sceneType } : {}),
     prompt: input.prompt,
+    ...(input.singleShot ? { singleShot: input.singleShot, endingPrompt: job.endingPrompt ?? "" } : {}),
     ...(input.videoTransition ? { videoTransition: input.videoTransition } : {}),
     ...(input.latentBridge ? { latentBridge: input.latentBridge } : {}),
     frames: input.frames,
@@ -1304,7 +1312,7 @@ export function compileMiniMaxH3PromptSegments(
 }
 
 export function compileGenerationJobSegments(job: GenerationJob, references: ProjectReference[] = [], defaultLook?: string | null): PromptSegment[] {
-  if (job.sceneType === "prompt" || job.sceneType === "long-shot") return compileScenePromptSegments({
+  if (job.sceneType === "prompt" || job.sceneType === "long-shot" || job.sceneType === "single-shot") return compileScenePromptSegments({
     shots: sceneShots(job), soundscape: job.soundscape, music: job.music,
   }, sceneGenerationReferences(job, references), defaultLook);
   if (job.sceneType === "backdrop") return compileScenePromptSegments({

@@ -5,13 +5,39 @@
 Windows and Linux runtimes use SlopFab commit `af664eb94519fec7604c265a76a602be597fa12b`
 from `D:\Projects\slopfab`, with CUDA and Vulkan enabled and FFmpeg disabled.
 This update includes music performance improvements and additive ending-anchor
-APIs. Slopus's existing requests remain compatible; the new ending-anchor APIs
-are not yet exposed by the app. LAN protocol remains 18. Restart Slopus and
+APIs. Single Shot uses the latent ending-anchor API. LAN protocol is 19. Restart Slopus and
 update workers to load the new runtime.
 
 Both runtimes pass C API and embedded-tokenizer checks. Slopus core and desktop
 Rust tests pass against the Windows DLL. Linux retains the Fibo text-renderer
 linker workaround documented below and passes unresolved-symbol checks.
+
+## Single Shot
+
+Single Shot has one reference-aware prompt, an optional ending prompt and an
+optional starting scene of any type with saved video latents. Its full clip's
+ending context guides the new beginning. An empty ending prompt uses the main prompt.
+Both stages share the same ordered reference bindings, generator settings and
+seed. Generate all orders starting scenes before their dependents and rejects
+cycles. Queued prompts remain captured while source latents resolve after the
+starting scene finishes.
+
+The worker generates a 22-frame ending into a temporary latent archive, releases
+its decoded buffers, then attaches that archive with
+`slopfab_request_set_end_anchor_file`. The full generation uses the requested
+scene duration minus those 22 frames as its lead-in or gap. An optional starting
+archive contributes its ending context; both boundaries are locked. MotionCache
+is disabled for the anchored pass. The native frame stride still determines the
+final duration; Single Shot requires at least two seconds.
+
+Only the final joined output and latents enter scene history. Timeline ranges
+identify each scene's own portion, retaining the shared decode at joins.
+Temporary endings are removed on success, failure and cancellation. Starting
+scenes must use compatible resolution and latent-upscale settings. Protocol 19
+prevents older workers from silently skipping the ending pass.
+
+Checks cover prompt/reference compilation, persistence, dependency ordering,
+queue snapshots, cancellation, temporary cleanup and native anchored planning.
 
 ## Music (API 1.38)
 

@@ -48,6 +48,8 @@ pub(crate) struct GenerationJob {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) scene_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) ending_prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) backdrop_color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) bridge_left_margin: Option<i32>,
@@ -173,6 +175,7 @@ impl GenerationJob {
             generation_history: None,
             id: id.to_string(),
             scene_type: None,
+            ending_prompt: None,
             backdrop_color: None,
             bridge_left_margin: None,
             bridge_right_margin: None,

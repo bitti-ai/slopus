@@ -26,7 +26,84 @@ impl rendered::FrameSource for FrameSource {
 pub(super) fn run_generation(
     item: &QueueItem,
 ) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
+    if item.request.single_shot.is_some() {
+        ffi::Api::load(&item.configuration.dll_path)?.require_end_anchor()?;
+        return run_single_shot(item, run_single_generation);
+    }
     run_edit_sequence(item, run_single_generation)
+}
+
+fn run_single_shot(
+    item: &QueueItem,
+    mut generate: impl FnMut(&QueueItem) -> Result<(OutputMetadata, rendered::RenderedVideo), String>,
+) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
+    let single = item.request.single_shot.as_ref().ok_or("Missing Single Shot settings.")?;
+    let temporary = tempfile::tempdir().map_err(|error| format!("Could not prepare ending latents: {error}"))?;
+    let ending_path = temporary.path().join("ending.safetensors");
+    let mut elapsed = 0.0;
+    let mut timings = [0.0; 4];
+    let mut computed = 0;
+    let mut skipped = 0;
+    for index in 0..2 {
+        if item.cancel.load(Ordering::Acquire) { return Err("Single Shot generation cancelled.".into()); }
+        let mut request = item.request.clone();
+        if index == 0 {
+            request.single_shot = None;
+            request.prompt = single.ending_prompt.clone();
+            request.frames = 22;
+            request.continuation_relative_path = None;
+            request.continuation_path = None;
+            request.continuation_source_frames = None;
+            request.continuation_overlap_frames = None;
+            request.continuation_from = None;
+            request.continuation_lock_overlap = false;
+            request.save_latents_path = Some(ending_path.clone());
+        } else {
+            request.single_shot.as_mut().unwrap().ending_path = Some(ending_path.clone());
+        }
+        let sink = item.events.clone();
+        let offset = elapsed;
+        let stage = QueueItem { request, configuration: item.configuration.clone(), references: item.references.clone(), cancel: item.cancel.clone(),
+            events: std::sync::Arc::new(move |event| {
+                let event = match event {
+                    super::events::NativeEvent::Progress(mut progress) => {
+                        let steps = progress.planned_steps.max(1);
+                        progress.step = index * steps + progress.step.clamp(0, steps);
+                        progress.total_steps = steps * 2;
+                        progress.planned_steps = progress.total_steps;
+                        progress.elapsed_seconds += offset;
+                        progress.stage = if index == 0 { "singleShotEnding" } else { "singleShotFull" };
+                        progress.timing_profile.push_str("|singleShot=2");
+                        super::events::NativeEvent::Progress(progress)
+                    }
+                    event => event,
+                };
+                sink(event);
+            }),
+        };
+        let (mut metadata, result) = generate(&stage)?;
+        if item.cancel.load(Ordering::Acquire) { return Err("Single Shot generation cancelled.".into()); }
+        elapsed += metadata.seconds_total;
+        timings[0] += metadata.seconds_conditioning;
+        timings[1] += metadata.seconds_denoise;
+        timings[2] += metadata.seconds_video_decode;
+        timings[3] += metadata.seconds_audio_decode;
+        computed += metadata.steps_computed;
+        skipped += metadata.steps_skipped;
+        if index == 1 {
+            metadata.seconds_total = elapsed;
+            metadata.seconds_conditioning = timings[0]; metadata.seconds_denoise = timings[1];
+            metadata.seconds_video_decode = timings[2]; metadata.seconds_audio_decode = timings[3];
+            metadata.steps_computed = computed; metadata.steps_skipped = skipped;
+            metadata.timing_profile.push_str("|singleShot=2");
+            return Ok((metadata, result));
+        }
+        // The ending is only an anchor, never a separate scene/history result.
+        // Release its decoded buffers before allocating the full generation.
+        drop(result);
+        if !ending_path.is_file() { return Err("The ending generation did not save its latents.".into()); }
+    }
+    unreachable!()
 }
 
 fn run_edit_sequence(

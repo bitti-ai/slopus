@@ -148,7 +148,7 @@ export function SceneBoard({
         : { id: "generate", label: "Generate", icon: <Wand16 />, disabled: Boolean(blocker), onSelect: () => onGenerate(job) },
       { id: "rename", label: "Rename", icon: <Rename16 />, shortcut: "F2", disabled: !onRename, onSelect: () => onRename?.({ jobId: job.id, shotId: null }) },
       { id: "duplicate", label: "Duplicate", icon: <Copy16 />, disabled: !onDuplicate, onSelect: () => onDuplicate?.(job) },
-      { id: "add-shot", label: "Add shot", icon: <Add16 />, onSelect: () => onAddShot(job) },
+      { id: "add-shot", label: "Add shot", icon: <Add16 />, disabled: job.sceneType === "single-shot", onSelect: () => onAddShot(job) },
       { separator: true },
       { id: "up", label: "Move up", icon: <ArrowUp16 />, disabled: jobIndex === 0, onSelect: () => onMoveScene(job.id, jobs[jobIndex - 1]?.id ?? null) },
       { id: "down", label: "Move down", icon: <ArrowDown16 />, disabled: jobIndex === jobs.length - 1, onSelect: () => onMoveScene(job.id, jobs[jobIndex + 2]?.id ?? null) },
@@ -392,7 +392,7 @@ export function SceneBoard({
             />
           </label>
 
-          <HeaderButton label={`Add a shot to ${job.title}`} tooltip="Add shot" onClick={() => onAddShot(job)}><Add16 /></HeaderButton>
+          {job.sceneType !== "single-shot" && <HeaderButton label={`Add a shot to ${job.title}`} tooltip="Add shot" onClick={() => onAddShot(job)}><Add16 /></HeaderButton>}
           <HeaderButton
             label={cancellable ? "Cancel" : "Generate"}
             tooltip={cancellable ? `Cancel ${job.title}` : blocker ?? `Generate ${job.title}`}

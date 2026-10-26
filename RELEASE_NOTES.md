@@ -4,6 +4,7 @@ Changes since 0.3.2.
 
 ## What's new
 
+- **Single Shot.** Generate a short ending first, then anchor a continuous shot to it. Supports references in both prompts and optional continuation from any generated scene.
 - **Music.** YuE2 and MiniMax Music3 generation with folders, drag-and-drop organization, grid/list views, background playback, references and timeline audio. Playback appears in the Music tab and pauses when Timeline, Video or Export playback starts. YuE2 selects BF16 above 8 GiB VRAM, otherwise INT8.
 - **Motions.** Create JavaScript animations with the agent, edit elements and parameters, and export them on the timeline or as reference videos.
 - **Scene history.** Keep up to four takes and an editable Draft, restore take settings, choose the primary timeline video, and duplicate scenes.
@@ -23,4 +24,4 @@ Changes since 0.3.2.
 - Image edits preserve source images, prompts and settings; queued results get separate entries, and whole-image edits disable feathering.
 - Imported images now expose steps, seed and resolution; new images use generator step defaults, and renamed image roots retain their names.
 - Generation effects reuse VAE fingerprint checks to avoid repeated calibration work.
-- Updated SlopFab to API 1.40 with music performance improvements; LAN protocol 18. Update workers alongside the app.
+- Updated SlopFab to API 1.40 with music performance improvements; LAN protocol 19. Update workers alongside the app.

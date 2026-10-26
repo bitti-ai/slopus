@@ -101,6 +101,7 @@ export interface AgentTurnResponse {
 }
 
 export interface SlopfabGenerationRequest {
+  singleShot?: { endingPrompt: string };
   music?: import("./music").MusicSettings;
   jobId: string;
   videoTransition?: "extend" | "bridge";

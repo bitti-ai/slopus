@@ -20,7 +20,7 @@ import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
 import { isTauri, saveProject } from "./persistence";
-import { generationAssetId, generationLatentPath, GENERATION_FRAME_RATE, sceneOutputFrames, sceneGenerationSnapshot, type SceneInput, type GenerationJob, type ProjectRecord, type ProjectConfig } from "./project";
+import { continuationBlocker, generationAssetId, generationLatentPath, GENERATION_FRAME_RATE, sceneOutputFrames, sceneGenerationSnapshot, type SceneInput, type GenerationJob, type ProjectRecord, type ProjectConfig } from "./project";
 import { ProjectSession, type ProjectWriter } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan, type SlopfabGenerationRequest } from "./runtime";
 import { generationStepsWithLoras, withEngineSettings } from "./settings";
@@ -544,6 +544,13 @@ export class WorkQueue {
               throw new Error("Generate the selected source scene successfully to save its latents before continuing it. You can also use Generate All.");
             }
             const captured = work.config.generationJobs.find((job) => job.id === work.sceneId)!;
+            if (captured.sceneType === "single-shot") {
+              const blocker = continuationBlocker(captured, live.generationJobs);
+              if (blocker) throw new Error(blocker);
+              const sourceInput = JSON.parse(previous.generationSnapshot ?? "null");
+              if (sourceInput && (sourceInput.canvasWidth !== work.request.canvasWidth || sourceInput.canvasHeight !== work.request.canvasHeight || !!sourceInput.latentUpscale !== !!work.request.latentUpscale))
+                throw new Error("Use the starting video's resolution and Latent upscale setting.");
+            }
             if (captured.sceneType === "long-shot") {
               const current = live.generationJobs.find((job) => job.id === work.sceneId);
               const inputs = current && longShotContinuationInputs(current, live);
@@ -680,7 +687,7 @@ export class WorkQueue {
       return;
     }
     const progress = Math.max(item.progress, event.totalSteps > 0 ? Math.min(0.88, 0.12 + Math.max(0, event.step) / event.totalSteps * 0.76) : event.stage === "delivering" ? 0.88 : 0.08);
-    this.patch(work.id, { status: "generating", progress, completionAt: this.timing.update(event), detail: item.cancelling ? "Cancelling generation" : event.stage === "upscaling" ? "Upscaling video latents" : work.request.imageEdit ? `Applying image edits (${Math.min(work.request.imageEdit.edits.length, Math.floor(event.step / Math.max(1, event.totalSteps) * work.request.imageEdit.edits.length) + 1)} of ${work.request.imageEdit.edits.length})` : work.music ? "Generating music" : event.stage === "starting" || event.stage === "transformerLoad" ? "Loading MiniMax H3" : work.image ? "Generating image" : "Generating video" });
+    this.patch(work.id, { status: "generating", progress, completionAt: this.timing.update(event), detail: item.cancelling ? "Cancelling generation" : event.stage === "singleShotEnding" ? "Generating ending (1 of 2)" : event.stage === "singleShotFull" ? "Generating full shot (2 of 2)" : event.stage === "upscaling" ? "Upscaling video latents" : work.request.imageEdit ? `Applying image edits (${Math.min(work.request.imageEdit.edits.length, Math.floor(event.step / Math.max(1, event.totalSteps) * work.request.imageEdit.edits.length) + 1)} of ${work.request.imageEdit.edits.length})` : work.music ? "Generating music" : event.stage === "starting" || event.stage === "transformerLoad" ? "Loading MiniMax H3" : work.image ? "Generating image" : "Generating video" });
     this.updateScene(work, { status: "generating", stage: event.stage === "starting" || event.stage === "transformerLoad" ? "preparing" : "generating", progress }, false);
   }
   private event(event: JobEvent) {

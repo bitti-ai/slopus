@@ -270,6 +270,7 @@ function CharacterReplaceInputs({ shot, references, disabled, onChange }: {
 
 const SCENE_TYPES: { value: SceneType; label: string }[] = [
   { value: "prompt", label: "Prompt" },
+  { value: "single-shot", label: "Single Shot" },
   { value: "first-last-frame", label: "First & last frame" },
   { value: "backdrop", label: "Backdrop" },
   { value: "long-shot", label: "Long Shot" },
@@ -281,8 +282,31 @@ const SCENE_TYPES: { value: SceneType; label: string }[] = [
   { value: "bridge", label: "Bridge" },
 ];
 
+function SingleShotPrompts({ job, shots, references, folderPath, disabled, onChange, onShots }: {
+  job: GenerationJob; shots: SceneShot[]; references: ProjectReference[]; folderPath: string; disabled: boolean;
+  onChange: (updates: Partial<GenerationJob>) => void; onShots: (shots: SceneShot[]) => void;
+}) {
+  const fields = citableReferences(references).map((reference) => ({ id: reference.id, name: reference.name,
+    mediaTypes: referenceMediaTypes(reference), detail: referenceTypeLabel(reference),
+    icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={<Text16 />} /> }));
+  const missingLabel = (id: string) => references.find((reference) => reference.id === id)?.name ?? "Deleted reference";
+  return <>
+    <div className="shot-card__action">
+      <span className="shot-card__sublabel">Prompt</span>
+      <PromptTextField aria-label="Single Shot prompt" rows={6} value={sceneBriefText(shots)} references={fields} missingLabel={missingLabel} disabled={disabled}
+        onChange={(action) => onShots([{ ...shots[0], startSeconds: 0, action }])} />
+    </div>
+    <div className="shot-card__action">
+      <span className="shot-card__sublabel">Ending prompt</span>
+      <PromptTextField aria-label="Ending prompt" rows={4} value={job.endingPrompt ?? ""} references={fields} missingLabel={missingLabel} disabled={disabled}
+        placeholder="Describe how the shot ends. Leave empty to use the main prompt." onChange={(endingPrompt) => onChange({ endingPrompt })} />
+    </div>
+  </>;
+}
+
 const SCENE_TYPE_DESCRIPTIONS: Record<SceneType, string> = {
   prompt: "Generate video from shot descriptions and optional references, without fixed start or last frames.",
+  "single-shot": "Generate an ending first, then a continuous shot guided by that ending and an optional starting scene.",
   "first-last-frame": "Generate video guided by optional start and last images, with shot descriptions controlling the action.",
   backdrop: "Generate subjects and action against a solid green, blue, black or white background for keying.",
   "long-shot": "Build a longer continuous sequence by generating clips and connecting them. Generate all handles the required order.",
@@ -351,6 +375,17 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
             onChange={(value) => onChange({ sceneType: value as SceneType, usePreviousSceneLastFrame: undefined,
               ...(value === "animate" ? { endFrameReferenceId: undefined } : {}) })} />
         </PropRow>
+        {sceneType === "single-shot" && <>
+          <PropRow label="Starting video" htmlFor={`${id}-single-source`} tooltip="Continue from the ending latents of another scene's full video. Generate all handles the required order.">
+            <ComboBox id={`${id}-single-source`} aria-label="Single Shot starting video" disabled={disabled} value={job.continuationSceneId ?? ""}
+              options={[{ value: "", label: "None" },
+                ...(job.continuationSceneId && !scenes.some((scene) => scene.id === job.continuationSceneId && scene.id !== job.id)
+                  ? [{ value: job.continuationSceneId, label: "Unavailable scene", disabled: true }] : []),
+                ...scenes.filter((scene) => scene.id !== job.id).map((scene) => ({ value: scene.id, label: scene.title }))]}
+              onChange={(value) => onChange({ continuationSceneId: value || null })} />
+          </PropRow>
+          <SingleShotPrompts job={job} shots={shots} references={references} folderPath={folderPath} disabled={disabled} onChange={onChange} onShots={onShots} />
+        </>}
         {longShot && <>
           <p className="prop-caption">{longShot.continuation
             ? `Continue from ${longShot.left?.title ?? "the previous scene"}. Generate all completes the preceding scenes first. Adding a following Long Shot scene turns this scene into a bridge.`

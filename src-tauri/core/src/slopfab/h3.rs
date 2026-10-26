@@ -19,6 +19,7 @@ pub(super) fn configure_request(
 ) -> Result<(), String> {
     if request.music.is_some() { return super::music::configure(api, handle, request, configuration, platform); }
     configuration.validate_inputs(request)?;
+    if request.single_shot.is_some() { api.require_end_anchor()?; }
     if crate::models::generator_features(&configuration.model_type).cuda_only {
         if platform == ComputePlatform::Vulkan {
             return Err(format!("{} requires CUDA. Select a CUDA backend or worker.", crate::models::generator_features(&configuration.model_type).label));
@@ -58,7 +59,9 @@ pub(super) fn configure_request(
     } else {
         request.frames
     };
-    api.set_frames(handle, frames)?;
+    // Ending-anchor APIs count new lead-in/gap frames, while Slopus scene
+    // duration includes the short ending. Planning uses equivalent full geometry.
+    api.set_frames(handle, if request.single_shot.as_ref().is_some_and(|single| single.ending_path.is_some()) { frames - 22 } else { frames })?;
     if request.still_image && !matches!(configuration.model_type.as_str(), "moss" | "fibo2") {
         api.set_still_image(handle)?;
     }
@@ -135,7 +138,7 @@ pub(super) fn configure_request(
     let lock_overlap = request.continuation_path.is_some() && request.continuation_lock_overlap;
     let independent_audio = request.audio_steps.is_some_and(|steps| steps != video_steps);
     // Overlap locking and different audio/video step counts require full evaluations.
-    api.set_motion_cache(handle, configuration.motion_cache && !dmad && request.image_edit.is_none() && !lock_overlap && !independent_audio && request.latent_bridge.is_none())?;
+    api.set_motion_cache(handle, configuration.motion_cache && !dmad && request.image_edit.is_none() && !lock_overlap && !independent_audio && request.latent_bridge.is_none() && request.single_shot.is_none())?;
     if let Some(bridge) = &request.latent_bridge {
         api.set_latent_bridge_files(handle,
             request.bridge_left_path.as_deref().ok_or("Missing left Long Shot archive.")?,
@@ -154,6 +157,9 @@ pub(super) fn configure_request(
             request.continuation_overlap_frames.unwrap_or(crate::models::H3_CAPABILITIES.continuation_overlap),
         )?;
         api.set_continuation_lock_overlap(handle, lock_overlap)?;
+    }
+    if let Some(path) = request.single_shot.as_ref().and_then(|single| single.ending_path.as_ref()) {
+        api.set_end_anchor_file(handle, path)?;
     }
     if purpose == RequestPurpose::Generate {
         if let Some(path) = &request.save_latents_path {

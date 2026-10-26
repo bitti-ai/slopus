@@ -283,6 +283,38 @@ mod tests {
     }
 
     #[test]
+    fn single_shot_anchor_plan_matches_preview_with_and_without_a_starting_source() {
+        use super::super::{ffi::{Api, RequestHandle}, h3::configure_request, config::Configuration,
+            platform::ComputePlatform, planning::{RequestPurpose, validate_generation_controls}, types::SingleShotRequest};
+        let source = archive(124).into_temp_path();
+        let ending = archive(22).into_temp_path();
+        let original = std::fs::read(&source).unwrap();
+        let api = Api::load(&crate::slopfab::default_dll_path()).unwrap();
+        for continued in [false, true] {
+            let mut request = GenerationRequest { prompt: "Walk forward".into(), frames: 48, steps: 4, seed: 1,
+                canvas_width: 64, canvas_height: 32,
+                single_shot: Some(SingleShotRequest { ending_prompt: "Wave goodbye".into(), ending_path: None }),
+                continuation_path: continued.then(|| source.to_path_buf()), continuation_overlap_frames: Some(22),
+                continuation_from: Some("end".into()), continuation_lock_overlap: true, ..Default::default() };
+            let settings = BTreeMap::new();
+            let preview = resolve_plan(&request, &settings, &ReferenceVideos::default()).unwrap();
+            request.single_shot.as_mut().unwrap().ending_path = Some(ending.to_path_buf());
+            let handle = RequestHandle::new(&api).unwrap();
+            configure_request(&api, &handle, &request, &Configuration::from_settings(&settings), ComputePlatform::Cuda13,
+                RequestPurpose::Plan, &ReferenceVideos::default()).unwrap();
+            let actual = api.resolve(&handle).unwrap();
+            assert_eq!(actual.aligned_frames, if continued { 175 } else { 56 });
+            assert_eq!(actual.aligned_frames, preview.aligned_frames);
+            assert_eq!(preview.model_evaluations, actual.num_model_evaluations * 2);
+            assert_eq!(std::fs::read(&source).unwrap(), original);
+            let wire = serde_json::to_value(&request).unwrap();
+            assert!(wire["singleShot"].get("endingPath").is_none());
+            request.frames = 22;
+            assert!(validate_generation_controls(&request).unwrap_err().contains("at least 2 seconds"));
+        }
+    }
+
+    #[test]
     fn opening_continuation_crops_the_selected_scene_and_both_audio_channels() {
         let source = archive(124);
         let original = std::fs::read(source.path()).unwrap();

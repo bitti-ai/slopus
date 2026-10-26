@@ -162,6 +162,11 @@ impl Api {
         self.check(r)?;
         self.inner.set_latent_bridge_files(r.pointer.as_ptr(), left, right, left_margin, right_margin, context)
     }
+    pub fn require_end_anchor(&self) -> Result<(), String> { self.inner.require_end_anchor() }
+    pub fn set_end_anchor_file(&self, r: &RequestHandle, path: &Path) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_end_anchor_file(r.pointer.as_ptr(), path)
+    }
     pub fn set_continuation_file(
         &self,
         r: &RequestHandle,

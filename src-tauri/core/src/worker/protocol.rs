@@ -23,7 +23,8 @@ pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 // v6 added custom upscale weights.
 // v5 added overlap locking.
 // v4 added SeedVR2 export streams. v3 added inverted image masks.
-pub const PROTOCOL_VERSION: u32 = 18;
+// v19 carries Single Shot ending-first generation; older workers would ignore it.
+pub const PROTOCOL_VERSION: u32 = 19;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -329,6 +330,20 @@ mod tests {
         assert_eq!(restored.generation_effects, request.generation_effects);
         assert_eq!(restored.guidance_scale, Some(4.5));
         assert_eq!(restored.negative_prompt.as_deref(), Some("watermark"));
+    }
+
+    #[test]
+    fn single_shot_roundtrip_keeps_ending_prompt_but_never_host_temporary_paths() {
+        let request = GenerationRequest { single_shot: Some(crate::slopfab::SingleShotRequest {
+            ending_prompt: "The subject waves goodbye".into(), ending_path: Some("C:/host/temporary.safetensors".into()),
+        }), ..Default::default() };
+        let wire = serde_json::to_string(&request).unwrap();
+        assert!(!wire.contains("temporary.safetensors"));
+        let restored: GenerationRequest = serde_json::from_str(&wire).unwrap();
+        let single = restored.single_shot.unwrap();
+        assert_eq!(single.ending_prompt, "The subject waves goodbye");
+        assert!(single.ending_path.is_none());
+        assert_eq!(PROTOCOL_VERSION, 19);
     }
 
     #[test]
