@@ -53,7 +53,6 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
   const menu = useContextMenu();
   useEffect(() => { if (!active) menu.close(); }, [active, menu.close]);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const activeWork = selected && workItems.find((item) => item.sceneId === selected.id && isWorkActive(item));
   const busy = Boolean(activeWork);
   const templateReady = (candidate: GeneratorTemplate) => templateUsable(candidate) && generatorPathFields(candidate).every((field) => !field.required || candidate.paths[field.id].trim() || candidate.sources?.[field.id]?.length);
@@ -89,7 +88,6 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
       { label: "Remove folder", icon: <Delete16 />, danger: true, onSelect: () => {
         onChange((current) => removeMusicFolder(current, folder.id));
         if (currentFolderId === folder.id) setFolderId(folder.parentId ?? null);
-        setNotice(`Removed ${folder.name}. Its contents were moved to the parent folder.`);
       } }] : [])], { "aria-label": folder ? `${folder.name} actions` : "Music actions" });
   };
   const createFolder = (event: React.FormEvent) => {
@@ -109,7 +107,7 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
     } catch { /* Ignore unrelated or malformed drag data. */ }
   };
   const browseFolder = (id: string | null) => {
-    setFolderId(id); setSelectedId(undefined); setNotice(null); setCreatingFolder(false); setFolderName("");
+    setFolderId(id); setSelectedId(undefined); setCreatingFolder(false); setFolderName("");
   };
   const folderDropProps = (id: string | null) => ({
     "data-drop-target": dropFolder === (id ?? "") ? "true" : undefined,
@@ -212,7 +210,6 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
         try {
           const reference = songReference(song, asset!);
           onChange((current) => ({ ...current, references: [...current.references, reference] }));
-          setNotice(`Added ${song.title} to References.`);
         } catch (reason) { setError(String(reason)); }
       } }, { separator: true }, { label: "Remove song", icon: <Delete16 />, danger: true,
         disabled: workItems.some((item) => item.sceneId === song.id && isWorkActive(item)),
@@ -221,7 +218,6 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
           if (selectedId === song.id) setSelectedId(undefined);
           if (song.assetId && playerId === song.assetId) { playWhenReady.current = false; audio.current?.pause(); setPlayerId(null); }
           setPlaylist((current) => current.filter((id) => id !== song.assetId));
-          setNotice(`Removed ${song.title} from Music.`);
         } }], { "aria-label": `${song.title} actions` });
   };
 
@@ -259,7 +255,6 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
           <button type="submit" className="primary-button" disabled={!folderName.trim()}>Create folder</button>
           <button type="button" className="secondary-button" onClick={() => setCreatingFolder(false)}>Cancel</button>
         </form>}
-        {notice && <p role="status">{notice}</p>}
         {error && <p role="alert">{error}</p>}
         {!visibleSongs.length && !visibleFolders.length ? <div className="music-empty"><Audio16 /><h3>{currentFolder ? "This folder is empty" : "Create your first song"}</h3><p>Add a song, describe its style and write lyrics, or leave lyrics empty for an instrumental.</p><button type="button" className="primary-button" onClick={add}><Add16 />New song</button></div> :
           <div className={`music-songs music-songs--${view}`} role="list" aria-label="Music contents">
