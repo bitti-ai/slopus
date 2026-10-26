@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import type { ProjectAsset, ProjectConfig } from "../../lib/project";
 import { isTauri, readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateSupportsMusic, templateUsable, generatorPathFields, type GeneratorTemplate } from "../../lib/settings";
-import { musicSettingsForModel, moveSong, newMusicFolder, newSong, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
+import { musicSettingsForModel, moveSong, newMusicFolder, newSong, newSongVariation, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import { ComboBox, CommandBarButton, ProgressBar, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
-import { Add16, Audio16, Delete16, FolderAdd16, FolderOpen16, GoToEnd16, GoToStart16, GridView16, ListView16, Pause16, Play16, References16, Speaker14, Sparkle16, Stop14 } from "../ui/icons";
+import { Add16, Audio16, Delete16, Edit16, FolderAdd16, FolderOpen16, GoToEnd16, GoToStart16, GridView16, ListView16, Pause16, Play16, References16, Speaker14, Sparkle16, Stop14 } from "../ui/icons";
 import { generatorOptions } from "../generatorOptions";
 import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
 import type { ConfigUpdate } from "./TimelineView";
@@ -63,7 +63,14 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
     : !ready ? { state: "modelsMissing", label: "Model weights missing", detail: "Download or select music model weights in Settings → Generators." }
       : { state: "ready", label: "Music generator ready", detail: template.name };
   const edit = (patch: Partial<MusicSong>) => {
-    if (selected && !busy) onChange((current) => updateSong(current, selected.id, patch), `music:${selected.id}`);
+    if (!selected || busy || Object.entries(patch).every(([key, value]) => JSON.stringify(value) === JSON.stringify(selected[key as keyof MusicSong]))) return;
+    if (selected.assetId || selected.generation || selected.status === "completed") {
+      const draft = { ...newSongVariation(selected, config.musicSongs ?? []), ...patch };
+      onChange((current) => ({ ...current, musicSongs: current.musicSongs?.flatMap((song) => song.id === selected.id ? [song, draft] : [song]) }), `music:${draft.id}`);
+      setSelectedId(draft.id);
+    } else {
+      onChange((current) => updateSong(current, selected.id, patch), `music:${selected.id}`);
+    }
   };
   const setting = (patch: Partial<MusicSettings>) => { if (selected) edit({ settings: { ...selected.settings, ...patch } }); };
   const add = () => {
@@ -265,19 +272,21 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
               </button>
             </div>)}
             {visibleSongs.map((song, index) => {
-              const asset = config.assets.find((item) => item.id === song.assetId);
+              const asset = config.assets.find((item) => item.id === song.assetId && item.kind === "audio" && item.relativePath);
               const work = workItems.find((item) => item.sceneId === song.id && isWorkActive(item));
-              return <div className={`music-song${selected?.id === song.id ? " music-song--selected" : ""}`} role="listitem" key={`song:${song.id}`}
+              const generated = Boolean(song.assetId || song.generation || song.status === "completed");
+              const state = asset ? "playable" : generated ? "unavailable" : "draft";
+              return <div className={`music-song music-song--${state}${selected?.id === song.id ? " music-song--selected" : ""}`} role="listitem" key={`song:${song.id}`}
                 draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData(SONG_DRAG_TYPE, JSON.stringify({ projectId: config.id, songId: song.id })); }} onDragEnd={() => setDropFolder(undefined)}
                 onContextMenu={(event) => context(event, song)}>
-                <button type="button" className="music-song__select" aria-label={`Select ${song.title}`} aria-pressed={selected?.id === song.id}
+                <button type="button" className="music-song__select" aria-label={`Select ${song.title}`} aria-pressed={selected?.id === song.id} aria-describedby={`music-status-${song.id}`}
                   onClick={() => setSelectedId(song.id)} onDoubleClick={() => { if (asset) startSong(asset); }}
                   onKeyDown={(event) => { if (event.key === "ContextMenu" || event.shiftKey && event.key === "F10") context(event, song); }}>
-                  <span className="music-song__art" aria-hidden="true"><Audio16 /><span>{String(index + 1).padStart(2, "0")}</span></span>
+                  <span className="music-song__art" aria-hidden="true">{generated ? <Audio16 /> : <Edit16 />}<span>{String(index + 1).padStart(2, "0")}</span></span>
                   <span className="music-song__info"><strong>{song.title}</strong><span>{song.style || "Add a style to get started"}</span></span>
-                  <span className="music-song__status">{work ? `${work.detail} · ${Math.round(work.progress * 100)}%` : song.status === "completed" && asset ? time((asset.durationMs ?? 0) / 1000) : song.status}</span>
+                  <span className="music-song__status" id={`music-status-${song.id}`}>{work ? `${work.detail} · ${Math.round(work.progress * 100)}%` : asset ? `Ready · ${time((asset.durationMs ?? 0) / 1000)}` : generated ? "Audio unavailable" : song.status === "draft" ? "Draft · Not generated" : song.status}</span>
                 </button>
-                <button type="button" className="icon-button music-song__play" aria-label={`Play ${song.title}`} disabled={!asset?.relativePath} onClick={() => asset && startSong(asset)}><Play16 /></button>
+                {asset && <button type="button" className="icon-button music-song__play" aria-label={`Play ${song.title}`} onClick={() => startSong(asset)}><Play16 /></button>}
               </div>;
             })}
           </div>}

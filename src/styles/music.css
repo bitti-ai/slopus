@@ -24,6 +24,9 @@
 .music-songs--grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
 .music-song { position: relative; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface-pane); }
 .music-song--selected { border-color: var(--accent); }
+.music-song--draft { border-style: dashed; }
+.music-song--draft .music-song__art { background: transparent; color: var(--text-secondary); }
+.music-song--playable .music-song__status { color: var(--accent); }
 .music-song__select { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; height: 100%; padding: var(--space-3); border: 0; border-radius: inherit; text-align: left; color: var(--text-primary); background: transparent; }
 .music-song__select:hover { background: var(--fill-subtle-hover); }
 .music-song__art { display: flex; align-items: center; justify-content: center; gap: var(--space-3); width: 100%; aspect-ratio: 1; border-radius: var(--radius-sm); background: var(--fill-subtle-hover); color: var(--accent); }

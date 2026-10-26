@@ -231,6 +231,84 @@ it("selects the new song returned by generation while keeping the original visib
   expect(screen.getByLabelText("Song title")).toHaveValue("Evening (2)");
 });
 
+it.each([
+  ["Music style", "Acoustic folk"], ["Music lyrics", "[Verse]\nA new day"], ["Music seed", "12"],
+  ["Music steps", "16"], ["Song duration", "45"], ["Song title", "Morning"],
+])("creates one selected draft when editing %s on generated music", (label, value) => {
+  const folder = newMusicFolder("Jazz", null);
+  const original = { ...newSong("yue2", 32, folder.id), title: "Evening", style: "Jazz", status: "completed" as const, assetId: "original" };
+  original.generation = { generatorId: original.generatorId, style: original.style, settings: { ...original.settings }, steps: original.steps, seed: 42 };
+  const asset = { id: "original", kind: "audio" as const, name: "Evening", relativePath: "media/evening.wav", durationMs: 30000, mimeType: "audio/wav", createdAt: original.createdAt };
+  render(<Harness initial={{ ...createConfig(), musicFolders: [folder], musicSongs: [original], assets: [asset] }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Open Jazz" }));
+  // Focusing and committing an unchanged number must not create a copy.
+  fireEvent.blur(screen.getByLabelText("Music steps"));
+  expect(latest.musicSongs).toEqual([original]);
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  expect(latest.musicSongs).toHaveLength(2);
+  expect(latest.musicSongs![0]).toEqual(original);
+  const draft = latest.musicSongs![1];
+  expect(draft.id).not.toBe(original.id);
+  expect(draft).toMatchObject({ folderId: folder.id, status: "draft", assetId: null, generation: null, error: null });
+  expect(screen.getByRole("button", { name: `Select ${draft.title}` })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByLabelText(label)).toHaveValue(["Music seed", "Music steps", "Song duration"].includes(label) ? Number(value) : value);
+  fireEvent.change(screen.getByLabelText("Music style"), { target: { value: "Acoustic folk with strings" } });
+  fireEvent.change(screen.getByLabelText("Music lyrics"), { target: { value: "Keep writing" } });
+  expect(latest.musicSongs).toHaveLength(2);
+  expect(latest.musicSongs![0]).toEqual(original);
+  expect(latest.musicSongs![1]).toMatchObject({ id: draft.id, style: "Acoustic folk with strings", settings: { lyrics: "Keep writing" } });
+  expect(latest.assets).toEqual([asset]);
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  expect(generate).toHaveBeenCalledWith(draft.id, expect.objectContaining({ id: "yue2" }));
+});
+
+it("copies generated music to a draft when changing its generator", () => {
+  const settings = loadGeneratorTemplateSettings(), source = settings.templates.find((template) => template.id === "yue2")!;
+  saveGeneratorTemplateSettings({ ...settings, templates: [...settings.templates, { ...source, id: "other-music", name: "Other music generator", defaultSteps: 16 }] });
+  const original = { ...newSong(), title: "Evening", style: "Jazz", status: "completed" as const, assetId: "original" };
+  render(<Harness initial={{ ...createConfig(), musicSongs: [original] }} />);
+  fireEvent.click(screen.getByRole("combobox", { name: "Generator" }));
+  fireEvent.click(screen.getByRole("option", { name: /Other music generator/ }));
+  expect(latest.musicSongs).toHaveLength(2);
+  expect(latest.musicSongs![0]).toEqual(original);
+  expect(latest.musicSongs![1]).toMatchObject({ generatorId: "other-music", steps: 16, status: "draft", assetId: null });
+});
+
+it.each(["Grid", "List"])("distinguishes playable songs from drafts and missing audio in %s view", (view) => {
+  const original = { ...newSong(), title: "Evening", status: "completed" as const, assetId: "original" };
+  const draft = newSongVariation(original, [original]);
+  const missing = { ...newSong(), title: "Missing", status: "completed" as const, assetId: "missing" };
+  const asset = { id: "original", kind: "audio" as const, name: "Evening", relativePath: "media/evening.wav", durationMs: 30000, mimeType: "audio/wav", createdAt: original.createdAt };
+  render(<Harness initial={{ ...createConfig(), musicSongs: [original, draft, missing], assets: [asset] }} />);
+  fireEvent.click(screen.getByRole("button", { name: `${view} view` }));
+  const readyCard = screen.getByRole("button", { name: "Select Evening" }).closest('[role="listitem"]')!;
+  const draftCard = screen.getByRole("button", { name: "Select Evening (2)" }).closest('[role="listitem"]')!;
+  expect(readyCard).toHaveClass("music-song--playable");
+  expect(within(readyCard as HTMLElement).getByText("Ready · 0:30")).toBeInTheDocument();
+  expect(within(readyCard as HTMLElement).getByRole("button", { name: "Play Evening" })).toBeEnabled();
+  expect(draftCard).toHaveClass("music-song--draft");
+  expect(within(draftCard as HTMLElement).getByText("Draft · Not generated")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Play Evening (2)" })).not.toBeInTheDocument();
+  expect(screen.getByText("Audio unavailable")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Play Missing" })).not.toBeInTheDocument();
+});
+
+it("keeps the original audio playing when editing creates a draft", async () => {
+  const original = { ...newSong(), title: "Evening", style: "Jazz", status: "completed" as const, assetId: "original" };
+  const asset = { id: "original", kind: "audio" as const, name: "Evening", relativePath: "media/evening.wav", durationMs: 30000, mimeType: "audio/wav", createdAt: original.createdAt };
+  const { container } = render(<Harness initial={{ ...createConfig(), musicSongs: [original], assets: [asset] }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Play Evening" }));
+  await waitFor(() => expect(container.querySelector("audio")).toHaveAttribute("src", "blob:song"));
+  fireEvent.canPlay(container.querySelector("audio")!);
+  fireEvent.play(container.querySelector("audio")!);
+  const pauses = vi.mocked(HTMLMediaElement.prototype.pause).mock.calls.length;
+  fireEvent.change(screen.getByLabelText("Music lyrics"), { target: { value: "New lyrics" } });
+  expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(pauses);
+  expect(readMediaFileUrl).toHaveBeenCalledOnce();
+  expect(screen.getByRole("button", { name: "Pause music" })).toBeEnabled();
+  expect(latest.musicSongs![0]).toEqual(original);
+});
+
 it("plays generated audio and creates a reference for the context-clicked song", async () => {
   const first = { ...newSong(), title: "First", status: "completed" as const, assetId: "song-a" };
   const second = { ...newSong(), title: "Second", status: "completed" as const, assetId: "song-b" };
