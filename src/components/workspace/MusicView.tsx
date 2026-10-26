@@ -4,7 +4,7 @@ import { isTauri, readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateSupportsMusic, templateUsable, generatorPathFields, type GeneratorTemplate } from "../../lib/settings";
 import { musicSettingsForModel, moveSong, newMusicFolder, newSong, newSongVariation, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
-import { ComboBox, CommandBarButton, ProgressBar, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
+import { ComboBox, CommandBarButton, InfoBar, ProgressBar, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
 import { Add16, Audio16, Delete16, Edit16, FolderAdd16, FolderOpen16, GoToEnd16, GoToStart16, GridView16, ListView16, Pause16, Play16, References16, Speaker14, Sparkle16, Stop14 } from "../ui/icons";
 import { generatorOptions } from "../generatorOptions";
 import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
@@ -255,7 +255,6 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
           <button type="submit" className="primary-button" disabled={!folderName.trim()}>Create folder</button>
           <button type="button" className="secondary-button" onClick={() => setCreatingFolder(false)}>Cancel</button>
         </form>}
-        {error && <p role="alert">{error}</p>}
         {!visibleSongs.length && !visibleFolders.length ? <div className="music-empty"><Audio16 /><h3>{currentFolder ? "This folder is empty" : "Create your first song"}</h3><p>Add a song, describe its style and write lyrics, or leave lyrics empty for an instrumental.</p><button type="button" className="primary-button" onClick={add}><Add16 />New song</button></div> :
           <div className={`music-songs music-songs--${view}`} role="list" aria-label="Music contents">
             {visibleFolders.map((folder) => <div className="music-song music-folder" role="listitem" key={`folder:${folder.id}`}
@@ -319,6 +318,7 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
           </div>
         </> : <p className="music-inspector__empty">Add a song to edit its lyrics, style and generation settings.</p>}
       </aside>
+      {error && <InfoBar className="music-error" severity="error" title="Couldn’t update music" message={error} onClose={() => setError(null)} />}
       {(activeWork || selected?.error) && <div className="music-generation-status" role={selected?.error ? "alert" : "status"}>
         {activeWork && <><ProgressBar value={activeWork.progress * 100} aria-label="Music generation progress" /><span>{activeWork.detail}</span></>}
         {selected?.error && <span>{selected.error}</span>}
