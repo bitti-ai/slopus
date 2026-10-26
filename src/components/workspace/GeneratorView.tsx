@@ -154,7 +154,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const animate = selected ? sceneTypeFor(selected) === "animate" : false;
   const selectedShots = useMemo(() => (selected ? sceneShots(selected) : []), [selected]);
   const shotIndex = selectedShots.findIndex((shot) => shot.id === selection.shotId);
-  const openShot = !animate && selected?.sceneType !== "single-shot" && shotIndex >= 0 ? selectedShots[shotIndex] : null;
+  const openShot = !animate && shotIndex >= 0 ? selectedShots[shotIndex] : null;
   const shotEndsAt = selected && openShot
     ? shotIndex + 1 < selectedShots.length ? selectedShots[shotIndex + 1].startSeconds : sceneDurationSeconds(selected)
     : 0;

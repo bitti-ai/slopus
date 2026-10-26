@@ -282,26 +282,19 @@ const SCENE_TYPES: { value: SceneType; label: string }[] = [
   { value: "bridge", label: "Bridge" },
 ];
 
-function SingleShotPrompts({ job, shots, references, folderPath, disabled, onChange, onShots }: {
-  job: GenerationJob; shots: SceneShot[]; references: ProjectReference[]; folderPath: string; disabled: boolean;
-  onChange: (updates: Partial<GenerationJob>) => void; onShots: (shots: SceneShot[]) => void;
+function SingleShotEndingPrompt({ job, references, folderPath, disabled, onChange }: {
+  job: GenerationJob; references: ProjectReference[]; folderPath: string; disabled: boolean;
+  onChange: (updates: Partial<GenerationJob>) => void;
 }) {
   const fields = citableReferences(references).map((reference) => ({ id: reference.id, name: reference.name,
     mediaTypes: referenceMediaTypes(reference), detail: referenceTypeLabel(reference),
     icon: <ReferenceIcon reference={reference} folderPath={folderPath} fallback={<Text16 />} /> }));
   const missingLabel = (id: string) => references.find((reference) => reference.id === id)?.name ?? "Deleted reference";
-  return <>
-    <div className="shot-card__action">
-      <span className="shot-card__sublabel">Prompt</span>
-      <PromptTextField aria-label="Single Shot prompt" rows={6} value={sceneBriefText(shots)} references={fields} missingLabel={missingLabel} disabled={disabled}
-        onChange={(action) => onShots([{ ...shots[0], startSeconds: 0, action }])} />
-    </div>
-    <div className="shot-card__action">
+  return <div className="shot-card__action">
       <span className="shot-card__sublabel">Ending prompt</span>
       <PromptTextField aria-label="Ending prompt" rows={4} value={job.endingPrompt ?? ""} references={fields} missingLabel={missingLabel} disabled={disabled}
         placeholder="Describe how the shot ends. Leave empty to use the main prompt." onChange={(endingPrompt) => onChange({ endingPrompt })} />
-    </div>
-  </>;
+    </div>;
 }
 
 const SCENE_TYPE_DESCRIPTIONS: Record<SceneType, string> = {
@@ -384,7 +377,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
                 ...scenes.filter((scene) => scene.id !== job.id).map((scene) => ({ value: scene.id, label: scene.title }))]}
               onChange={(value) => onChange({ continuationSceneId: value || null })} />
           </PropRow>
-          <SingleShotPrompts job={job} shots={shots} references={references} folderPath={folderPath} disabled={disabled} onChange={onChange} onShots={onShots} />
+          <SingleShotEndingPrompt job={job} references={references} folderPath={folderPath} disabled={disabled} onChange={onChange} />
         </>}
         {longShot && <>
           <p className="prop-caption">{longShot.continuation

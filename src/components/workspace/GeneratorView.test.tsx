@@ -111,15 +111,15 @@ it("queues Long Shot anchors before their intervening bridges", () => {
   expect(submitted.mock.calls[0][0][2].request.latentBridge).toMatchObject({ leftSceneId: "1", rightSceneId: "3", leftMarginFrames: 17, rightMarginFrames: 17 });
 });
 
-it("edits reference-aware Single Shot prompts and allows other scene types as starting videos", () => {
+it("keeps Single Shot prompts in the shot panel and the ending prompt and starting video in the scene panel", () => {
   const initial = project();
   initial.references = [{ id: "hero", kind: "image", name: "Hero", description: "", intendedUse: [], relativePath: "references/hero.png", createdAt: initial.createdAt }];
   initial.generationJobs[1].sceneType = "single-shot";
   initial.generationJobs.push(createDraftGenerationJob("A regular scene", { id: "ordinary", title: "Ordinary" }));
   const state = setup(initial);
   choose("Scene type", "Single Shot");
-  const main = screen.getByLabelText("Single Shot prompt"), ending = screen.getByLabelText("Ending prompt");
-  typePrompt(main, "Walk forward.");
+  expect(screen.queryByLabelText("Describe shot 1")).not.toBeInTheDocument();
+  const ending = screen.getByLabelText("Ending prompt");
   typePrompt(ending, "Wave goodbye.");
   placePromptCaret(ending);
   fireEvent.focus(ending);
@@ -132,7 +132,18 @@ it("edits reference-aware Single Shot prompts and allows other scene types as st
   chooseOption(source, "Second scene");
   expect(state.latest().generationJobs[0].continuationSceneId).toBe("scene-second");
   fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
+  expect(screen.queryByLabelText("Ending prompt")).not.toBeInTheDocument();
+  const main = screen.getByLabelText("Describe shot 1");
+  typePrompt(main, "Walk forward.");
+  placePromptCaret(main);
+  fireEvent.focus(main);
+  fireEvent.click(within(screen.getByRole("toolbar", { name: "Describe shot 1 tools" })).getByRole("button", { name: "Reference" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Hero\b/ }));
+  expect(sceneShots(state.latest().generationJobs[0])[0].action).toContain("@[ref:hero]");
+  fireEvent.click(screen.getByRole("button", { name: "Select scene First scene" }));
   expect(screen.getByLabelText("Ending prompt")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Describe shot 1")).not.toBeInTheDocument();
+  expect(state.latest().generationJobs[0].endingPrompt).toContain("@[ref:hero]");
   fireEvent.click(screen.getByRole("button", { name: "Add scene" }));
   expect(state.latest().generationJobs.at(-1)?.sceneType).toBe("single-shot");
 });
