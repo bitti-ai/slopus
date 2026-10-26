@@ -38,8 +38,15 @@ fn run_single_shot(
     mut generate: impl FnMut(&QueueItem) -> Result<(OutputMetadata, rendered::RenderedVideo), String>,
 ) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
     let single = item.request.single_shot.as_ref().ok_or("Missing Single Shot settings.")?;
+    if item.cancel.load(Ordering::Acquire) { return Err("Single Shot generation cancelled.".into()); }
     let temporary = tempfile::tempdir().map_err(|error| format!("Could not prepare ending latents: {error}"))?;
     let ending_path = temporary.path().join("ending.safetensors");
+    // Condition the ending on the same source as the full shot. An independent
+    // ending can force a cut to an unrelated subject/scene despite a locked start.
+    // Only its tail is needed here; avoid decoding the entire previous chain.
+    let starting_tail = item.request.continuation_path.as_deref()
+        .map(|path| super::continuation::tail_archive(path, 22)).transpose()?;
+    let mut ending_tail = None;
     let mut elapsed = 0.0;
     let mut timings = [0.0; 4];
     let mut computed = 0;
@@ -52,14 +59,15 @@ fn run_single_shot(
             request.prompt = single.ending_prompt.clone();
             request.frames = 22;
             request.continuation_relative_path = None;
-            request.continuation_path = None;
-            request.continuation_source_frames = None;
-            request.continuation_overlap_frames = None;
-            request.continuation_from = None;
-            request.continuation_lock_overlap = false;
+            request.continuation_path = starting_tail.as_ref().map(|path| path.to_path_buf());
+            request.continuation_source_frames = starting_tail.as_ref().map(|_| 22);
+            request.continuation_overlap_frames = starting_tail.as_ref().map(|_| 22);
+            request.continuation_from = starting_tail.as_ref().map(|_| "end".into());
+            request.continuation_lock_overlap = starting_tail.is_some();
             request.save_latents_path = Some(ending_path.clone());
         } else {
-            request.single_shot.as_mut().unwrap().ending_path = Some(ending_path.clone());
+            request.single_shot.as_mut().unwrap().ending_path = Some(ending_tail.as_ref()
+                .map_or_else(|| ending_path.clone(), |path: &tempfile::TempPath| path.to_path_buf()));
         }
         let sink = item.events.clone();
         let offset = elapsed;
@@ -102,6 +110,11 @@ fn run_single_shot(
         // Release its decoded buffers before allocating the full generation.
         drop(result);
         if !ending_path.is_file() { return Err("The ending generation did not save its latents.".into()); }
+        if starting_tail.is_some() {
+            // Continuation saves the joined source + generated clip. Anchor only
+            // its generated ending, never the retained source at its beginning.
+            ending_tail = Some(super::continuation::tail_archive(&ending_path, 22)?);
+        }
     }
     unreachable!()
 }

@@ -1,4 +1,4 @@
-//! Select opening latents without changing the source archive or runtime ABI.
+//! Select boundary latents without changing the source archive or runtime ABI.
 //! The native setter owns its snapshot, so the temporary archive can be dropped
 //! immediately after attachment. End selection uses the original archive.
 use super::types::GenerationRequest;
@@ -90,6 +90,20 @@ pub(super) fn opening_archive(
     if request.continuation_from.as_deref() != Some("start") {
         return Ok(None);
     }
+    crop_archive(request, false).map(Some)
+}
+
+/// Keep the final video latents and both audio channels, without VAE re-encoding.
+pub(super) fn tail_archive(path: &std::path::Path, frames: i32) -> Result<tempfile::TempPath, String> {
+    let request = GenerationRequest {
+        continuation_path: Some(path.to_path_buf()), continuation_overlap_frames: Some(frames),
+        ..Default::default()
+    };
+    validate(&request)?;
+    crop_archive(&request, true)
+}
+
+fn crop_archive(request: &GenerationRequest, from_end: bool) -> Result<tempfile::TempPath, String> {
     let path = request
         .continuation_path
         .as_ref()
@@ -135,7 +149,9 @@ pub(super) fn opening_archive(
     let video_frames = latent_frames(frames);
     // Continued archives include earlier scenes. New frames add five latent
     // frames per 17 video frames; start at this scene's own latent contribution.
-    let first_video = if scene_frames == frames {
+    let first_video = if from_end {
+        video_frames - latent_frames(overlap)
+    } else if scene_frames == frames {
         0
     } else {
         if scene_frames % 17 != 0 {
@@ -159,8 +175,8 @@ pub(super) fn opening_archive(
         .and_then(|n| n.checked_add(1))
         .ok_or("Latent audio overflow.")?
         / 3;
-    let first_audio = ((frames - scene_frames) * 5 + 1) / 3;
     let selected_audio = (overlap * 5 + 1) / 3;
+    let first_audio = if from_end { audio_frames - selected_audio } else { ((frames - scene_frames) * 5 + 1) / 3 };
     let video = read_rows(
         &mut source,
         header_len + 8,
@@ -210,16 +226,16 @@ pub(super) fn opening_archive(
         .and_then(|_| output.flush())
         .map_err(|e| e.to_string())?;
     // Close the file handle before the DLL opens it (Windows sharing rules).
-    Ok(Some(output.into_temp_path()))
+    Ok(output.into_temp_path())
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::super::{planning::resolve_plan, references::ReferenceVideos};
     use super::*;
     use std::collections::BTreeMap;
 
-    fn archive(frames: usize) -> tempfile::NamedTempFile {
+    pub(crate) fn archive(frames: usize) -> tempfile::NamedTempFile {
         let video_rows = ((frames - 5) / 17 * 5 + 2) * 2;
         let audio_rows = ((frames * 5 + 1) / 3) * 2;
         let video_bytes = video_rows * 96 * 4;
@@ -340,6 +356,36 @@ mod tests {
         let temporary = cropped.to_path_buf();
         drop(cropped);
         assert!(!temporary.exists());
+    }
+
+    #[test]
+    fn tail_crop_preserves_final_video_rows_and_each_audio_channel() {
+        for (frames, first_video, first_audio, right_audio) in [(124, 60.0, 170.0, 377.0), (56, 20.0, 56.0, 149.0)] {
+            let source = archive(frames).into_temp_path();
+            let original = std::fs::read(&source).unwrap();
+            let cropped = tail_archive(&source, 22).unwrap();
+            let bytes = std::fs::read(&cropped).unwrap();
+            let start = u64::from_le_bytes(bytes[..8].try_into().unwrap()) as usize + 8;
+            let header: Value = serde_json::from_slice(&bytes[8..start]).unwrap();
+            assert_eq!(header["__metadata__"]["frames"], "22");
+            assert_eq!(header["video_rows"]["shape"], json!([14, 96]));
+            assert_eq!(header["audio_rows"]["shape"], json!([74, 32]));
+            let value = |at: usize| f32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
+            assert_eq!(value(start), first_video);
+            assert_eq!(value(start + 13 * 96 * 4), first_video + 13.0);
+            let audio = start + header["audio_rows"]["data_offsets"][0].as_u64().unwrap() as usize;
+            assert_eq!(value(audio), first_audio);
+            assert_eq!(value(audio + 37 * 32 * 4), right_audio);
+            assert_eq!(value(audio + 73 * 32 * 4), right_audio + 36.0);
+            assert_eq!(std::fs::read(&source).unwrap(), original);
+            assert!(tail_archive(&source, frames as i32 + 17).is_err());
+
+            let request = GenerationRequest { prompt: "Continue walking".into(), frames: 22, steps: 4, seed: 1,
+                canvas_width: 64, canvas_height: 32, continuation_path: Some(cropped.to_path_buf()),
+                continuation_lock_overlap: true, ..Default::default() };
+            let plan = resolve_plan(&request, &BTreeMap::new(), &ReferenceVideos::default()).unwrap();
+            assert_eq!(plan.aligned_frames, 56); // 22-frame context + 34 newly generated frames.
+        }
     }
 
     #[test]

@@ -22,8 +22,12 @@ seed. Generate all orders starting scenes before their dependents and rejects
 cycles. Queued prompts remain captured while source latents resolve after the
 starting scene finishes.
 
-The worker generates a 22-frame ending into a temporary latent archive, releases
-its decoded buffers, then attaches that archive with
+The worker prepares a 22-frame ending in a temporary latent archive. With a
+starting scene, the ending pass continues from its final 22 frames of video and
+audio latents with locked overlap, then crops the generated tail to 22 frames.
+This conditions both passes on the source instead of forcing a transition to an
+independently generated ending. Without a starting scene, the ending is generated
+directly. The worker releases its decoded buffers, then attaches the ending with
 `slopfab_request_set_end_anchor_file`. The full generation uses the requested
 scene duration minus those 22 frames as its lead-in or gap. An optional starting
 archive contributes its ending context; both boundaries are locked. MotionCache
