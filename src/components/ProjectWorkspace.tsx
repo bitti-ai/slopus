@@ -129,11 +129,17 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
   const [musicVisited, setMusicVisited] = useState(openingView === "music");
   const [musicPlaying, setMusicPlaying] = useState(false);
   const [mediaMode, setMediaMode] = useState<"video" | "image" | "music">(() => openingView === "music" ? "music" : openingView === "editor" || ((openingView === "references" || openingView === "export") && config.generationType === "image") ? "image" : "video");
+  const [exportMode, setExportMode] = useState<typeof mediaMode | undefined>(openingView === "export" ? mediaMode : undefined);
+  const chooseExportMode = (mode: typeof mediaMode) => {
+    setExportMode(mode);
+    setMediaMode(mode);
+  };
   const setView = (next: ShownView) => {
     if (next === "music") setMusicVisited(true);
     if (next === "editor") setMediaMode("image");
     else if (next === "music") setMediaMode("music");
     else if (next === "generator" || next === "timeline") setMediaMode("video");
+    else if (next === "export") chooseExportMode(exportMode ?? mediaMode);
     setShownView(next);
   };
   const [agentOpen, setAgentOpenState] = useState(() => initialView === "agent" || readAgentPane());
@@ -161,7 +167,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
   useEffect(() => {
     if (!navigation) return;
     setView(navigation.view);
-    if (navigation.view === "export") setMediaMode(navigation.exportKind ?? "video");
+    if (navigation.view === "export" && navigation.exportKind) chooseExportMode(navigation.exportKind);
     if (navigation.sceneId) { setSelectedGenerationJobId(navigation.sceneId); if (navigation.view === "generator") setVideoNavigation({ id: navigation.sceneId }); }
     if (navigation.imageId) setImageNavigation({ id: navigation.imageId });
     if (navigation.songId) setMusicNavigation({ id: navigation.songId });
@@ -310,7 +316,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
         {view === "generator" && <VideoLibraryView onBackNavigationChange={setBackNavigation} initialOpenVideoId={openVideoId} onOpenVideoChange={setOpenVideoId} openScene={videoNavigation} onSceneOpened={() => setVideoNavigation(undefined)} onGenerate={(submissions) => queue.enqueue(session, submissions)} onCancelGeneration={(ids) => queue.cancelScenes(session, ids)} cancellingJobIds={cancellingJobIds} config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.slopfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onSelectedJobChange={setSelectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
         {view === "references" && <ReferencesView openReference={referenceNavigation} onReferenceOpened={() => setReferenceNavigation(undefined)} config={config} folderPath={project.folderPath} onChange={changeConfig} onRegenerateIcon={(id) => queue.regenerateReferenceIcon(session, id)} onExportRefmod={(id, outputPath) => queue.exportReferenceRefmod(session, id, outputPath)} onGenerateBuiltinIcons={() => queue.generateBuiltinReferenceIcons(session)} onRegenerateBuiltinIcon={(id) => queue.regenerateBuiltinReferenceIcon(session, id)} pendingBuiltinIconIds={queue.pendingBuiltinIconIds()} pendingIconIds={new Set(config.references.filter((reference) => queue.isReferenceIconPending(session, reference.id)).map((reference) => reference.id))} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setVideoNavigation(jobId ? { id: jobId } : undefined); setView("generator"); }} />}
         {view === "export" && <div className="project-export">
-          <SelectorBar aria-label="Export type" className="project-export__types" value={mediaMode} onChange={setMediaMode} items={[{ value: "video", label: "Video" }, { value: "image", label: "Image" }, { value: "music", label: "Music" }]} />
+          <SelectorBar aria-label="Export type" className="project-export__types" value={mediaMode} onChange={chooseExportMode} items={[{ value: "video", label: "Video" }, { value: "image", label: "Image" }, { value: "music", label: "Music" }]} />
           {mediaMode === "music" ? <MusicExportView config={config} folderPath={project.folderPath} /> : mediaMode === "image"
             ? <ImageExportView config={config} folderPath={project.folderPath} />
             : <ExportView config={config} folderPath={project.folderPath} onClose={() => setView("timeline")} />}
