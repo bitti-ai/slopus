@@ -92,18 +92,21 @@ it("plays scenes in video order, skips drafts and excludes joined continuation p
   const config = project(); config.generationJobs = [scene("first"), scene("draft"), scene("last", 8)];
   const video = { ...newVideo(null), sceneIds: ["last", "draft", "first"] };
   config.assets = [asset(generationAssetId("first"), "generated", 10250), { ...asset(generationAssetId("last"), "generated", 19000), sceneSegments: [{ sceneId: "last", startFrame: 240, frameCount: 216, latentRelativePath: "latents/last.safetensors" }] }];
-  expect(videoPlaylist(video, config).map(({ sceneId, start, end }) => ({ sceneId, start, end }))).toEqual([{ sceneId: "last", start: 10, end: 18 }, { sceneId: "first", start: 0, end: 10 }]);
+  expect(videoPlaylist(video, config).map(({ sceneId, start, end }) => ({ sceneId, start, end }))).toEqual([{ sceneId: "last", start: 10, end: 19 }, { sceneId: "first", start: 0, end: 10.25 }]);
 });
 
 it("uses the latest joined decode for both the opening poster and uninterrupted playback across scene boundaries", () => {
   const config = project();
-  const segments = ["a", "b"].map((sceneId, index) => ({ sceneId, startFrame: index * 120, frameCount: 120, latentRelativePath: `latents/${sceneId}.safetensors` }));
+  const segments = ["a", "b"].map((sceneId, index) => ({ sceneId, startFrame: index * 124, frameCount: 124, latentRelativePath: `latents/${sceneId}.safetensors` }));
   config.generationJobs = segments.map((part) => ({ ...scene(part.sceneId, 5), latentRelativePath: part.latentRelativePath }));
   config.assets = segments.map((part, index) => ({ ...asset(generationAssetId(part.sceneId), "generated", (index + 1) * 5000), sceneSegments: segments.slice(0, index + 1) }));
   const video = { ...newVideo(null), sceneIds: ["a", "b"] }, original = structuredClone(config);
   const playlist = videoPlaylist(video, config);
   expect(playlist.map((entry) => entry.asset.id)).toEqual([generationAssetId("b"), generationAssetId("b")]);
-  expect(playlist.map((entry) => [entry.start, entry.end])).toEqual([[0, 5], [5, 10]]);
+  expect(playlist.map((entry) => entry.durationMs)).toEqual([5167, 5167]);
+  expect(playlist[0].start).toBe(0);
+  expect(playlist[1].start).toBeCloseTo(124 / 24);
+  expect(playlist[0].end).toBeCloseTo(playlist[1].start, 3);
   const preview = videoPlaybackConfig(video, config), tracks = continuationPlaybackTracks(preview);
   const keys = previewPlayerKeys(tracks, new Map(preview.assets.map((asset) => [asset.id, asset])));
   expect(keys.get("video-preview-a")).toBe(keys.get("video-preview-b"));

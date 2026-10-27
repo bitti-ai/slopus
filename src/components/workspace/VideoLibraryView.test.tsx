@@ -104,7 +104,7 @@ it("removes folders without deleting their videos and removes video scenes witho
   await waitFor(() => expect(view.config().videos).toHaveLength(0)); expect(view.config().generationJobs).toHaveLength(0); expect(view.config().timeline).toEqual(config.timeline);
 });
 
-it("prepares later clips before playback, retains decoders across cuts, replays and closes the popout", async () => {
+it.each([false, true])("keeps decoders through project updates and cuts, and replays (popout: %s)", async (popout) => {
   (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
   vi.spyOn(PreviewSources.prototype, "url").mockImplementation(async (asset) => 'blob:' + asset.relativePath);
   const ready = vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(0);
@@ -118,18 +118,30 @@ it("prepares later clips before playback, retains decoders across cuts, replays 
   config.assets = config.generationJobs.map((job, index) => ({ id: generationAssetId(job.id), kind: "generated", name: job.id, relativePath: 'media/' + job.id + '.mp4', mimeType: "video/mp4", createdAt: config.createdAt, durationMs: 10000,
     sceneSegments: [{ sceneId: job.id, startFrame: index * 96, frameCount: 96, latentRelativePath: 'latents/' + job.id + '.safetensors' }] }));
   const video = { ...newVideo(null), title: "Film", sceneIds: ["a", "b"] }, close = vi.fn();
-  const view = render(<VideoPlayback video={video} config={config} folderPath="D:/Project" popout onClose={close} />);
+  const view = render(<VideoPlayback video={video} config={config} folderPath="D:/Project" popout={popout} onClose={close} />);
   await waitFor(() => expect(view.container.querySelectorAll("video")).toHaveLength(2));
   const incoming = view.container.querySelector<HTMLVideoElement>('[data-clip-id="video-preview-b"] video')!;
   await tick(5000); expect(view.container.querySelector('.video-card__position')).toHaveTextContent('1 / 2');
   ready.mockReturnValue(4); fireEvent.loadedData(incoming); expect(incoming.currentTime).toBe(4);
-  await tick(16); await tick(3001);
+  const outgoing = view.container.querySelector<HTMLVideoElement>('[data-clip-id="video-preview-a"] video')!;
+  vi.mocked(HTMLMediaElement.prototype.load).mockClear();
+  const updated = { ...config, generationJobs: config.generationJobs.map((job) => ({ ...job, progress: 0.5 })),
+    assets: config.assets.map((asset) => ({ ...asset, relativePath: 'media/regenerated.mp4' })) };
+  view.rerender(<VideoPlayback video={{ ...video }} config={updated} folderPath="D:/Project" popout={popout} onClose={close} />);
+  await act(async () => undefined);
+  expect(view.container.querySelector('[data-clip-id="video-preview-a"] video')).toBe(outgoing);
+  expect(view.container.querySelector('[data-clip-id="video-preview-b"] video')).toBe(incoming);
+  expect(outgoing).toHaveAttribute('src', 'blob:media/a.mp4');
+  expect(HTMLMediaElement.prototype.load).not.toHaveBeenCalled();
+  await tick(16); await tick(4001);
   expect(view.container.querySelector('[data-clip-id="video-preview-b"] video')).toBe(incoming);
   expect(view.container.querySelector('.video-card__position')).toHaveTextContent('2 / 2');
-  await tick(3100); fireEvent.click(screen.getByRole("button", { name: "Replay Film" }));
+  await tick(4100); fireEvent.click(screen.getByRole("button", { name: "Replay Film" }));
   expect(view.container.querySelector('.video-card__position')).toHaveTextContent('1 / 2');
-  fireEvent.pointerDown(screen.getByRole("dialog")); expect(close).not.toHaveBeenCalled();
-  fireEvent.pointerDown(view.container.querySelector(".shot-popout")!); expect(close).toHaveBeenCalledTimes(1);
+  if (popout) {
+    fireEvent.pointerDown(screen.getByRole("dialog")); expect(close).not.toHaveBeenCalled();
+    fireEvent.pointerDown(view.container.querySelector(".shot-popout")!); expect(close).toHaveBeenCalledTimes(1);
+  }
   view.unmount(); expect(incoming.pause).toHaveBeenCalled(); expect(incoming).not.toHaveAttribute('src');
 });
 

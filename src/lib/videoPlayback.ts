@@ -14,7 +14,9 @@ export function videoPlaybackConfig(video: ProjectVideo, config: ProjectConfig):
     if (!selected?.relativePath) continue;
     const asset = { ...selected, id: generationAssetId(scene.id) };
     assets.set(asset.id, asset);
-    const durationMs = Math.round(Math.min(sceneDurationSeconds(scene) * 1000, sceneMediaDurationMs(asset) ?? Infinity));
+    // Generated lengths are frame-aligned and can exceed the requested length.
+    // Keep every rendered frame so joined scenes share one uninterrupted decoder.
+    const durationMs = Math.round(sceneMediaDurationMs(asset) ?? sceneDurationSeconds(scene) * 1000);
     if (durationMs <= 0) continue;
     clips.push({ id: `video-preview-${scene.id}`, assetId: asset.id, trackId: "video-preview", startMs, durationMs,
       sourceStartMs: 0, label: scene.title, status: "generated" });

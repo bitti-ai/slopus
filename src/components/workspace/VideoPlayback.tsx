@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { ProjectConfig, ProjectVideo } from "../../lib/project";
 import { outputDimensions } from "../../lib/export";
 import { videoPlaybackConfig, videoPlaylist } from "../../lib/videoPlayback";
@@ -10,14 +10,15 @@ export { videoPlaylist } from "../../lib/videoPlayback";
 export function VideoPlayback({ video: item, config, folderPath, popout, onClose }: {
   video: ProjectVideo; config: ProjectConfig; folderPath: string; popout: boolean; onClose: () => void;
 }) {
-  const preview = useMemo(() => videoPlaybackConfig(item, config), [item, config]);
-  const playlist = useMemo(() => videoPlaylist(item, config), [item, config]);
+  // Play the takes opened by the user. Progress updates and completed renders
+  // must not recreate media objects, unload decoders or replace a playing file.
+  const [{ preview, playlist }] = useState(() => ({ preview: videoPlaybackConfig(item, config), playlist: videoPlaylist(item, config) }));
   const [playhead, setPlayhead] = useState(0), [playing, setPlaying] = useState(true);
   const frame = useRef<HTMLDivElement>(null), close = useRef(onClose); close.current = onClose;
   const duration = preview.timeline.tracks[0].clips.reduce((end, clip) => Math.max(end, clip.startMs + clip.durationMs), 0);
   const index = Math.max(0, playlist.findIndex((clip) => playhead < clip.startMs + clip.durationMs));
   const current = playlist[playhead >= duration ? playlist.length - 1 : index];
-  const dimensions = outputDimensions(config.settings.resolution, config.settings.aspectRatio);
+  const dimensions = outputDimensions(preview.settings.resolution, preview.settings.aspectRatio);
   useEffect(() => {
     const focused = document.activeElement as HTMLElement | null;
     const library = popout ? frame.current?.closest(".video-library-stage")?.querySelector<HTMLElement>(".music-library") : null;
