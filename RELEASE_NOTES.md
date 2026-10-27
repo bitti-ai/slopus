@@ -22,7 +22,7 @@ Changes since 0.3.2.
 
 ## Fixes and improvements
 
-- Video cards match Shot sizing, show the opening playback frame and open scenes on click; card/popout playback shares Timeline's prepared players and continuous display.
+- Video cards match Shot sizing, show the opening playback frame and open scenes on click; playback shares Timeline's prepared players. Returning to the Video tab restores the open video.
 - Editing generated music creates a separate draft; cards distinguish drafts from playable songs.
 - Single Shot uses previous latents only as its starting anchor, fresh noise for the middle and a generated ending anchor, avoiding repeated source imagery.
 - Updated First/Last Frame Fast to the eight-step FastH3 Omni model and corrected Omni and First/Last Frame weight fallbacks.

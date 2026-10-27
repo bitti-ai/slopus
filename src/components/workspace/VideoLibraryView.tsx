@@ -16,13 +16,13 @@ const VIDEO_DRAG = "application/x-slopus-video";
 const sourceValue = (source: VideoSource | null | undefined) => source ? `${source.kind}:${source.id}` : "";
 const parseSource = (value: string): VideoSource | null => value ? { kind: value.startsWith("asset:") ? "asset" : "reference", id: value.slice(value.indexOf(":") + 1) } : null;
 
-export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & { openScene?: { id: string }; onSceneOpened?: () => void }) {
+export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & { openScene?: { id: string }; onSceneOpened?: () => void; initialOpenVideoId?: string; onOpenVideoChange?: (id: string | undefined) => void }) {
   const { config, onChange, folderPath } = props;
   const latest = useRef(config); latest.current = config;
   const videos = videoLibrary(config), folders = config.videoFolders ?? [];
-  const [folderId, setFolderId] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string>();
-  const [openId, setOpenId] = useState<string>();
+  const [folderId, setFolderId] = useState<string | null>(() => videos.find((video) => video.id === props.initialOpenVideoId)?.folderId ?? null);
+  const [selectedId, setSelectedId] = useState<string | undefined>(props.initialOpenVideoId);
+  const [openId, setOpenId] = useState<string | undefined>(props.initialOpenVideoId);
   const [playback, setPlayback] = useState<{ id: string; popout: boolean }>();
   const [creatingFolder, setCreatingFolder] = useState(false), [folderName, setFolderName] = useState("");
   const [view, setView] = useState<"grid" | "list">(() => localStorage.getItem("slopus.video.view") === "list" ? "list" : "grid");
@@ -32,6 +32,7 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
   const visible = videos.filter((video) => (video.folderId ?? null) === currentFolderId);
   const selected = visible.find((video) => video.id === selectedId) ?? visible[0];
   const open = videos.find((video) => video.id === openId);
+  useEffect(() => { props.onOpenVideoChange?.(open?.id); }, [open?.id, props.onOpenVideoChange]);
   const playing = videos.find((video) => video.id === playback?.id);
   const breadcrumbs: { id: string | null; name: string }[] = [];
   const visited = new Set<string>();

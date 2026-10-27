@@ -61,6 +61,34 @@ it("creates a whole-song scene sequence and opens the owner for a timeline navig
   const next = view.config(); view.unmount(); mount(next, { id: next.generationJobs[1].id }); expect(screen.getByLabelText("Scenes editor")).toBeInTheDocument();
 });
 
+it("restores the open video after leaving the tab, respects Back and lets scene navigation override it", () => {
+  const config = project();
+  config.videoFolders = [{ id: "folder", name: "Collection" }];
+  config.videos = [{ ...newVideo("folder"), title: "First", sceneIds: ["a"] }, { ...newVideo(null), title: "Second", sceneIds: ["b"] }];
+  config.generationJobs = ["a", "b"].map((id) => createDraftGenerationJob(id, { id }));
+  function Harness() {
+    const [visible, setVisible] = useState(true), [openId, setOpenId] = useState<string>();
+    const [openScene, setOpenScene] = useState<{ id: string }>();
+    return <><button onClick={() => setVisible(!visible)}>Switch tab</button><button onClick={() => { setOpenScene({ id: "b" }); setVisible(true); }}>Open scene B</button>
+      {visible && <VideoLibraryView config={config} folderPath="D:/Project" onChange={() => {}} onOpenTimeline={() => {}}
+        initialOpenVideoId={openId} onOpenVideoChange={setOpenId} openScene={openScene} onSceneOpened={() => setOpenScene(undefined)} />}</>;
+  }
+  render(<Harness />);
+  const switchTab = () => fireEvent.click(screen.getByRole("button", { name: "Switch tab" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Collection" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open First" }));
+  switchTab(); expect(screen.queryByLabelText("Scenes editor")).not.toBeInTheDocument(); switchTab();
+  expect(screen.getByLabelText("Scenes editor")).toHaveTextContent("a");
+  fireEvent.click(screen.getByRole("button", { name: "Back to Video" }));
+  expect(screen.getByRole("button", { name: "Open First" })).toBeInTheDocument();
+  switchTab(); switchTab(); expect(screen.queryByLabelText("Scenes editor")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Open Collection" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open First" }));
+  switchTab(); fireEvent.click(screen.getByRole("button", { name: "Open scene B" }));
+  expect(screen.getByLabelText("Scenes editor")).toHaveTextContent("b");
+  switchTab(); switchTab(); expect(screen.getByLabelText("Scenes editor")).toHaveTextContent("b");
+});
+
 it("removes folders without deleting their videos and removes video scenes without removing timeline media", async () => {
   const config = project(); config.videoFolders = [{ id: "folder", name: "Collection" }]; config.videos = [{ ...newVideo("folder"), title: "Film", sceneIds: ["a"] }]; config.generationJobs = [createDraftGenerationJob("A", { id: "a" })];
   const view = mount(config); fireEvent.contextMenu(screen.getByRole("button", { name: "Open Collection" })); fireEvent.click(screen.getByRole("menuitem", { name: "Remove folder" }));
