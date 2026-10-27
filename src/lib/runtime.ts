@@ -134,6 +134,7 @@ export interface SlopfabGenerationRequest {
   continuationOverlapFrames?: number;
   continuationFrom?: "start" | "end";
   continuationLockOverlap?: boolean;
+  continuationSourceNoise?: number;
   continuationSourceFrames?: number;
 }
 

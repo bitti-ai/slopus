@@ -378,6 +378,10 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
                 ...scenes.filter((scene) => scene.id !== job.id).map((scene) => ({ value: scene.id, label: scene.title }))]}
               onChange={(value) => onChange({ continuationSceneId: value || null })} />
           </PropRow>
+          <PropRow label="Continuation" tooltip="Choose a starting video to guide new frames from its appearance. Higher values retain more of the source but may reduce motion. Zero starts new frames from fresh noise.">
+            <SliderNumberInput aria-label="Continuation" minimum={0} maximum={99} step={1} suffix="%" value={Math.round((job.continuationStrength ?? 0.3) * 100)} disabled={disabled || !job.continuationSceneId}
+              onCommit={(value) => onChange({ continuationStrength: value / 100 })} />
+          </PropRow>
           <SingleShotEndingPrompt job={job} references={references} folderPath={folderPath} disabled={disabled} onChange={onChange} />
         </>}
         {longShot && <>

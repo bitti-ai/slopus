@@ -23,7 +23,7 @@ Changes since 0.3.2.
 ## Fixes and improvements
 
 - Editing generated music creates a separate draft; cards distinguish drafts from playable songs.
-- Single Shot continuation conditions both generation passes on the previous clip's final latents to preserve continuity.
+- Single Shot initializes both passes from the previous clip's final latents, with a Continuation control defaulting to 30% for appearance guidance.
 - Updated First/Last Frame Fast to the eight-step FastH3 Omni model and corrected Omni and First/Last Frame weight fallbacks.
 - Image edits preserve source images, prompts and settings; queued results get separate entries, and whole-image edits disable feathering.
 - Imported images now expose steps, seed and resolution; new images use generator step defaults, and renamed image roots retain their names.

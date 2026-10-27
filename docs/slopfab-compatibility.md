@@ -1,15 +1,15 @@
 # Slopfab compatibility
 
-## Bundled runtime (API 1.40.0)
+## Bundled runtime (API 1.41.0)
 
-Windows and Linux runtimes use SlopFab commit `af664eb94519fec7604c265a76a602be597fa12b`
+Windows and Linux runtimes use SlopFab commit `bcc1d26d92433475434447f34017550f9f823fe2`
 from `D:\Projects\slopfab`, with CUDA and Vulkan enabled and FFmpeg disabled.
-This update includes music performance improvements and additive ending-anchor
-APIs. Single Shot uses the latent ending-anchor API. LAN protocol is 19. Restart Slopus and
+This update adds source-initialized continuation and music progress fixes.
+Single Shot uses source initialization and latent ending anchors. LAN protocol is 20. Restart Slopus and
 update workers to load the new runtime.
 
-Both runtimes pass C API and embedded-tokenizer checks. Slopus core and desktop
-Rust tests pass against the Windows DLL. Linux retains the Fibo text-renderer
+The Linux runtime passes C API and embedded-tokenizer checks. Slopus core and desktop
+project tests pass against the Windows DLL. Linux retains the Fibo text-renderer
 linker workaround documented below and passes unresolved-symbol checks.
 
 ## Single Shot
@@ -37,8 +37,19 @@ final duration; Single Shot requires at least two seconds.
 Only the final joined output and latents enter scene history. Timeline ranges
 identify each scene's own portion, retaining the shared decode at joins.
 Temporary endings are removed on success, failure and cancellation. Starting
-scenes must use compatible resolution and latent-upscale settings. Protocol 19
-prevents older workers from silently skipping the ending pass.
+scenes must use compatible resolution and latent-upscale settings. Protocol 20
+prevents older workers from silently skipping source initialization.
+
+**Continuation** controls appearance retention for Single Shot's starting video,
+from 0–99%, defaulting to 30%. Both passes call
+`slopfab_request_set_continuation_source_init` with noise strength
+`1 - continuationStrength` (0.7 by default). New video starts from the final
+packed source latent slice mixed with noise; new audio keeps its full-noise
+schedule. Zero uses fresh video noise while retaining boundary anchors. Higher
+values can reduce motion; this experimental mode does not extrapolate motion or
+guarantee seamless output. It needs standard H3 sampling, not fixed/distilled
+schedules; approximate caches are disabled. Without a starting video, the value
+is inactive. It persists in scene drafts/takes and generation fingerprints.
 
 Checks cover prompt/reference compilation, persistence, dependency ordering,
 queue snapshots, cancellation, temporary cleanup and native anchored planning.

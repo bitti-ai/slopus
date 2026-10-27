@@ -556,6 +556,7 @@ const generationJobBaseSchema = z.object({
   id: idSchema,
   sceneType: sceneTypeSchema.nullish(),
   endingPrompt: z.string().max(30000).nullish(),
+  continuationStrength: z.number().finite().min(0).max(0.99).nullish(),
   backdropColor: z.enum(["green", "blue", "black", "white"]).nullish(),
   bridgeLeftMargin: z.number().int().min(0).max(340).multipleOf(17).nullish(),
   bridgeRightMargin: z.number().int().min(0).max(340).multipleOf(17).nullish(),
@@ -1123,6 +1124,7 @@ export function sceneFrameInputs(job: GenerationJob, config: ProjectConfig) {
     continuationOverlapFrames: job.sceneType === "single-shot" ? 22 : job.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP,
     continuationFrom: job.sceneType === "single-shot" ? "end" as const : job.continuationFrom ?? "end",
     continuationLockOverlap: job.sceneType === "single-shot" || (job.continuationLockOverlap ?? false),
+    continuationSourceNoise: job.sceneType === "single-shot" ? Number((1 - (job.continuationStrength ?? 0.3)).toFixed(4)) : undefined,
     continuationSourceFrames: previous ? sceneOutputFrames(previous, config) : undefined };
 }
 
@@ -1265,6 +1267,7 @@ export interface SceneGenerationInput {
   continuationOverlapFrames?: number;
   continuationFrom?: "start" | "end";
   continuationLockOverlap?: boolean;
+  continuationSourceNoise?: number;
   continuationSourceFrames?: number;
 }
 
@@ -1301,6 +1304,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     ...(input.continuationRelativePath ? { continuationRelativePath: input.continuationRelativePath } : {}),
     ...(input.previousSceneId ? { continuationOutput: "joined", continuationOverlapFrames: input.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP,
       ...(input.continuationLockOverlap ? { continuationLockOverlap: true } : {}),
+      ...(input.continuationSourceNoise != null ? { continuationSourceNoise: input.continuationSourceNoise } : {}),
       continuationFrom: input.continuationFrom ?? "end", ...(input.continuationSourceFrames ? { continuationSourceFrames: input.continuationSourceFrames } : {}) } : {}),
     shots,
   });
