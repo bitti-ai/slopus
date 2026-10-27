@@ -56,13 +56,22 @@ export function VideoPlayback({ video: item, config, folderPath, popout, onClose
       owned = value; setUrl(value); if (!value) setError("This scene's video is unavailable.");
     }).catch((reason) => { if (!disposed) setError(String(reason)); });
     return () => { disposed = true; epoch.current++; clearTimeout(timer.current); player?.pause(); if (owned) URL.revokeObjectURL(owned); };
-  }, [folderPath, current?.sceneId, current?.asset.relativePath]);
+  }, [folderPath, current?.sceneId, current?.asset.relativePath, current?.start, current?.end]);
   useEffect(() => {
     const focused = document.activeElement as HTMLElement | null;
+    const library = popout ? frame.current?.closest(".video-library-stage")?.querySelector<HTMLElement>(".music-library") : null;
+    const wasInert = library?.hasAttribute("inert");
+    library?.setAttribute("inert", "");
     if (popout) frame.current?.focus();
+    const outside = (event: PointerEvent) => { if (popout && !frame.current?.contains(event.target as Node)) close.current(); };
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); close.current(); } };
+    document.addEventListener("pointerdown", outside, true);
     document.addEventListener("keydown", escape);
-    return () => { document.removeEventListener("keydown", escape); if (popout && focused?.isConnected) focused.focus(); };
+    return () => {
+      document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", escape);
+      if (library && !wasInert) library.removeAttribute("inert");
+      if (popout && focused?.isConnected) focused.focus();
+    };
   }, [popout]);
   const player = <div className={popout ? "shot-popout__frame" : "video-card__player"} ref={frame} tabIndex={-1}
     role={popout ? "dialog" : "group"} aria-label={`${item.title} preview`} style={{ "--shot-aspect": aspect } as CSSProperties}>
@@ -77,5 +86,5 @@ export function VideoPlayback({ video: item, config, folderPath, popout, onClose
     {error && <p className="shot-popout__message" role="alert">{error}</p>}
     <span className="video-card__position">{index + 1} / {playlist.length} · {current?.title}</span>
   </div>;
-  return popout ? <div className="shot-popout" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>{player}</div> : player;
+  return popout ? <div className="shot-popout">{player}</div> : player;
 }

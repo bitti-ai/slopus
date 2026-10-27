@@ -130,8 +130,8 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
         <PropSection title="References">
           <PropRow label="Music"><ComboBox aria-label="Background music" value={sourceValue(selected.musicSource)} options={sourceOptions("audio")} placeholder="Reference unavailable" onChange={(value) => edit({ musicSource: parseSource(value) })} /></PropRow>
           <PropRow label="Video"><ComboBox aria-label="Reference video" value={sourceValue(selected.videoSource)} options={sourceOptions("video")} placeholder="Reference unavailable" onChange={(value) => edit({ videoSource: parseSource(value) })} /></PropRow>
-          <p className="video-reference-help">Each scene uses the matching time range of these references. Import media in Timeline or choose a generated song. Reference entries use their saved trim range.</p>
-          {selected.musicSource && <p className="video-reference-help">Music needs a visual reference: add an image to the shared prompt or select a reference video. Use a References or Singularity generator.</p>}
+          <p className="video-reference-help">Each scene uses its matching time range. Choose generated media, Timeline imports or a saved reference range.</p>
+          {selected.musicSource && <p className="video-reference-help">Music needs an image in the shared prompt or a reference video, and a References/Singularity generator.</p>}
           {selected.musicSource && !selected.sceneIds.length && (resolveVideoSource(selected.musicSource, config, "audio")?.durationSeconds ?? 0) >= 2 && <button type="button" className="secondary-button" onClick={() => {
             const scenes = songScenes(selected, latest.current); if (!scenes.length) return;
             update((current) => ({ ...current, generationJobs: [...current.generationJobs, ...scenes], videos: current.videos!.map((video) => video.id === selected.id ? { ...video, sceneIds: scenes.map((scene) => scene.id) } : video) })); openVideo(selected);
