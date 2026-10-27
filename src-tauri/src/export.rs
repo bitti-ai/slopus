@@ -105,8 +105,8 @@ fn checked_destination(value: &str) -> Result<PathBuf, String> {
         .extension()
         .and_then(|value| value.to_str())
         .map(str::to_ascii_lowercase);
-    if !matches!(extension.as_deref(), Some("mp4" | "m4a" | "webm" | "ogg" | "wav")) {
-        return Err(format!("{value} must end in .mp4, .m4a, .webm, .ogg or .wav."));
+    if !matches!(extension.as_deref(), Some("mp4" | "m4a" | "webm" | "ogg" | "wav" | "mp3" | "flac")) {
+        return Err(format!("{value} must end in .mp4, .m4a, .webm, .ogg, .wav, .mp3 or .flac."));
     }
     let parent = path
         .parent()
@@ -232,7 +232,8 @@ fn music_format(format: &str) -> Result<&'static str, String> {
     match format {
         "m4a" => Ok("M4A audio"), "webm" => Ok("WebM audio"),
         "ogg" => Ok("Ogg audio"), "wav" => Ok("WAV audio"),
-        _ => Err("Choose M4A, WebM, Ogg or WAV for music export.".into()),
+        "mp3" => Ok("MP3 audio"), "flac" => Ok("FLAC audio"),
+        _ => Err("Choose MP3, FLAC, M4A, WebM, Ogg or WAV for music export.".into()),
     }
 }
 
@@ -382,7 +383,7 @@ mod tests {
     #[test]
     fn music_formats_require_supported_extensions_and_dialog_authorization() {
         let folder = tempfile::tempdir().unwrap();
-        for extension in ["m4a", "webm", "ogg", "wav"] {
+        for extension in ["m4a", "webm", "ogg", "wav", "mp3", "flac"] {
             assert!(music_format(extension).is_ok());
             let path = folder.path().join(format!("song.{extension}"));
             assert!(checked_destination(&path.to_string_lossy()).is_ok());
@@ -392,7 +393,7 @@ mod tests {
             let other = folder.path().join(format!("other.{extension}"));
             assert!(authorized_destination(&other.to_string_lossy()).is_err());
         }
-        for extension in ["exe", "mp3", "../wav", "mp4"] { assert!(music_format(extension).is_err()); }
+        for extension in ["exe", "aac", "../wav", "mp4"] { assert!(music_format(extension).is_err()); }
     }
 
     #[test]

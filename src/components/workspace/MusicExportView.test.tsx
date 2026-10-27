@@ -64,6 +64,19 @@ it("disables unsupported encoders and does not queue when the save dialog is can
   expect(startMusicExportJob).not.toHaveBeenCalled();
 });
 
+it.each(["mp3", "flac"] as const)("exports %s with the correct destination and bitrate controls", async (format) => {
+  vi.mocked(invoke).mockResolvedValue(`D:/song.${format}`);
+  render(<MusicExportView config={config()} folderPath="D:/Music" />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Export…" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("combobox", { name: "Format" }));
+  fireEvent.click(screen.getByRole("option", { name: format === "mp3" ? "MP3" : "FLAC · Lossless" }));
+  if (format === "mp3") expect(screen.getByRole("combobox", { name: "Bitrate" })).toBeInTheDocument();
+  else expect(screen.queryByRole("combobox", { name: "Bitrate" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Export…" }));
+  await waitFor(() => expect(startMusicExportJob).toHaveBeenCalledWith(expect.objectContaining({ settings: { format, bitrate: 192000 }, destination: `D:/song.${format}` })));
+  expect(invoke).toHaveBeenCalledWith("choose_music_export_destination", { suggestedName: "Evening", format });
+});
+
 it("has an empty state for drafts and stops preview playback on unmount", async () => {
   const draft = config(); draft.assets = [];
   const empty = render(<MusicExportView config={draft} folderPath="D:/Music" />);

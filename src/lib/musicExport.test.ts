@@ -59,11 +59,28 @@ it("probes native encoding support at the selected bitrate and rejects unavailab
   expect(readMediaFileBytes).not.toHaveBeenCalled();
 });
 
-it("cancels before reading and during encoding without returning a partial file", async () => {
-  await expect(runMusicExport({ ...options(), cancelled: () => true })).rejects.toBeInstanceOf(ExportCancelled);
+it.each(["mp3", "flac"] as const)("encodes real %s with the bundled fallback when WebCodecs is unavailable", async (format) => {
+  vi.stubGlobal("AudioEncoder", undefined); vi.stubGlobal("AudioData", undefined);
+  expect(await musicExportSupport(format, 192000)).toBe(true);
+  const bytes = await runMusicExport({ ...options(), settings: { format, bitrate: 192000 } });
+  const { Input, BufferSource, ALL_FORMATS } = await import("mediabunny");
+  const input = new Input({ source: new BufferSource(bytes), formats: ALL_FORMATS });
+  try {
+    const track = await input.getPrimaryAudioTrack();
+    expect(await track?.getCodec()).toBe(format);
+    expect(track?.numberOfChannels).toBe(2);
+    expect(track?.sampleRate).toBe(48000);
+    expect(await input.computeDuration()).toBeCloseTo(frames / 48000, 1);
+    if (format === "flac") expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe("fLaC");
+  } finally { input.dispose(); }
+});
+
+it.each(["wav", "mp3", "flac"] as const)("cancels %s before reading and during encoding without returning a partial file", async (format) => {
+  const request = { ...options(), settings: { format, bitrate: 192000 } };
+  await expect(runMusicExport({ ...request, cancelled: () => true })).rejects.toBeInstanceOf(ExportCancelled);
   expect(readMediaFileBytes).not.toHaveBeenCalled();
   let cancelled = false;
-  await expect(runMusicExport({ ...options(), cancelled: () => cancelled, onProgress: (progress) => { if (progress.phase === "rendering") cancelled = true; } })).rejects.toBeInstanceOf(ExportCancelled);
+  await expect(runMusicExport({ ...request, cancelled: () => cancelled, onProgress: (progress) => { if (progress.phase === "rendering") cancelled = true; } })).rejects.toBeInstanceOf(ExportCancelled);
 });
 
 it("lists generated songs across folders, excluding drafts and missing audio", () => {

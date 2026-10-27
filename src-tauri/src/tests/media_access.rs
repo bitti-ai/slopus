@@ -198,6 +198,7 @@ fn the_window_ships_a_policy_that_previews_still_work_under() {
     // Scripts: same origin only, and nothing the page can talk itself into.
     let script = directive("script-src");
     assert!(script.contains("'self'"), "{script}");
+    assert!(script.contains("'wasm-unsafe-eval'"), "The bundled music encoders need WebAssembly: {script}");
     for hole in ["'unsafe-inline'", "'unsafe-eval'", "*", "http:", "https:"] {
         assert!(
             !script.split_whitespace().any(|source| source == hole),

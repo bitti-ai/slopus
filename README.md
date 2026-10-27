@@ -32,7 +32,7 @@ Slopus combines an AI assistant, local image, video and music generation, reusab
 - **Generators.** Manage model weights, supported LoRAs, attention and generation effects. Share [generator templates](docs/generator-weights.md#sharing-generator-templates) as `.slop` bundles or run jobs on LAN workers.
 - **Timeline.** Arrange video and audio with trimming, splitting, snapping, waveforms, transitions, chroma key and GPU effects.
 - **Motions.** Ask the agent to create JavaScript animations, edit elements and parameters, and render them on the timeline or as reference videos.
-- **Export.** Save MP4 video, JPG/PNG images, or music as WAV, AAC/M4A or Opus in WebM/Ogg. Compressed formats depend on available encoders. Exports run in the background.
+- **Export.** Save MP4 video, JPG/PNG images, or music as WAV, MP3, lossless FLAC, AAC/M4A or Opus in WebM/Ogg. MP3/FLAC encoders are bundled; AAC/Opus depend on device support. Exports run in the background.
 - **Project editing.** Timeline, Video, Image, Music, References and Export views share Save, Undo and Redo. Projects and media are stored locally; agent requests go to the selected provider. API keys stay outside project files.
 
 ## Setup

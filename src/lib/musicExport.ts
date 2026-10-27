@@ -5,9 +5,11 @@ import { readMediaFileBytes } from "./persistence";
 import { ExportCancelled, type ExportProgress } from "./exportPipeline";
 import { finishCodec } from "./codecWait";
 
-export type MusicExportFormat = "m4a" | "webm" | "ogg" | "wav";
+export type MusicExportFormat = "m4a" | "webm" | "ogg" | "wav" | "mp3" | "flac";
 export interface MusicExportSettings { format: MusicExportFormat; bitrate: number }
 export const MUSIC_EXPORT_FORMATS: readonly { value: MusicExportFormat; label: string; codec: AudioCodec; nativeCodec?: string }[] = [
+  { value: "mp3", label: "MP3", codec: "mp3" },
+  { value: "flac", label: "FLAC · Lossless", codec: "flac" },
   { value: "m4a", label: "M4A · AAC", codec: "aac", nativeCodec: "mp4a.40.2" },
   { value: "webm", label: "WebM · Opus", codec: "opus", nativeCodec: "opus" },
   { value: "ogg", label: "Ogg · Opus", codec: "opus", nativeCodec: "opus" },
@@ -15,6 +17,20 @@ export const MUSIC_EXPORT_FORMATS: readonly { value: MusicExportFormat; label: s
 ];
 export const MUSIC_EXPORT_BITRATES = [96, 128, 192, 256, 320].map((value) => ({ value: String(value * 1000), label: `${value} kbps` }));
 export const MUSIC_EXPORT_SAMPLE_RATE = 48_000;
+export const musicExportUsesBitrate = (format: MusicExportFormat) => format !== "wav" && format !== "flac";
+
+const encoders = new Map<"mp3" | "flac", Promise<void>>();
+function registerMusicEncoder(codec: "mp3" | "flac") {
+  let pending = encoders.get(codec);
+  if (!pending) {
+    pending = (codec === "mp3"
+      ? import("@mediabunny/mp3-encoder").then(({ registerMp3Encoder }) => registerMp3Encoder())
+      : import("@mediabunny/flac-encoder").then(({ registerFlacEncoder }) => registerFlacEncoder()))
+      .catch((reason) => { encoders.delete(codec); throw reason; });
+    encoders.set(codec, pending);
+  }
+  return pending;
+}
 
 export function musicExportSongs(config: ProjectConfig) {
   return (config.musicSongs ?? []).flatMap((song) => {
@@ -29,6 +45,16 @@ export function musicExportSongs(config: ProjectConfig) {
 export async function musicExportSupport(format: MusicExportFormat, bitrate: number, channels = 2): Promise<boolean> {
   const choice = MUSIC_EXPORT_FORMATS.find((item) => item.value === format);
   if (!choice || typeof OfflineAudioContext === "undefined") return false;
+  if (choice.codec === "mp3" || choice.codec === "flac") {
+    try {
+      const { canEncodeAudio, Quality } = await import("mediabunny");
+      const options = { sampleRate: MUSIC_EXPORT_SAMPLE_RATE, numberOfChannels: channels,
+        ...(choice.codec === "mp3" ? { quality: new Quality({ bitrate }) } : {}) };
+      if (await canEncodeAudio(choice.codec, options)) return true;
+      await registerMusicEncoder(choice.codec);
+      return await canEncodeAudio(choice.codec, options);
+    } catch { return false; }
+  }
   if (!choice.nativeCodec) return true;
   if (typeof AudioEncoder === "undefined" || typeof AudioData === "undefined") return false;
   try {
@@ -45,7 +71,7 @@ export interface RunMusicExportOptions {
 export async function runMusicExport(options: RunMusicExportOptions): Promise<Uint8Array> {
   const check = () => { if (options.cancelled()) throw new ExportCancelled(); };
   check();
-  if (!MUSIC_EXPORT_BITRATES.some((item) => Number(item.value) === options.settings.bitrate)) throw new Error("Choose a supported music bitrate.");
+  if (musicExportUsesBitrate(options.settings.format) && !MUSIC_EXPORT_BITRATES.some((item) => Number(item.value) === options.settings.bitrate)) throw new Error("Choose a supported music bitrate.");
   const choice = MUSIC_EXPORT_FORMATS.find((item) => item.value === options.settings.format);
   if (!choice || !await musicExportSupport(choice.value, options.settings.bitrate)) throw new Error("This audio format cannot be encoded on this device. Choose another format.");
   options.onProgress({ phase: "preparing", framesDone: 0, frameCount: 1, detail: "Reading song…" });
@@ -64,13 +90,14 @@ export async function runMusicExport(options: RunMusicExportOptions): Promise<Ui
     check();
   }
   if (!await musicExportSupport(choice.value, options.settings.bitrate, decoded.numberOfChannels)) throw new Error("This audio format cannot encode the song's channels. Choose another format.");
-  const { Output, BufferTarget, Mp4OutputFormat, WebMOutputFormat, OggOutputFormat, WavOutputFormat, AudioSampleSource, AudioSample, Quality } = await import("mediabunny");
+  const { Output, BufferTarget, Mp3OutputFormat, FlacOutputFormat, Mp4OutputFormat, WebMOutputFormat, OggOutputFormat, WavOutputFormat, AudioSampleSource, AudioSample, Quality } = await import("mediabunny");
   check();
   const format = choice.value === "m4a" ? new Mp4OutputFormat({ fastStart: "in-memory" })
-    : choice.value === "webm" ? new WebMOutputFormat() : choice.value === "ogg" ? new OggOutputFormat() : new WavOutputFormat();
+    : choice.value === "webm" ? new WebMOutputFormat() : choice.value === "ogg" ? new OggOutputFormat()
+      : choice.value === "mp3" ? new Mp3OutputFormat() : choice.value === "flac" ? new FlacOutputFormat() : new WavOutputFormat();
   const output = new Output({ format, target: new BufferTarget() });
   let packets = 0;
-  const source = new AudioSampleSource({ codec: choice.codec, ...(choice.nativeCodec ? { quality: new Quality({ bitrate: options.settings.bitrate }) } : {}), onEncodedPacket: () => { packets++; } });
+  const source = new AudioSampleSource({ codec: choice.codec, ...(musicExportUsesBitrate(choice.value) ? { quality: new Quality({ bitrate: options.settings.bitrate }) } : {}), onEncodedPacket: () => { packets++; } });
   output.addAudioTrack(source, { name: options.title });
   output.setMetadataTags({ title: options.title });
   const waiting = { stage: "Music encoding", check, progress: () => packets };

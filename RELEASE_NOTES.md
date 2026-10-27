@@ -5,7 +5,7 @@ Changes since 0.3.2.
 ## What's new
 
 - **Video library.** Organize Videos → Scenes → Shots in folders, play scenes sequentially on cards or in a popout, and apply shared prompts and timed music/video references. Split a complete song into scenes; timeline clips remain individual scenes.
-- **Music export.** Select and preview songs in Export, then save WAV, AAC/M4A or Opus/WebM/Ogg with device-supported encoders, bitrate controls and background export.
+- **Music export.** Preview and export WAV, MP3, lossless FLAC, AAC/M4A or Opus/WebM/Ogg, with bitrate controls and background export. MP3/FLAC use bundled Mediabunny encoders.
 - **Single Shot.** Generate a short ending first, then anchor a continuous shot to it. Supports references in both prompts and optional continuation from any generated scene.
 - **Music.** YuE2 and MiniMax Music3 generation with folders, drag-and-drop organization, grid/list views, background playback, references and timeline audio. Playback appears in the Music tab and pauses when Timeline, Video or Export playback starts. YuE2 selects BF16 above 8 GiB VRAM, otherwise INT8.
 - **Motions.** Create JavaScript animations with the agent, edit elements and parameters, and export them on the timeline or as reference videos.

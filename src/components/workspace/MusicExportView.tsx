@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import type { ProjectConfig } from "../../lib/project";
 import { isTauri, readMediaFileUrl } from "../../lib/persistence";
-import { MUSIC_EXPORT_BITRATES, MUSIC_EXPORT_FORMATS, musicExportSongs, musicExportSupport, type MusicExportFormat, type MusicExportSettings } from "../../lib/musicExport";
+import { MUSIC_EXPORT_BITRATES, MUSIC_EXPORT_FORMATS, musicExportSongs, musicExportSupport, musicExportUsesBitrate, type MusicExportFormat, type MusicExportSettings } from "../../lib/musicExport";
 import { cancelExportJob, dismissExportOutcome, exportFraction, isExportActive, startMusicExportJob, useExportJob } from "../../lib/exportJob";
 import { ComboBox, EmptyState, InfoBar, ProgressBar, PropRow, PropSection, Splitter, usePaneSize } from "../ui";
 import { Audio16 } from "../ui/icons";
@@ -90,7 +90,7 @@ export function MusicExportView({ config, folderPath }: { config: ProjectConfig;
               onChange={(format) => choose({ format: format as MusicExportFormat })}
               options={MUSIC_EXPORT_FORMATS.map(({ value, label }) => ({ value, label, disabled: support[value] !== true,
                 description: support[value] === false ? "Unavailable on this device" : support[value] === undefined ? "Checking support…" : undefined }))} /></PropRow>
-            {settings.format !== "wav" && <PropRow label="Bitrate" htmlFor="music-export-bitrate"><ComboBox id="music-export-bitrate" value={String(settings.bitrate)} options={MUSIC_EXPORT_BITRATES} disabled={choosing} onChange={(value) => choose({ bitrate: Number(value) })} /></PropRow>}
+            {musicExportUsesBitrate(settings.format) && <PropRow label="Bitrate" htmlFor="music-export-bitrate"><ComboBox id="music-export-bitrate" value={String(settings.bitrate)} options={MUSIC_EXPORT_BITRATES} disabled={choosing} onChange={(value) => choose({ bitrate: Number(value) })} /></PropRow>}
             <PropRow label="Sample rate"><span>48 kHz</span></PropRow>
           </PropSection>
           <div className="export-messages">

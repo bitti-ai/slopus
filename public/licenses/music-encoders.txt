@@ -1,0 +1,17 @@
+Music encoder notices
+
+MP3 and FLAC encoding use the unmodified @mediabunny/mp3-encoder and
+@mediabunny/flac-encoder packages, version 1.62.1, by Vanilagy.
+License: Mozilla Public License 2.0 (see mediabunny-MPL-2.0.txt).
+Source, bridge code and WebAssembly build instructions:
+https://github.com/Vanilagy/mediabunny/tree/v1.62.1/packages/mp3-encoder
+https://github.com/Vanilagy/mediabunny/tree/v1.62.1/packages/flac-encoder
+
+The MP3 encoder includes LAME 3.100, licensed under the GNU Library General
+Public License version 2 or later (see lame-LGPL-2.0.txt).
+Thanks to the LAME project: https://lame.sourceforge.io/
+Source: https://sourceforge.net/projects/lame/files/lame/3.100/
+
+The FLAC encoder includes libFLAC, licensed under the BSD 3-Clause license
+(see libFLAC-BSD-3-Clause.txt).
+Source: https://github.com/xiph/flac

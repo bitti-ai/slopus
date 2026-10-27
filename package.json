@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@fluentui/react-icons": "^2.0.343",
+    "@mediabunny/flac-encoder": "^1.62.1",
+    "@mediabunny/mp3-encoder": "^1.62.1",
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "@tauri-apps/plugin-process": "^2.3.1",
