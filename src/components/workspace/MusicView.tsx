@@ -4,8 +4,9 @@ import { isTauri, readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateSupportsMusic, templateUsable, generatorPathFields, type GeneratorTemplate } from "../../lib/settings";
 import { musicSettingsForModel, moveSong, newMusicFolder, newSong, newSongVariation, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
-import { ComboBox, CommandBarButton, InfoBar, ProgressBar, ProgressRing, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
-import { Add16, Audio16, Delete16, Edit16, FolderAdd16, FolderOpen16, GoToEnd16, GoToStart16, GridView16, ListView16, Pause16, Play16, References16, Speaker14, Sparkle16, Stop14 } from "../ui/icons";
+import { ComboBox, CommandBarButton, InfoBar, ProgressBar, ProgressRing, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
+import { Add16, Audio16, Delete16, Edit16, FolderAdd16, FolderOpen16, GridView16, ListView16, Pause16, Play16, References16, Sparkle16, Stop14 } from "../ui/icons";
+import { MusicPlaybackControls } from "./MusicPlaybackControls";
 import { generatorOptions } from "../generatorOptions";
 import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
 import type { ConfigUpdate } from "./TimelineView";
@@ -325,12 +326,10 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
         {selected?.error && <span>{selected.error}</span>}
       </div>}
       <div className="music-player" aria-label="Music player">
-        <div className="music-player__now"><Audio16 /><div><strong>{playerAsset?.name ?? "No song playing"}</strong><span>{playing ? "Playing" : playerAsset ? "Paused" : "Choose a generated song"}</span></div></div>
-        <div className="music-player__transport">
-          <div className="music-player__buttons"><button type="button" className="icon-button" aria-label="Previous song" disabled={!playable.length} onClick={() => move(-1)}><GoToStart16 /></button><button type="button" className="music-player__toggle primary-button" aria-label={playing ? "Pause music" : "Play music"} disabled={!playable.length && !playerAsset} onClick={toggle}>{playing ? <Pause16 /> : <Play16 />}</button><button type="button" className="icon-button" aria-label="Next song" disabled={!playable.length} onClick={() => move(1)}><GoToEnd16 /></button></div>
-          <div className="music-player__seek"><span>{time(position)}</span><Slider aria-label="Song playback position" min={0} max={length || 1} step={0.1} value={position} disabled={!url || !length} onChange={(value) => { if (audio.current) audio.current.currentTime = value; setPosition(value); }} /><span>{time(length)}</span></div>
-        </div>
-        <div className="music-player__volume"><Speaker14 /><Slider aria-label="Music volume" min={0} max={1} step={0.01} value={volume} onChange={setVolume} /></div>
+        <MusicPlaybackControls title={playerAsset?.name} playing={playing} position={position} duration={length} volume={volume}
+          canPlay={Boolean(playable.length || playerAsset)} canNavigate={Boolean(playable.length)} canSeek={Boolean(url && length)}
+          onToggle={toggle} onPrevious={() => move(-1)} onNext={() => move(1)} onVolume={setVolume}
+          onSeek={(value) => { if (audio.current) audio.current.currentTime = value; setPosition(value); }} />
         {playbackError && <p className="music-player__error" role="alert">{playbackError}</p>}
         <audio ref={audio} src={url ?? undefined} preload="metadata" onPlay={() => { if (interrupted.current) audio.current?.pause(); else setPlaying(true); }} onPause={() => setPlaying(false)}
           onLoadedMetadata={(event) => { const duration = event.currentTarget.duration; setLength(Number.isFinite(duration) ? duration : 0); }}

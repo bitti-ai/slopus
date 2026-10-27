@@ -6,6 +6,7 @@ import { MUSIC_EXPORT_BITRATES, MUSIC_EXPORT_FORMATS, musicExportSongs, musicExp
 import { cancelExportJob, dismissExportOutcome, exportFraction, isExportActive, startMusicExportJob, useExportJob } from "../../lib/exportJob";
 import { ComboBox, EmptyState, InfoBar, ProgressBar, PropRow, PropSection, Splitter, usePaneSize } from "../ui";
 import { Audio16 } from "../ui/icons";
+import { MusicPlaybackControls } from "./MusicPlaybackControls";
 
 const STORAGE_KEY = "slopus.music-export.v1";
 function loadPreferences(): MusicExportSettings {
@@ -27,6 +28,11 @@ export function MusicExportView({ config, folderPath }: { config: ProjectConfig;
   const [error, setError] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement>(null);
+  const playWhenReady = useRef(false);
+  const [playing, setPlaying] = useState(false);
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(0.8);
   const job = useExportJob(folderPath, "music");
   const active = isExportActive(job);
   const choose = (patch: Partial<MusicExportSettings>) => {
@@ -42,14 +48,31 @@ export function MusicExportView({ config, folderPath }: { config: ProjectConfig;
   useEffect(() => {
     let disposed = false, owned: string | null = null;
     const player = audio.current;
-    player?.pause(); setUrl(null); setError(null);
+    player?.pause(); setPlaying(false); setPosition(0); setDuration(0); setUrl(null); setError(null);
     if (selected) void readMediaFileUrl(folderPath, selected.asset, selected.asset.mimeType ?? "audio/wav").then((value) => {
       if (disposed) { if (value) URL.revokeObjectURL(value); return; }
       owned = value; setUrl(value);
-      if (!value) setError("This song's audio file is unavailable.");
-    }).catch((reason) => { if (!disposed) setError(String(reason)); });
+      if (!value) { playWhenReady.current = false; setError("This song's audio file is unavailable."); }
+    }).catch((reason) => { if (!disposed) { playWhenReady.current = false; setError(String(reason)); } });
     return () => { disposed = true; player?.pause(); if (owned) URL.revokeObjectURL(owned); };
   }, [folderPath, selected?.asset.id, selected?.asset.relativePath]);
+  useEffect(() => { if (audio.current) audio.current.volume = volume; }, [volume, url]);
+  const play = async () => {
+    const player = audio.current;
+    const source = player?.src;
+    try { await player?.play(); }
+    catch (reason) {
+      if (player && audio.current === player && player.src === source) { setPlaying(false); setError(`Could not play song: ${String(reason)}`); }
+    }
+  };
+  const move = (direction: number, wrap = true) => {
+    const index = songs.findIndex(({ song }) => song.id === selected?.song.id);
+    if (index < 0 || (!wrap && index + direction >= songs.length)) return;
+    const next = songs[(index + direction + songs.length) % songs.length];
+    if (next.song.id === selected?.song.id) {
+      if (audio.current && url) { audio.current.currentTime = 0; setPosition(0); void play(); }
+    } else { playWhenReady.current = true; setSelectedId(next.song.id); }
+  };
   const blocker = !selected ? "Generate a song in Music before exporting."
     : !isTauri() ? "Exporting is available in the Slopus desktop app."
       : support[settings.format] === undefined ? "Checking available audio formats…"
@@ -72,7 +95,7 @@ export function MusicExportView({ config, folderPath }: { config: ProjectConfig;
         <div className="music-export-library">
           {songs.length ? <div className="music-songs music-songs--list" role="list" aria-label="Songs to export">
             {songs.map(({ song, asset, label }) => <div role="listitem" key={song.id} className={`music-song music-song--playable${selected?.song.id === song.id ? " music-song--selected" : ""}`}>
-              <button type="button" className="music-song__select" aria-label={`Export song ${label}`} aria-pressed={selected?.song.id === song.id} onClick={() => setSelectedId(song.id)}>
+              <button type="button" className="music-song__select" aria-label={`Export song ${label}`} aria-pressed={selected?.song.id === song.id} onClick={() => { playWhenReady.current = false; setSelectedId(song.id); }}>
                 <span className="music-song__art" aria-hidden="true"><Audio16 /></span>
                 <span className="music-song__info"><strong>{label}</strong><span>{song.style}</span></span>
                 <span className="music-song__status">{((asset.durationMs ?? 0) / 1000).toFixed(1)} s</span>
@@ -80,7 +103,20 @@ export function MusicExportView({ config, folderPath }: { config: ProjectConfig;
             </div>)}
           </div> : <EmptyState icon={<Audio16 />} title="No music to export yet" description="Generate a song in the Music tab first." />}
         </div>
-        {selected && <div className="music-export-player"><span>{selected.song.title}</span><audio ref={audio} aria-label="Music export playback" controls src={url ?? undefined} preload="metadata" onError={() => { if (url) setError("This song could not be played."); }} /></div>}
+        {selected && <div className="music-player" aria-label="Music player">
+          <MusicPlaybackControls title={selected.song.title} playing={playing} position={position} duration={duration} volume={volume}
+            canPlay={Boolean(url)} canNavigate={Boolean(songs.length)} canSeek={Boolean(url && duration)}
+            onToggle={() => { if (playing) audio.current?.pause(); else void play(); }}
+            onPrevious={() => move(-1)} onNext={() => move(1)} onVolume={setVolume}
+            onSeek={(value) => { if (audio.current) audio.current.currentTime = value; setPosition(value); }} />
+          <audio ref={audio} aria-label="Music export playback" src={url ?? undefined} preload="metadata"
+            onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+            onLoadedMetadata={(event) => { const length = event.currentTarget.duration; setDuration(Number.isFinite(length) ? length : 0); }}
+            onCanPlay={() => { if (playWhenReady.current) { playWhenReady.current = false; void play(); } }}
+            onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)}
+            onEnded={() => { setPlaying(false); move(1, false); }}
+            onError={() => { if (url) { playWhenReady.current = false; setPlaying(false); setError("This song could not be played."); } }} />
+        </div>}
       </section>
       <Splitter {...pane.splitterProps} reverse aria-label="Resize export settings" aria-controls="music-export-settings" />
       <section id="music-export-settings" className="export-settings" aria-label="Export settings">
