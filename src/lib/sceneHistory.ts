@@ -144,6 +144,7 @@ export function duplicateScene(config: ProjectConfig, sceneId: string): { config
   const id = `job-${crypto.randomUUID()}`;
   const base = createDraftGenerationJob("", { id, title: `${source.title} copy` });
   const job = applyInput(base, { ...sceneInput(source), title: `${source.title} copy`,
+    ...(source.sceneType === "long-shot" ? { sceneType: "prompt" as const } : {}),
     shots: sceneShots(source).map(shot => ({ ...structuredClone(shot), id: `shot-${crypto.randomUUID()}` })) });
   const index = config.generationJobs.indexOf(source);
   return { id, config: { ...config, generationJobs: [...config.generationJobs.slice(0, index + 1), job, ...config.generationJobs.slice(index + 1)] } };

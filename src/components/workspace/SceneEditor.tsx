@@ -273,7 +273,6 @@ const SCENE_TYPES: { value: SceneType; label: string }[] = [
   { value: "single-shot", label: "Single Shot" },
   { value: "first-last-frame", label: "First & last frame" },
   { value: "backdrop", label: "Backdrop" },
-  { value: "long-shot", label: "Long Shot" },
   { value: "continue", label: "Continue" },
   { value: "animate", label: "Animate" },
   { value: "pose", label: "Pose" },
@@ -302,7 +301,7 @@ const SCENE_TYPE_DESCRIPTIONS: Record<SceneType, string> = {
   "single-shot": "Generate an ending first, then a continuous shot guided by that ending and an optional starting scene.",
   "first-last-frame": "Generate video guided by optional start and last images, with shot descriptions controlling the action.",
   backdrop: "Generate subjects and action against a solid green, blue, black or white background for keying.",
-  "long-shot": "Build a longer continuous sequence by generating clips and connecting them. Generate all handles the required order.",
+  "long-shot": "Legacy scene type. Use Bridge to connect videos in new scenes.",
   continue: "Continue a previously generated scene from its saved beginning or ending, with adjustable overlap.",
   animate: "Animate a repainted frame using a reference video's motion. Requires an Animate generator; output is limited to 14.375 seconds.",
   pose: "Use a reference video's body poses, movement and timing while prompts and references define the subject and setting.",
@@ -363,9 +362,9 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
 
   return <section className="scene-inspector" aria-label="This scene">
     <div role="region" aria-label="Scene" className="scene-settings">
-      <PropSection title="Scene" persistKey="generator.scene" summary={SCENE_TYPES.find((type) => type.value === sceneType)?.label}>
+      <PropSection title="Scene" persistKey="generator.scene" summary={SCENE_TYPES.find((type) => type.value === sceneType)?.label ?? "Long Shot (legacy)"}>
         <PropRow label="Scene type" htmlFor={`${id}-type`} tooltip={SCENE_TYPE_DESCRIPTIONS[sceneType]}>
-          <ComboBox id={`${id}-type`} aria-label="Scene type" value={sceneType} disabled={disabled} options={SCENE_TYPES}
+          <ComboBox id={`${id}-type`} aria-label="Scene type" value={sceneType} disabled={disabled} options={SCENE_TYPES} placeholder="Long Shot (legacy)"
             onChange={(value) => onChange({ sceneType: value as SceneType, usePreviousSceneLastFrame: undefined,
               ...(value === "animate" ? { endFrameReferenceId: undefined } : {}) })} />
         </PropRow>
@@ -382,11 +381,12 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
           <SingleShotEndingPrompt job={job} references={references} folderPath={folderPath} disabled={disabled} onChange={onChange} />
         </>}
         {longShot && <>
+          <p className="prop-caption">Long Shot is retained for this saved scene. Use Bridge to connect videos in new scenes.</p>
           <p className="prop-caption">{longShot.continuation
-            ? `Continue from ${longShot.left?.title ?? "the previous scene"}. Generate all completes the preceding scenes first. Adding a following Long Shot scene turns this scene into a bridge.`
+            ? `Continue from ${longShot.left?.title ?? "the previous scene"}. Generate all completes the preceding scenes first.`
             : longShot.bridge
-            ? `Bridge between ${longShot.left?.title ?? "the previous scene"} and ${longShot.right?.title ?? "a following Long Shot scene (add one first)"}. Both neighbors must be generated first. Generate all handles this order.`
-            : "Generate a fresh clip. The next Long Shot scene bridges this clip to the following fresh clip."}</p>
+            ? `Bridge between ${longShot.left?.title ?? "the previous scene"} and ${longShot.right?.title ?? "the following scene"}. Both neighbors must be generated first. Generate all handles this order.`
+            : "Generate a fresh anchor for the saved sequence."}</p>
           {longShot.bridge && ([['bridgeLeftMargin', 'Edit previous ending'], ['bridgeRightMargin', 'Edit following beginning']] as const).map(([key, label]) =>
             <PropRow key={key} label={label} htmlFor={`${id}-${key}`} tooltip="Frames regenerated along with the bridge, at 24 fps. Zero preserves the anchor latents. The joined decode updates playback for both neighbors.">
               <ComboBox id={`${id}-${key}`} aria-label={label} disabled={disabled} value={String(job[key] ?? 17)}

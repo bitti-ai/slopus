@@ -467,6 +467,7 @@ export const SCENE_MIN_SECONDS = 0;
  *  length is read as — the length every shot has always been generated at. */
 export const DEFAULT_SCENE_SECONDS = 6;
 
+// Keep long-shot readable for saved projects and generation history; new scenes use Bridge instead.
 export const sceneTypeSchema = z.enum(["prompt", "single-shot", "first-last-frame", "continue", "animate", "pose", "character-replace", "extend", "bridge", "backdrop", "long-shot"]);
 export type SceneType = z.infer<typeof sceneTypeSchema>;
 export const DEFAULT_CONTINUATION_OVERLAP = 22;

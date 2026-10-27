@@ -184,18 +184,23 @@ it.each(["queued", "generating", "ready", "draft", "failed"] as const)("allows S
   expect(submitted.mock.calls[0][0][0].request.previousSceneId).toBe("start");
 });
 
-it("persists Long Shot boundary controls and inherits the scene type for new scenes", () => {
+it("preserves saved Long Shot controls but offers Bridge and creates new Prompt scenes", () => {
   const initial = project();
   initial.generationJobs.push(createDraftGenerationJob("Keep walking", { id: "third" }));
   initial.generationJobs.forEach((job) => { job.sceneType = "long-shot"; });
   const state = setup(initial);
   fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
+  const picker = screen.getByRole("combobox", { name: "Scene type" });
+  expect(picker).toHaveTextContent("Long Shot (legacy)");
+  const options = optionNames(picker);
+  expect(options).not.toContain("Long Shot");
+  expect(options).toContain("Bridge");
   choose("Edit previous ending", "34 frames (1.42 s)");
   choose("Edit following beginning", "0 frames (0.00 s)");
   expect(state.latest().generationJobs[1]).toMatchObject({ sceneType: "long-shot", bridgeLeftMargin: 34, bridgeRightMargin: 0 });
   expect(screen.queryByLabelText("Start frame for this scene")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Add scene" }));
-  expect(state.latest().generationJobs.at(-1)?.sceneType).toBe("long-shot");
+  expect(state.latest().generationJobs.at(-1)?.sceneType).toBe("prompt");
 });
 
 it.each([2, 4, 6])("queues every scene in a %s-scene Long Shot, ending with a continuation", (count) => {

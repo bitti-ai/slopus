@@ -218,7 +218,10 @@ diagnostic getter failure logs a warning without discarding generated media.
 Both bundled runtimes include the new getter. Restart/rebuild the running app
 to load the new library and logging code.
 
-## API 1.26: Long Shot latent bridges
+## API 1.26: legacy Long Shot latent bridges
+
+Long Shot is no longer offered for new scenes; use Bridge instead. This support
+remains for saved projects and their generated media.
 
 Consecutive **Long Shot** scenes alternate fresh anchors and bridges. Generate
 all queues 1, 3, 2, 5, 4, 7, 6. A bridge requires completed neighbors with saved

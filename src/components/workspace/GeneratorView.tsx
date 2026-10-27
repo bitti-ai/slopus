@@ -367,7 +367,7 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
      references already named by its shots. */
   const newScene = () => {
     const job = createDraftGenerationJob("", { steps: defaultGenerationSteps,
-      sceneType: selectedTemplate.mode === "animate" ? "animate" : selected?.sceneType === "single-shot" ? "single-shot" : selected?.sceneType === "long-shot" ? "long-shot" : "prompt" });
+      sceneType: selectedTemplate.mode === "animate" ? "animate" : selected?.sceneType === "single-shot" ? "single-shot" : "prompt" });
     onChange({ ...config, generationJobs: [...config.generationJobs, job] });
     setSelection({ jobId: job.id, shotId: null });
   };

@@ -115,11 +115,13 @@ describe("scene generation history", () => {
     history.versions.push({ ...history.versions[0], id: "future" });
     expect(parseProjectConfig(JSON.parse(JSON.stringify(config))).generationJobs[0].generationHistory!.versions).toHaveLength(5);
   });
-  it("duplicates inputs and shots with fresh identity and no output or generation history", () => {
+  it.each(["prompt", "long-shot"] as const)("duplicates %s inputs as a Prompt scene with fresh identity and no output or history", (sceneType) => {
     const config = finish(edit(initial(), "First"), "one");
+    config.generationJobs[0].sceneType = sceneType;
     const duplicated = duplicateScene(config, config.generationJobs[0].id)!;
     const original = config.generationJobs[0], copy = duplicated.config.generationJobs[1];
-    expect(copy).toMatchObject({ title: `${original.title} copy`, music: "First", steps: 4, seed: 10, status: "draft" });
+    expect(copy).toMatchObject({ title: `${original.title} copy`, music: "First", steps: 4, seed: 10, status: "draft", sceneType: "prompt" });
+    expect(original.sceneType).toBe(sceneType);
     expect(copy.id).not.toBe(original.id); expect(copy.shots![0].id).not.toBe(original.shots![0].id);
     expect(copy.outputRelativePath).toBeFalsy(); expect(copy.generationHistory).toBeUndefined(); expect(copy.clipId).toBeFalsy();
     copy.shots![0].action = "Changed"; expect(original.shots![0].action).toBe("First");

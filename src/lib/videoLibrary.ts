@@ -43,7 +43,7 @@ export function videoGuidedScene(job: GenerationJob, config: ProjectConfig): { j
   const guidance: string[] = video.prompt.trim() ? [video.prompt.trim()] : [];
   let blocker: string | null = null;
   if ((video.musicSource || video.videoSource) && ["animate", "character-replace", "extend", "bridge"].includes(job.sceneType ?? "")) {
-    blocker = "Video-level references require a Prompt, Single Shot, Continue, First & Last Frame, Backdrop, Pose or Long Shot scene.";
+    blocker = "Video-level references require a Prompt, Single Shot, Continue, First & Last Frame, Backdrop or Pose scene.";
   }
   for (const kind of ["audio", "video"] as const) {
     const chosen = kind === "audio" ? video.musicSource : video.videoSource;
