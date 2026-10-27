@@ -131,9 +131,24 @@ function abandon(file: string, result: PosterResult) {
   queue?.forEach((waiting) => waiting.settle(result));
 }
 
+/** loadeddata can precede a drawable frame in Chromium. Subscribe before loading
+ * or seeking so a paused video presents its exact opening/cut frame first. */
+function presentedFrame(video: HTMLVideoElement) {
+  let finish = () => {};
+  const ready = new Promise<void>((resolve) => {
+    if (typeof video.requestVideoFrameCallback !== "function") { resolve(); return; }
+    let callback = 0;
+    const timer = window.setTimeout(() => finish(), SEEK_LIMIT_MS);
+    finish = () => { window.clearTimeout(timer); video.cancelVideoFrameCallback(callback); resolve(); };
+    callback = video.requestVideoFrameCallback(() => finish());
+  });
+  return { ready, cancel: () => finish() };
+}
+
 async function drain(folderPath: string, relativePath: string, file: string): Promise<void> {
   const video = document.createElement("video");
   let url: string | null = null;
+  let presentation: ReturnType<typeof presentedFrame> | undefined;
   try {
     url = await readMediaFileUrl(folderPath, { relativePath }, "video/mp4");
     // Browser preview: there is no project folder, so there is nothing to show
@@ -146,8 +161,10 @@ async function drain(folderPath: string, relativePath: string, file: string): Pr
     video.muted = true;
     video.preload = "auto";
     video.playsInline = true;
+    presentation = presentedFrame(video);
     video.src = url;
     await settled(video, "loadeddata");
+    await presentation.ready;
     /* Drained rather than iterated: a card that mounts while the file is open
        joins this same pass instead of opening it a second time. */
     for (;;) {
@@ -165,10 +182,12 @@ async function drain(folderPath: string, relativePath: string, file: string): Pr
       const target = Math.min(Math.max(next.seconds, 0), end);
       if (Math.abs(video.currentTime - target) > 0.01) {
         const seek = settled(video, "seeked");
+        presentation = presentedFrame(video);
         video.currentTime = target;
         // A seek that fails costs this frame its offset and nothing else —
         // whatever the decoder is holding is still a frame of this scene.
         await orGiveUp(seek, SEEK_LIMIT_MS);
+        await presentation.ready;
       }
       const poster = tryDraw(video);
       if (poster) {
@@ -182,6 +201,7 @@ async function drain(folderPath: string, relativePath: string, file: string): Pr
     UNREADABLE.add(file);
     abandon(file, BROKEN);
   } finally {
+    presentation?.cancel();
     release(video);
     if (url) URL.revokeObjectURL(url);
     OPEN.delete(file);

@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProjectConfig, parseProjectConfig, sceneShots, type GenerationJob } from "../../lib/project";
-import { ShotThumbnail } from "./ShotThumbnail";
+import { ShotThumbnail, shotPoster } from "./ShotThumbnail";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -100,6 +100,25 @@ const rendered = (folder: string): GenerationJob => {
 };
 
 describe("a shot's picture", () => {
+  it("waits for the first presented frame before drawing the thumbnail", async () => {
+    const prototype = HTMLVideoElement.prototype;
+    const originalRequest = prototype.requestVideoFrameCallback, originalCancel = prototype.cancelVideoFrameCallback;
+    let present: VideoFrameRequestCallback | undefined;
+    prototype.requestVideoFrameCallback = (callback) => { present = callback; return 1; };
+    prototype.cancelVideoFrameCallback = vi.fn();
+    try {
+      await withFakeFile({ seconds: 10 }, async seen => {
+        const pending = shotPoster("C:/Presented first frame", "media/first.mp4", 0);
+        await waitFor(() => expect(present).toBeTypeOf("function"));
+        expect(seen.posters()).toHaveLength(0);
+        present!(0, {} as VideoFrameCallbackMetadata);
+        expect((await pending).poster).toContain("frame-0");
+        expect(seen.posters()).toHaveLength(1);
+      });
+    } finally {
+      prototype.requestVideoFrameCallback = originalRequest; prototype.cancelVideoFrameCallback = originalCancel;
+    }
+  });
   it("pops a shot into the board, respects its source offset and cut, and replays without reopening the file", async () => {
     const folder = "C:\\Popout shot replay", job = rendered(folder);
     await withFakeFile({ seconds: 20 }, async seen => {
