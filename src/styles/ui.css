@@ -438,23 +438,25 @@
    ========================================================================== */
 
 .ui-splitter {
+  --splitter-hover-delay: 400ms;
   position: relative;
   z-index: 2;
   flex: none;
   touch-action: none;
   outline-offset: -2px;
+  cursor: default;
 }
 
 .ui-splitter--vertical {
   width: 4px;
   align-self: stretch;
-  cursor: col-resize;
+  --splitter-cursor: col-resize;
 }
 
 .ui-splitter--horizontal {
   height: 4px;
   justify-self: stretch;
-  cursor: row-resize;
+  --splitter-cursor: row-resize;
 }
 
 .ui-splitter::before {
@@ -497,12 +499,24 @@
   height: 2px;
 }
 
-/* Passing over the line should not light it: the hover accent waits 400ms,
-   so it only shows when the pointer rests there. Leaving clears it at once,
-   and a drag or keyboard focus shows it immediately. The resize cursor still
-   appears straight away. */
+/* The line and resize cursor share a hover delay. Leaving clears them at once;
+   dragging or keyboard focus shows both immediately. */
 .ui-splitter:hover::before {
-  transition-delay: 400ms;
+  transition-delay: var(--splitter-hover-delay);
+}
+
+.ui-splitter:hover {
+  animation: splitter-resize-cursor 0s var(--splitter-hover-delay) forwards;
+}
+
+@keyframes splitter-resize-cursor {
+  to { cursor: var(--splitter-cursor); }
+}
+
+.ui-splitter.ui-splitter--dragging,
+.ui-splitter:focus-visible {
+  animation: none;
+  cursor: var(--splitter-cursor);
 }
 
 /* none, not a zero delay: it also cancels a hover delay still pending when
@@ -513,6 +527,7 @@
 }
 
 .ui-splitter[aria-disabled="true"] {
+  animation: none;
   cursor: default;
 }
 
