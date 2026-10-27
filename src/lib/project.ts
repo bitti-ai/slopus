@@ -691,12 +691,24 @@ export const providerSettingSchema = z.object({
 });
 export const providerSettingsSchema = z.record(idSchema, providerSettingSchema);
 
+export const videoSourceSchema = z.object({ kind: z.enum(["asset", "reference"]), id: idSchema });
+export const projectVideoSchema = z.object({
+  id: idSchema, title: z.string().min(1).max(200), folderId: idSchema.nullish(),
+  sceneIds: z.array(idSchema).default([]), prompt: z.string().max(30000).default(""),
+  musicSource: videoSourceSchema.nullish(), videoSource: videoSourceSchema.nullish(),
+  createdAt: isoDateSchema,
+});
+export type ProjectVideo = z.infer<typeof projectVideoSchema>;
+export type VideoSource = z.infer<typeof videoSourceSchema>;
+
 export const projectConfigSchema = z.object({
   schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
   generationType: generationTypeSchema.default("video"),
   imageScene: imageSceneSchema.nullish(),
   musicSongs: z.array(musicSongSchema).optional(),
   musicFolders: z.array(musicFolderSchema).optional(),
+  videos: z.array(projectVideoSchema).optional(),
+  videoFolders: z.array(musicFolderSchema).optional(),
   imageSettings: z.object({
     resolution: resolutionSchema,
     aspectRatio: aspectRatioSchema,
@@ -1202,6 +1214,18 @@ export function sceneDurationSeconds(job: GenerationJob): number {
   const stored = job.durationSeconds;
   if (stored === null || stored === undefined) return DEFAULT_SCENE_SECONDS;
   return Math.min(SCENE_MAX_SECONDS, Math.max(SCENE_MIN_SECONDS, stored));
+}
+
+/** Ordered neighbors belong to one Video; explicit continuation links remain project-wide. */
+export function sceneSiblings(job: GenerationJob, config: Pick<ProjectConfig, "videos" | "generationJobs">): GenerationJob[] {
+  if (!config.videos?.length) return config.generationJobs;
+  const assigned = new Set(config.videos.flatMap((video) => video.sceneIds));
+  const owner = config.videos.find((video) => video.sceneIds.includes(job.id))
+    ?? (!assigned.has(job.id) ? config.videos.find((video) => video.id === "video-default") : undefined);
+  const unassigned = config.generationJobs.filter((scene) => !assigned.has(scene.id));
+  if (!owner) return unassigned;
+  const members = owner.sceneIds.flatMap((id) => { const scene = config.generationJobs.find((scene) => scene.id === id); return scene ? [scene] : []; });
+  return owner.id === "video-default" ? [...members, ...unassigned] : members;
 }
 
 export function sceneGenerationSteps(job: GenerationJob, fallback = DEFAULT_GENERATION_STEPS): number {

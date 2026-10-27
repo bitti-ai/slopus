@@ -1,0 +1,25 @@
+.video-library-view { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
+.video-library-body { display: grid; grid-template-columns: minmax(180px, 1fr) auto minmax(280px, var(--pane-video-inspector)); min-height: 0; }
+.video-library-stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.video-library-stage > .music-library { height: 100%; box-sizing: border-box; }
+.video-library-body > .ui-splitter { grid-column: 2; }
+.video-library-body > .music-inspector { grid-row: 1; }
+.video-scenes { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.video-scenes > .generator-view { flex: 1; min-height: 0; height: auto; }
+.video-scenes__path { flex: none; }
+.video-scenes__path strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.video-scenes__path span, .video-reference-help { color: var(--text-secondary); font-size: var(--text-xs); }
+.video-reference-range { display: block; margin-block: var(--space-1); }
+.video-card { overflow: hidden; }
+.video-card > .music-song__select { height: auto; padding-bottom: 44px; }
+.video-card .music-song__art { aspect-ratio: 16 / 9; }
+.video-card__open { position: absolute; bottom: var(--space-2); right: var(--space-2); }
+.video-card__controls { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); display: flex; gap: var(--space-2); }
+.video-card__controls button { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #ffffff80; border-radius: 50%; background: #15191fe6; color: #fff; box-shadow: 0 1px 6px #0008; }
+.video-card__controls button:hover { background: #363d48; }
+.video-card__player { position: absolute; inset: 0; background: #000; z-index: 2; }
+.video-card__player video { width: 100%; height: 100%; object-fit: contain; }
+.video-card__position { position: absolute; left: var(--space-2); top: var(--space-2); color: #fff; background: #000b; padding: 2px 5px; font-size: var(--text-xs); pointer-events: none; max-width: 70%; }
+.music-songs--list .video-card > .music-song__select { padding-bottom: var(--space-3); padding-right: 190px; min-height: 70px; }
+.music-songs--list .video-card__controls { top: 50%; left: auto; right: 100px; transform: translateY(-50%); }
+.music-songs--list .video-card__open { bottom: 50%; transform: translateY(50%); }

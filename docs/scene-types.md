@@ -1,5 +1,11 @@
 # Scene types
 
+Videos contain ordered Scenes, which contain Shots. The Video library supports folders, grid/list views and sequential card or popout playback. Open a Video to edit its scenes; each scene remains separate in Timeline. Existing projects open with their scenes grouped in a default Video.
+
+Video settings provide a shared prompt with reference chips, background music and a reference video. Each scene receives the reference range at its cumulative start time: a 10-second first scene uses 0–10 seconds, and the next starts at 10 seconds. Imported/generated media uses the complete asset; reference entries use their saved trim range. Reordering or resizing scenes updates these ranges for the next generation. A source that ends too early blocks generation.
+
+For a music video, select a complete song on an empty Video and choose **Create scenes for song** to divide its full duration into roughly 10-second scenes. Add visual direction and an image reference to the shared prompt, or select a reference video: SlopFab sound references need visual conditioning and References/Singularity weights. Music guides generated audio; add the original song to Timeline when you want its exact soundtrack. Shared media references support Prompt, Single Shot, Continue, First & Last Frame, Backdrop, Pose and Long Shot scenes; each scene must last at least two seconds.
+
 The Scene panel saves a type on each scene:
 
 - **Prompt** is the default for ordinary video scenes. It supports shot descriptions, speech, Look, sound, music and references cited in prompts, without start- or last-frame selectors. Stored frame anchors and continuation links are inactive.

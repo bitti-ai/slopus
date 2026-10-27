@@ -18,3 +18,4 @@ pub(crate) mod reference_tokens;
 
 pub(crate) mod motion;
 pub(crate) mod music;
+pub(crate) mod video;

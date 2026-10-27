@@ -15,7 +15,7 @@ vi.mock("../lib/persistence", async (original) => ({ ...await original<typeof im
   readMediaFileUrl: vi.fn(async (_, asset) => `blob:${asset.relativePath}`),
 }));
 // Exercise workspace media-event routing, including React portals used by shot popouts.
-vi.mock("./workspace/GeneratorView", () => ({ GeneratorView: () => <><video aria-label="Shot" />{createPortal(<video aria-label="Popout" />, document.body)}</> }));
+vi.mock("./workspace/VideoLibraryView", () => ({ VideoLibraryView: () => <><video aria-label="Shot" />{createPortal(<video aria-label="Popout" />, document.body)}</> }));
 vi.mock("./workspace/TimelineView", () => ({ TimelineView: () => <audio aria-label="Timeline preview" /> }));
 vi.mock("./workspace/ExportView", () => ({ ExportView: () => <video aria-label="Export preview" /> }));
 vi.mock("./workspace/ReferencesView", () => ({ ReferencesView: () => <div>References page</div> }));

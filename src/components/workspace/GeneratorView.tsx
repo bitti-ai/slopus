@@ -15,7 +15,7 @@ import { askNative } from "../../lib/nativeShell";
 import { ProjectStatus } from "./ProjectStatus";
 import { GeneratorSelector } from "./GeneratorSelector";
 import { CommandBar, CommandBarButton, CommandBarSeparator, ComboBox, EmptyState, ItemHeader, Splitter, tooltipProps, usePaneSize } from "../ui";
-import { shotReferenceIds, compileGenerationJobSegments, createDraftGenerationJob, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneFrameInputs, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
+import { sceneSiblings, shotReferenceIds, compileGenerationJobSegments, createDraftGenerationJob, GENERATION_FRAME_RATE, RANDOM_GENERATION_SEED, sceneDurationSeconds, sceneFrameInputs, sceneGenerationReferences, sceneGenerationSeed, sceneGenerationSnapshot, sceneShots, SCENE_MAX_SECONDS, SCENE_MIN_SECONDS, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneShot } from "../../lib/project";
 import { isTauri } from "../../lib/persistence";
 import { getEngineStatus, type SlopfabGenerationRequest, type SlopfabStatus } from "../../lib/runtime";
 import { selectedWorker } from "../../lib/workers";
@@ -27,8 +27,10 @@ import { purgeTimelineThumbnails } from "../../lib/timelineThumbnails";
 import { defaultGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateSupportsVideo, templateUsable } from "../../lib/settings";
 import { refreshDownloadedWeights } from "../../lib/weightDownloads";
 import { DebugPromptDialog } from "./DebugPromptDialog";
+import { videoGuidedScene } from "../../lib/videoLibrary";
 
 interface GeneratorViewProps {
+  sceneIds?: readonly string[];
   config: ProjectConfig;
   folderPath: string;
   runtime?: SlopfabStatus | null;
@@ -62,8 +64,8 @@ const readDensity = (): BoardDensity => {
  * The panel is whatever is open — one shot, or the scene itself. Nothing is
  * edited on the board, and nothing is duplicated in the panel: there is exactly
  * one place to change any given thing. */
-export function GeneratorView({ config, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId, onSelectedJobChange, onRuntimeChange, onGenerate, onCancelGeneration, cancellingJobIds = new Set() }: GeneratorViewProps) {
-  const jobs = config.generationJobs;
+export function GeneratorView({ config, sceneIds, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId, onSelectedJobChange, onRuntimeChange, onGenerate, onCancelGeneration, cancellingJobIds = new Set() }: GeneratorViewProps) {
+  const jobs = sceneIds ? sceneIds.flatMap((id) => { const job = config.generationJobs.find((job) => job.id === id); return job ? [job] : []; }) : config.generationJobs;
   const [selection, setSelection] = useState<GeneratorSelection>(() => ({ jobId: selectedJobId ?? jobs.find((job) => job.status === "generating")?.id ?? jobs[0]?.id ?? "", shotId: null }));
   const [templateSettings, setTemplateSettings] = useState(loadGeneratorTemplateSettings);
   const templateFor = (job?: GenerationJob) => templateSettings.templates.find(t => t.id === job?.generatorTemplateId) ?? defaultGeneratorTemplate(templateSettings, "video");
@@ -162,7 +164,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const active = jobs.filter((job) => job.status === "generating" || job.status === "ready");
   const queued = jobs.filter((job) => job.status === "queued");
   const cancellable = jobs.filter((job) => job.status === "queued" || job.status === "generating");
-  const frameInputs = useMemo(() => selected ? sceneFrameInputs(selected, config) : null, [config, selected]);
+  const frameInputs = useMemo(() => { if (!selected) return null; const guided = videoGuidedScene(selected, config); return sceneFrameInputs(guided.job, guided.config); }, [config, selected]);
   const boundRefs = frameInputs?.references ?? [];
   const runtimeReady = Boolean(selectedTemplate.id) && generatorRuntime?.state === "ready";
 
@@ -365,7 +367,7 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const newScene = () => {
     const job = createDraftGenerationJob("", { steps: defaultGenerationSteps,
       sceneType: selectedTemplate.mode === "animate" ? "animate" : selected?.sceneType === "single-shot" ? "single-shot" : selected?.sceneType === "long-shot" ? "long-shot" : "prompt" });
-    onChange({ ...config, generationJobs: [...jobs, job] });
+    onChange({ ...config, generationJobs: [...config.generationJobs, job] });
     setSelection({ jobId: job.id, shotId: null });
   };
 
@@ -378,7 +380,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     const generationJobs = current.generationJobs.filter((item) => item.id !== job.id);
     onChange({ ...current, generationJobs });
     if (selection.jobId === job.id) {
-      const fallback = generationJobs[Math.min(at, generationJobs.length - 1)];
+      const remaining = sceneIds ? generationJobs.filter((item) => sceneIds.includes(item.id)) : generationJobs;
+      const fallback = remaining[Math.min(jobs.findIndex((item) => item.id === job.id), remaining.length - 1)];
       setSelection({ jobId: fallback?.id ?? "", shotId: null });
     }
   };
@@ -413,17 +416,17 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
   const visiting = new Set<string>();
   const visitForBatch = (job: GenerationJob): boolean => {
     if (job.generatorTemplateId && !templateSettings.templates.some(t => t.id === job.generatorTemplateId) || !templateUsable(templateFor(job))) return false;
-    if (continuationBlocker(job, jobs) || longShotBlocker(job, config, false) || templateSceneBlocker(sceneTypeFor(job), templateFor(job)) || sendBlocker(job, config.references)) return false;
+    if (continuationBlocker(job, config.generationJobs) || longShotBlocker(job, config, false) || templateSceneBlocker(sceneTypeFor(job), templateFor(job)) || sendBlocker(job, config.references, config)) return false;
     if (visited.has(job.id)) return true;
     if (visiting.has(job.id)) return false;
     if (["queued", "generating", "ready"].includes(job.status)) { visited.add(job.id); return true; }
-    const previous = jobs.find((candidate) => candidate.id === continuationSceneId(job, jobs));
-    const dependencies = [...(previous ? [previous] : []), ...longShotDependencies(job, jobs)];
+    const previous = config.generationJobs.find((candidate) => candidate.id === continuationSceneId(job, config.generationJobs));
+    const dependencies = [...(previous ? [previous] : []), ...longShotDependencies(job, sceneSiblings(job, config))];
     visiting.add(job.id);
     if (dependencies.some((source) => !visitForBatch(source))) { visiting.delete(job.id); return false; }
     visiting.delete(job.id);
     visited.add(job.id);
-    const priorBridge = longShotPosition(job, jobs)?.previousBridge;
+    const priorBridge = longShotPosition(job, sceneSiblings(job, config))?.previousBridge;
     const previousWillRender = [...dependencies, ...(priorBridge ? [priorBridge] : [])].some((source) =>
       batchScenesReady.includes(source) || ["queued", "generating", "ready"].includes(source.status));
     if (previousWillRender || sceneGenerationSeed(job) === RANDOM_GENERATION_SEED || job.status !== "completed"
@@ -442,18 +445,18 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
     if (!templateUsable(templateFor(job))) return "Prepare this scene's generator weights before generating.";
     if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";
     if (job.status === "ready") return "Saving this scene.";
-    const source = jobs.find((candidate) => candidate.id === continuationSceneId(job, jobs));
-    return continuationBlocker(job, jobs)
+    const source = config.generationJobs.find((candidate) => candidate.id === continuationSceneId(job, config.generationJobs));
+    return continuationBlocker(job, config.generationJobs)
       ?? longShotBlocker(job, config)
       ?? (source && (!source.latentRelativePath || source.status !== "completed") ? "Generate the selected source scene first, or use Generate all." : null)
-      ?? templateSceneBlocker(sceneTypeFor(job), templateFor(job)) ?? sendBlocker(job, config.references);
+      ?? templateSceneBlocker(sceneTypeFor(job), templateFor(job)) ?? sendBlocker(job, config.references, config);
   };
 
   const changedJobIds = new Set(jobs
     .filter((job) => job.status === "completed"
       && Boolean(job.generationSnapshot)
       && (job.generationSnapshot !== snapshotFor(job)
-        || jobs.some((source) => (source.id === continuationSceneId(job, jobs) || longShotDependencies(job, jobs).includes(source)) && ["queued", "generating", "ready"].includes(source.status))))
+        || config.generationJobs.some((source) => (source.id === continuationSceneId(job, config.generationJobs) || longShotDependencies(job, sceneSiblings(job, config)).includes(source)) && ["queued", "generating", "ready"].includes(source.status))))
     .map((job) => job.id));
   const selectedIndicator = selected && changedJobIds.has(selected.id) && !selected.generationHistory?.selectedId ? "changed" : selected?.status;
   const selectedCancellable = selected?.status === "queued" || selected?.status === "generating";
@@ -685,7 +688,8 @@ export function GeneratorView({ config, folderPath, runtime = null, generationCo
               folderPath={folderPath}
               importAvailable={isTauri()}
               importError={startFrameError}
-              scenes={jobs}
+              scenes={config.generationJobs}
+              neighborScenes={jobs}
               onAddStartFrame={() => void addFrame(selected, "start")}
               onAddEndFrame={() => void addFrame(selected, "end")}
               onChange={(updates) => changeSceneSettings(selected, updates)}

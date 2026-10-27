@@ -315,7 +315,7 @@ const SCENE_TYPE_DESCRIPTIONS: Record<SceneType, string> = {
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. Simple label + control
  *  pairs are inspector rows; the free-text fields stay full width. */
-export function SceneInspector({ job, shots, references, folderPath = "", scenes = [], defaultSteps, effectiveSteps, template, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = sceneTypeFor(job) }: {
+export function SceneInspector({ job, shots, references, folderPath = "", scenes = [], neighborScenes = scenes, defaultSteps, effectiveSteps, template, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = sceneTypeFor(job) }: {
   sceneType?: SceneType;
   defaultLook?: string | null;
   job: GenerationJob;
@@ -323,6 +323,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
   references: ProjectReference[];
   folderPath?: string;
   scenes?: GenerationJob[];
+  neighborScenes?: GenerationJob[];
   defaultSteps: number;
   template?: GeneratorTemplate;
   effectiveSteps?: number;
@@ -337,7 +338,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
   const animate = sceneType === "animate";
   const continuing = sceneType === "continue";
   const backdrop = sceneType === "backdrop";
-  const longShot = longShotPosition(job, scenes);
+  const longShot = longShotPosition(job, neighborScenes);
   const pose = sceneType === "pose";
   const characterReplace = sceneType === "character-replace";
   const transition = isVideoTransition({ sceneType });

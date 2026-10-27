@@ -19,6 +19,10 @@ pub(crate) enum GenerationType {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) videos: Vec<super::video::ProjectVideo>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) video_folders: Vec<super::music::MusicFolder>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) music_songs: Vec<super::music::MusicSong>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) music_folders: Vec<super::music::MusicFolder>,

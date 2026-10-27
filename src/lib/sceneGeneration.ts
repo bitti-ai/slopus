@@ -9,9 +9,12 @@ import {
   usableReferenceImages, compileScenePromptSegments, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneType,
 } from "./project";
 import type { SlopfabGenerationRequest } from "./runtime";
+import { videoGuidedScene } from "./videoLibrary";
 import { generationSigmaShifts, templateSupportsVideo, type GeneratorTemplate } from "./settings";
 
 export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig, folderPath: string, defaultGenerationSteps: number, template?: GeneratorTemplate): SlopfabGenerationRequest {
+  const guided = videoGuidedScene(job, config);
+  job = guided.job; config = guided.config;
   // Only the references actually bound to this scene, in list order. The same
   // ordered list drives the <Subject N> / <Picture N> numbering inside the
   // compiled prompt, because slopfab.rs adds reference_paths sequentially — so
@@ -66,7 +69,11 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
 }
 
 /** Validate the inputs required by the selected generator before submission. */
-export function sendBlocker(job: GenerationJob, references: ProjectReference[]): string | null {
+export function sendBlocker(job: GenerationJob, references: ProjectReference[], config?: ProjectConfig): string | null {
+  if (config) {
+    const guided = videoGuidedScene(job, config);
+    return guided.blocker ?? sendBlocker(guided.job, guided.config.references);
+  }
   const shots = sceneShots(job);
   if (job.sceneType === "single-shot") {
     if (sceneDurationSeconds(job) < 2) return "Single Shot needs at least 2 seconds.";
