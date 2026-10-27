@@ -9,7 +9,7 @@ import { refreshDownloadedLoras } from "../../lib/weightDownloads";
 import { continuationBlocker, continuationSceneId, isVideoTransition, sceneGenerationSteps, sceneTypeFor } from "../../lib/project";
 import { Add16, Delete16, GridView16, GridView16Filled, ListView16, ListView16Filled, Scene16, Scene32, Sparkle16, Stop14, Wand16 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useShortcut } from "../../lib/commands";
 import { askNative } from "../../lib/nativeShell";
 import { ProjectStatus } from "./ProjectStatus";
@@ -30,6 +30,7 @@ import { DebugPromptDialog } from "./DebugPromptDialog";
 import { videoGuidedScene } from "../../lib/videoLibrary";
 
 interface GeneratorViewProps {
+  toolbarStart?: ReactNode;
   sceneIds?: readonly string[];
   config: ProjectConfig;
   folderPath: string;
@@ -64,7 +65,7 @@ const readDensity = (): BoardDensity => {
  * The panel is whatever is open — one shot, or the scene itself. Nothing is
  * edited on the board, and nothing is duplicated in the panel: there is exactly
  * one place to change any given thing. */
-export function GeneratorView({ config, sceneIds, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId, onSelectedJobChange, onRuntimeChange, onGenerate, onCancelGeneration, cancellingJobIds = new Set() }: GeneratorViewProps) {
+export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId, onSelectedJobChange, onRuntimeChange, onGenerate, onCancelGeneration, cancellingJobIds = new Set() }: GeneratorViewProps) {
   const jobs = sceneIds ? sceneIds.flatMap((id) => { const job = config.generationJobs.find((job) => job.id === id); return job ? [job] : []; }) : config.generationJobs;
   const [selection, setSelection] = useState<GeneratorSelection>(() => ({ jobId: selectedJobId ?? jobs.find((job) => job.status === "generating")?.id ?? jobs[0]?.id ?? "", shotId: null }));
   const [templateSettings, setTemplateSettings] = useState(loadGeneratorTemplateSettings);
@@ -528,6 +529,7 @@ export function GeneratorView({ config, sceneIds, folderPath, runtime = null, ge
             onClick={() => void generateAll()}
           />}
       >
+        {toolbarStart}
         {/* The generator the next render uses, with its readiness as a glyph
             beside the name; the words for a state that needs attention are
             in the tooltip and the status bar. */}

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createDraftGenerationJob, createProjectConfig, generationAssetId, type ProjectConfig } from "../../lib/project";
 import { newVideo } from "../../lib/videoLibrary";
@@ -13,7 +13,8 @@ import { choose } from "./comboTestUtils";
 
 vi.mock("./ShotThumbnail", async (original) => ({ ...await original<typeof import("./ShotThumbnail")>(), shotPoster: vi.fn(async () => ({ poster: "data:image/jpeg;base64,preview", failed: false })) }));
 vi.mock("../../lib/nativeShell", async (original) => ({ ...await original<typeof import("../../lib/nativeShell")>(), askNative: vi.fn(async () => true) }));
-vi.mock("./GeneratorView", () => ({ GeneratorView: ({ config, sceneIds, onChange }: { config: ProjectConfig; sceneIds: string[]; onChange: (next: ProjectConfig) => void }) => <div aria-label="Scenes editor">
+vi.mock("./GeneratorView", () => ({ GeneratorView: ({ config, sceneIds, toolbarStart, onChange }: { config: ProjectConfig; sceneIds: string[]; toolbarStart?: ReactNode; onChange: (next: ProjectConfig) => void }) => <div aria-label="Scenes editor">
+  {toolbarStart}
   <span>{sceneIds.join(",")}</span><span data-testid="all-scenes">{config.generationJobs.length}</span>
   <button onClick={() => onChange({ ...config, generationJobs: [...config.generationJobs, createDraftGenerationJob("New", { id: "added" })] })}>Add scene</button>
 </div> }));

@@ -84,8 +84,8 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
     ...config.references.filter((reference) => reference.kind === kind && (reference.relativePath || reference.sourcePath)).map((reference) => ({ value: `reference:${reference.id}`, label: `${reference.name} (reference range)` })),
   ];
   if (open) return <div className="video-scenes">
-    <div className="music-toolbar video-scenes__path"><button type="button" className="secondary-button" onClick={() => setOpenId(undefined)}>Back to Video</button><strong>{open.title}</strong><span>Scenes</span></div>
     <GeneratorView {...props} key={open.id} config={{ ...config, videos }} sceneIds={open.sceneIds} selectedJobId={open.sceneIds.includes(props.selectedJobId ?? "") ? props.selectedJobId : undefined}
+      toolbarStart={<><button type="button" className="secondary-button" onClick={() => setOpenId(undefined)}>Back to Video</button><strong className="video-scenes__title" title={open.title}>{open.title}</strong></>}
       onChange={(next, key) => onChange(mergeVideoScenes(latest.current, open.id, next), key)} />
   </div>;
   return <div className="video-library-view" style={pane.style}>

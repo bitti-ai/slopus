@@ -6,9 +6,8 @@
 .video-library-body > .music-inspector { grid-row: 1; }
 .video-scenes { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .video-scenes > .generator-view { flex: 1; min-height: 0; height: auto; }
-.video-scenes__path { flex: none; }
-.video-scenes__path strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.video-scenes__path span, .video-reference-help { color: var(--text-secondary); font-size: var(--text-xs); }
+.video-scenes__title { min-width: 0; max-width: 200px; margin-inline: var(--space-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.video-reference-help { color: var(--text-secondary); font-size: var(--text-xs); }
 .video-reference-range { display: block; margin-block: var(--space-1); }
 .video-library-stage .music-songs--grid { grid-template-columns: repeat(auto-fill, minmax(0, min(300px, 100%))); gap: var(--space-2); }
 .video-card { overflow: hidden; container-type: inline-size; border-radius: var(--radius-sm); }
