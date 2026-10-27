@@ -17,8 +17,7 @@ import "../../styles/image-editor.css";
    An image regenerated or edited from another joins that image's family. The
    bar lists the primary images; while an image with a family is selected it
    shows just that family — the primary first, then the other versions.
-   The application back button returns to primaries; standalone bars keep a
-   local back button. */
+   Both the local and application back buttons return to primary images. */
 export const ImageBar = forwardRef<HTMLDivElement | null, {
   images: ProjectAsset[];
   selectedId: string | null | undefined;
@@ -118,7 +117,7 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
       const bounds = event.currentTarget.getBoundingClientRect();
       onMenu(null, bounds.left, bounds.top, inFamily);
     }}>
-    {inFamily && !onBackNavigationChange && <button type="button" className="image-results__back" aria-label="Back to all images" data-tooltip="All images"
+    {inFamily && <button type="button" className="image-results__back" aria-label="Back to all images" data-tooltip="All images"
       onClick={goBack}><ChevronLeft16 aria-hidden="true" /></button>}
     {shown.map((asset) => <button key={asset.id} type="button" data-image-asset={asset.id} data-tooltip={asset.name}
       aria-label={`View ${asset.name}${!inFamily && childCount(asset.id) ? `, ${childCount(asset.id) + 1} versions` : ""}`} aria-pressed={asset.id === pressed} aria-busy={pending.has(asset.id)}

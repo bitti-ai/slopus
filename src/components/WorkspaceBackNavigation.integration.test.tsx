@@ -37,7 +37,7 @@ it("uses application Back and Alt+Left for scenes, clears the action on tab swit
   expect(screen.getByRole("dialog")).toBeInTheDocument(); expect(onBack).not.toHaveBeenCalled();
 });
 
-it("uses application Back to show parent images, then restores the project back action", () => {
+it.each(["local", "global"])("uses %s Back to show parent images, then restores the project back action", (action) => {
   let config = createEmptyImage(project());
   const root = config.imageScene!.outputAssetId!;
   config = createEmptyImage(config, undefined, root);
@@ -46,14 +46,16 @@ it("uses application Back to show parent images, then restores the project back 
   render(<ProjectWorkspace project={{ folderPath: "D:/Images", config }} initialView="editor" onBack={onBack} onSave={async () => {}} />);
   const bar = screen.getByLabelText("Generated images");
   expect(bar.querySelector(`[data-image-asset="${child}"]`)).toBeInTheDocument();
-  expect(within(bar).queryByRole("button", { name: "Back to all images" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Back to all images" }));
+  const localBack = within(bar).getByRole("button", { name: "Back to all images" });
+  const globalBack = screen.getAllByRole("button", { name: "Back to all images" }).find((button) => !bar.contains(button))!;
+  expect(globalBack).toBeInTheDocument();
+  fireEvent.click(action === "local" ? localBack : globalBack);
   expect(bar.querySelector(`[data-image-asset="${child}"]`)).not.toBeInTheDocument();
   expect(bar.querySelector(`[data-image-asset="${root}"]`)).toHaveAttribute("aria-pressed", "true");
   expect(onBack).not.toHaveBeenCalled();
   // Opening the family again registers the keyboard action too.
   fireEvent.click(bar.querySelector(`[data-image-asset="${root}"]`)!);
-  expect(screen.getByRole("button", { name: "Back to all images" })).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "Back to all images" })).toHaveLength(2);
   fireEvent.keyDown(document.body, { key: "ArrowLeft", code: "ArrowLeft", altKey: true });
   expect(bar.querySelector(`[data-image-asset="${child}"]`)).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Back to project library" })).toBeInTheDocument();
