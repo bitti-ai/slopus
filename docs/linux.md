@@ -25,7 +25,7 @@ One-time WSL setup on Ubuntu (Rust as for the Linux worker):
 
 ```sh
 sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
-  librsvg2-dev libxdo-dev libssl-dev build-essential file patchelf
+  librsvg2-dev libxdo-dev libssl-dev build-essential file patchelf squashfs-tools
 ```
 
 `release.cmd` passes `TAURI_SIGNING_PRIVATE_KEY` (and its password) into WSL
@@ -74,6 +74,10 @@ VA-API and NVIDIA's driver (`va`, `nvcodec`); VP8/VP9/AV1/Opus have software
 codecs. The same plugin removes NVIDIA cuBLAS, which linuxdeploy would otherwise
 copy in (over 500 MB) through `libslopfab.so`. After building,
 `package-linux-app.sh` fails if FFmpeg, x264/x265 or cuBLAS is in the AppImage.
+Before packaging, the plugin makes the AppDir readable and traversable by all
+users and explicitly enables execution of its launchers. The package script
+uses umask 022 for linuxdeploy's final wrapper and checks permissions again in
+the extracted AppImage, catching restrictive cached launchers such as mode 0770.
 AAC audio needs a decoder the AppImage does not ship; the .deb and .rpm use the
 system's.
 

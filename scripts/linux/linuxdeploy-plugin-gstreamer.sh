@@ -93,3 +93,11 @@ export GST_PLUGIN_PATH_1_0="${APPDIR}/usr/lib/gstreamer-1.0"
 export GST_PLUGIN_SCANNER_1_0="${APPDIR}/usr/lib/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner"
 export GST_PTP_HELPER_1_0="${APPDIR}/usr/lib/gstreamer1.0/gstreamer-1.0/gst-ptp-helper"
 EOF
+
+# Tauri's cached AppRun can arrive with mode 0770, which linuxdeploy preserves
+# when renaming it to AppRun.wrapped. Fix the staged tree before the output
+# plugin runs appimagetool; changing the outer AppImage's mode is too late.
+chmod -R a+rX -- "$appdir"
+for launcher in AppRun AppRun.wrapped usr/bin/slopus; do
+  [[ ! -f $appdir/$launcher ]] || chmod a+x -- "$appdir/$launcher"
+done

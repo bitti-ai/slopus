@@ -14,6 +14,9 @@
 # Without one the packages are built unsigned and the AppImage cannot be
 # offered as an update.
 set -euo pipefail
+# linuxdeploy creates the final AppRun wrapper after its input plugins finish.
+# Keep that wrapper and any subsequently created files accessible to all users.
+umask 022
 
 if (($# != 2)); then
   printf 'Usage: bash %s <version> <artifacts-dir>\n' "$0" >&2
@@ -41,12 +44,12 @@ missing=()
 for module in webkit2gtk-4.1 gtk+-3.0 librsvg-2.0 ayatana-appindicator3-0.1; do
   pkg-config --exists "$module" 2>/dev/null || missing+=("$module")
 done
-for tool in file patchelf; do
+for tool in file patchelf unsquashfs; do
   command -v "$tool" >/dev/null || missing+=("$tool")
 done
 if ((${#missing[@]})); then
   fail "missing build dependencies: ${missing[*]}. On Ubuntu or Debian install them with:
-  sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev build-essential file patchelf"
+  sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev build-essential file patchelf squashfs-tools"
 fi
 
 runtime="$root/lib/slopfab/libslopfab.so"
@@ -115,13 +118,26 @@ appimage=$(pick appimage '*.AppImage')
 # GPL codec or the CUDA toolkit (see scripts/linux/linuxdeploy-plugin-gstreamer.sh).
 extract=$(mktemp -d /tmp/slopus-appimage.XXXXXXXX)
 trap 'rm -rf -- "$extract"' EXIT
-(cd -- "$extract" && "$appimage" --appimage-extract >/dev/null)
+# Preserve the archived modes: --appimage-extract creates directories as 0700,
+# which would make permission checks report failures unrelated to the package.
+unsquashfs -no-progress -offset "$("$appimage" --appimage-offset)" -d "$extract/squashfs-root" "$appimage" >/dev/null
 forbidden=$(find "$extract/squashfs-root" -type f \( -name 'libavcodec.so*' -o -name 'libavformat.so*' \
   -o -name 'libavutil.so*' -o -name 'libavfilter.so*' -o -name 'libavdevice.so*' -o -name 'libswscale.so*' \
   -o -name 'libswresample.so*' -o -name 'libpostproc.so*' -o -name 'libx264*.so*' -o -name 'libx265*.so*' -o -name 'libgstlibav.so' \
   -o -name 'libcublas*.so*' \) -printf '%f\n')
 [[ -z $forbidden ]] || fail "the AppImage bundles libraries it must not ship: $(echo $forbidden)"
 [[ -f $extract/squashfs-root/usr/lib/Slopus/libslopfab.so ]] || fail 'the AppImage is missing libslopfab.so.'
+# Check mode bits rather than test -r/-x: packaging may run as the file owner
+# or root, while the downloaded AppImage is launched by an unrelated user.
+inaccessible=$(find "$extract/squashfs-root" \( \( -type d ! -perm -0005 \) -o \( -type f \( ! -perm -0004 -o \( -perm /0111 ! -perm -0001 \) \) \) \) -print)
+[[ -z $inaccessible ]] || fail "the AppImage contains files inaccessible to other users: $inaccessible"
+for launcher in AppRun AppRun.wrapped usr/bin/slopus; do
+  path="$extract/squashfs-root/$launcher"
+  [[ $launcher != AppRun.wrapped && ! -f $path ]] && fail "the AppImage is missing $launcher."
+  if [[ -f $path ]] && [[ -z $(find -L "$path" -maxdepth 0 -type f -perm -0005 -print) ]]; then
+    fail "the AppImage launcher is not readable and executable by other users: $launcher"
+  fi
+done
 
 stem="Slopus-$version-linux-x64"
 mkdir -p -- "$artifacts"

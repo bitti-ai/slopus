@@ -22,6 +22,8 @@ Changes since 0.3.2.
 
 ## Fixes and improvements
 
+- Fixed AppImage launcher permissions for users other than the package builder.
+
 - Retired Long Shot from scene choices; use Bridge to connect videos. Existing Long Shot scenes remain compatible.
 
 - Video cards match Shot sizing, show the opening playback frame and open scenes on click; playback shares Timeline's prepared players. Returning to the Video tab restores the open video.
