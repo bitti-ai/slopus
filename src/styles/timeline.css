@@ -1212,7 +1212,11 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   overflow: auto;
 }
 
+.timeline-grid-scroll--panning,
+.timeline-grid-scroll--panning * { cursor: grabbing !important; }
+
 .timeline-grid {
+  touch-action: none;
   --track-column: var(--pane-timeline-tracks);
   position: relative;
   display: grid;

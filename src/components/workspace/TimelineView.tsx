@@ -300,6 +300,8 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
      head). A press alone moves it once; this is what makes the moves keep
      coming. */
   const [scrubbing, setScrubbing] = useState(false);
+  const [panning, setPanning] = useState(false);
+  const panRef = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
   const menu = useContextMenu();
   const tracks = config.timeline.tracks;
   const selected = useMemo(() => tracks.flatMap((track) => track.clips).find((clip) => clip.id === selectedId), [tracks, selectedId]);
@@ -450,7 +452,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
      Premiere's "page scroll" does, so the playhead never runs off the edge. */
   useEffect(() => {
     const element = scrollRef.current;
-    if (!playing || !element || !lanePx) return;
+    if (!playing || !element || !lanePx || panRef.current) return;
     const x = (playhead / duration) * lanePx;
     const visible = element.clientWidth - trackPane.size;
     if (x < element.scrollLeft || x > element.scrollLeft + visible - 16) element.scrollLeft = Math.max(0, x - 32);
@@ -461,6 +463,50 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
    *  and travel over the panels above, and a selection that was already in
    *  progress goes on extending under the pointer. */
   const dropSelection = () => window.getSelection?.()?.removeAllRanges();
+
+  const beginPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || panRef.current || dragging || scrubbing) return;
+    if (!(event.target instanceof Element) || !event.target.matches(".track-lane, .timeline-grid")) return;
+    event.preventDefault();
+    dropSelection();
+    const element = event.currentTarget;
+    panRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: element.scrollLeft, top: element.scrollTop };
+    element.setPointerCapture?.(event.pointerId);
+    setPanning(true);
+  };
+  useEffect(() => {
+    if (!panning) return;
+    const element = scrollRef.current;
+    const onMove = (event: PointerEvent) => {
+      const pan = panRef.current;
+      if (!pan || !element || event.pointerId !== pan.pointerId) return;
+      event.preventDefault();
+      element.scrollLeft = pan.left + pan.x - event.clientX;
+      element.scrollTop = pan.top + pan.y - event.clientY;
+    };
+    const finish = () => {
+      const pan = panRef.current;
+      panRef.current = null;
+      if (pan && element?.hasPointerCapture?.(pan.pointerId)) element.releasePointerCapture(pan.pointerId);
+      setPanning(false);
+    };
+    const onUp = (event: PointerEvent) => { if (event.pointerId === panRef.current?.pointerId) finish(); };
+    window.addEventListener("pointermove", onMove, { passive: false });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    window.addEventListener("blur", finish);
+    element?.addEventListener("lostpointercapture", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("blur", finish);
+      element?.removeEventListener("lostpointercapture", onUp);
+      const pan = panRef.current;
+      panRef.current = null;
+      if (pan && element?.hasPointerCapture?.(pan.pointerId)) element.releasePointerCapture(pan.pointerId);
+    };
+  }, [panning]);
 
   /** Turn a pointer position on the ruler into a playhead position. A ruler
    *  nothing has laid out has no scale, so it is left alone rather than
@@ -1631,7 +1677,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
           </div>
         </header>
         <div className="timeline-body">
-          <div className="timeline-grid-scroll" ref={scrollRef}>
+          <div className={`timeline-grid-scroll${panning ? " timeline-grid-scroll--panning" : ""}`} ref={scrollRef} onPointerDown={beginPan}>
             <div
               className="timeline-grid"
               style={{

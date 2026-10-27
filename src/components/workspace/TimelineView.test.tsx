@@ -815,6 +815,39 @@ describe("the transport and the playhead", () => {
 });
 
 describe("zoom and the wheel", () => {
+  it.each(["pointerup", "pointercancel", "lostpointercapture", "blur"])("pans empty track space without editing and stops on %s", (ending) => {
+    const { container, onChange } = render_(withClip(measuredVideo(projectWithMedia(), 40_000), {}));
+    const scroll = container.querySelector(".timeline-grid-scroll") as HTMLElement;
+    scroll.scrollLeft = 300;
+    scroll.scrollTop = 100;
+    fireEvent(container.querySelector(".track-lane")!, pointerEvent("pointerdown", 400, 200));
+    expect(scroll.classList.contains("timeline-grid-scroll--panning")).toBe(true);
+    fireEvent(window, pointerEvent("pointermove", 250, 150));
+    expect(scroll.scrollLeft).toBe(450);
+    expect(scroll.scrollTop).toBe(150);
+    expect(toolbarTime(container)).toBe("00:00:00:00");
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent(ending === "lostpointercapture" ? scroll : window, pointerEvent(ending, 250, 150));
+    expect(scroll.classList.contains("timeline-grid-scroll--panning")).toBe(false);
+    fireEvent(window, pointerEvent("pointermove", 100, 100));
+    expect(scroll.scrollLeft).toBe(450);
+    expect(scroll.scrollTop).toBe(150);
+  });
+
+  it("pans the space below tracks but leaves clip and track-header gestures alone", () => {
+    const { container } = timeline(withClip(measuredVideo(projectWithMedia(), 40_000), {}));
+    const scroll = container.querySelector(".timeline-grid-scroll") as HTMLElement;
+    for (const selector of [".timeline-clip", ".track-head", ".track-name"]) {
+      fireEvent(container.querySelector(selector)!, pointerEvent("pointerdown", 400));
+      expect(scroll.classList.contains("timeline-grid-scroll--panning")).toBe(false);
+      fireEvent(window, pointerEvent("pointerup", 400));
+    }
+    fireEvent(container.querySelector(".timeline-grid")!, pointerEvent("pointerdown", 400));
+    fireEvent(window, pointerEvent("pointermove", 300));
+    expect(scroll.scrollLeft).toBe(100);
+    fireEvent(window, pointerEvent("pointerup", 300));
+  });
+
   /** jsdom lays nothing out: give the scroll area a width so the lanes can be
    *  sized in pixels. 1180px less the 180px header column is 1000px of lane. */
   function withViewport(width: number, body: () => void) {
