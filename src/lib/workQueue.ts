@@ -20,7 +20,7 @@ import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
 import { isTauri, saveProject } from "./persistence";
-import { continuationBlocker, generationAssetId, generationLatentPath, GENERATION_FRAME_RATE, sceneOutputFrames, sceneGenerationSnapshot, type SceneInput, type GenerationJob, type ProjectRecord, type ProjectConfig } from "./project";
+import { continuationBlocker, generationAssetId, generationLatentPath, GENERATION_FRAME_RATE, sceneSiblings, sceneOutputFrames, sceneGenerationSnapshot, type SceneInput, type GenerationJob, type ProjectRecord, type ProjectConfig } from "./project";
 import { ProjectSession, type ProjectWriter } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan, type SlopfabGenerationRequest } from "./runtime";
 import { generationStepsWithLoras, withEngineSettings } from "./settings";
@@ -30,7 +30,7 @@ import { ReferenceIconWork } from "./referenceIconWork";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
 import { prepareReferenceAudios, releaseReferenceAudios } from "./referenceAudio";
 import { joinedSceneSegments, sceneArchiveSegments } from "./continuationMedia";
-import { bridgedSceneSegments, longShotBlocker, longShotContinuationInputs, longShotInputs } from "./longShot";
+import { bridgedSceneSegments, longShotBlocker, longShotContinuationInputs, longShotInputs, longShotPosition } from "./longShot";
 import type { SceneMediaSegment } from "./project";
 import { exportReferenceRefmod, refmodExportBlocker, refmodExportRequest, type RefmodExportTarget } from "./refmodExport";
 
@@ -46,6 +46,8 @@ function imageGenerationSeed(seed: number): number {
   return (high & 0x1fffff) * 0x100000000 + low;
 }
 export interface WorkItem {
+  /** Exact video runs linked while their sources were still in flight. */
+  generationGroupId?: string;
   imageAssetId?: string | null;
   imageDraftId?: string;
   kind?: "reference-icons" | "image" | "refmod" | "music";
@@ -242,13 +244,26 @@ export class WorkQueue {
         ...generationSigmaShiftsWithLoras(submission.request, config) });
       this.work.set(id, { id, session, sceneId: submission.job.id, sceneInput: sceneInput(captured), request, config, snapshot: submission.snapshot, cancelled: false, submitted: false, done, finish });
       this.items = [...this.items, {
-        id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
+        id, generationGroupId: id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
         sceneId: submission.job.id, title: submission.job.title, submittedAt: new Date().toISOString(),
         status: "queued", progress: 0, detail: "Waiting to generate", error: null, completionAt: null,
         cancelling: false, needsSave: false,
         settings: { frames: request.frames, steps: request.steps, audioSteps: request.audioSteps, videoSigmaShift: request.videoSigmaShift, audioSigmaShift: request.audioSigmaShift, latentUpscale: request.latentUpscale, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight },
       }];
       this.updateScene(this.work.get(id)!, { status: "queued", stage: "queued", progress: 0, error: null, generationSnapshot: submission.snapshot, generatorTemplateId: captured.generatorTemplateId, steps: captured.steps, seed: captured.seed });
+    }
+    // Link after the whole batch is present, including sources submitted in
+    // earlier calls. Group IDs survive completed-work cleanup and draft edits.
+    for (const id of ids) {
+      const work = this.work.get(id)!;
+      const job = work.config.generationJobs.find((job) => job.id === work.sceneId)!;
+      const sources = new Set([work.request.previousSceneId, work.request.latentBridge?.leftSceneId,
+        work.request.latentBridge?.rightSceneId, longShotPosition(job, sceneSiblings(job, work.config))?.previousBridge?.id]);
+      const group = this.items.find((item) => item.id === id)!.generationGroupId!;
+      const groups = new Set(this.items.filter((item) => item.projectKey === projectKey && !item.kind && isWorkActive(item)
+        && sources.has(item.sceneId)).map((item) => item.generationGroupId));
+      this.items = this.items.map((item) => item.projectKey === projectKey && item.generationGroupId && groups.has(item.generationGroupId)
+        ? { ...item, generationGroupId: group } : item);
     }
     this.publish();
     if (this.items.some((item) => item.status === "queued" && item.kind !== "reference-icons")) this.icons.yieldToVideo();
@@ -619,9 +634,21 @@ export class WorkQueue {
   async cancel(id: string): Promise<void> {
     if (this.icons.owns(id)) { await this.icons.cancel(); return; }
     const item = this.items.find((candidate) => candidate.id === id);
+    if (!item || !isWorkActive(item)) return;
+    const linked = this.items.filter((candidate) => candidate.id === id || (item.generationGroupId
+      && candidate.projectKey === item.projectKey && candidate.generationGroupId === item.generationGroupId && isWorkActive(candidate)));
+    await Promise.all(linked.map((candidate) => this.cancelOne(candidate.id)));
+  }
+  private async cancelOne(id: string): Promise<void> {
+    const item = this.items.find((candidate) => candidate.id === id);
     const work = this.work.get(id);
-    if (!item || !work || !isWorkActive(item) || item.status === "encoding" || item.cancelling) return;
+    if (!item || !work || !isWorkActive(item) || (item.status === "encoding" && item.kind) || item.cancelling) return;
     work.cancelled = true;
+    if (item.status === "encoding") {
+      // Finish the in-flight file write safely, but do not start linked work.
+      this.patch(id, { cancelling: true, detail: "Cancelling after the current save" });
+      return;
+    }
     if (item.status === "queued" || item.status === "preparing") {
       this.cancelled(work);
       if (item.status === "queued") this.work.delete(id);
@@ -787,6 +814,7 @@ export class WorkQueue {
           this.updateScene(work, { progress }, false);
         },
       });
+      if (work.cancelled) { this.cancelled(work); return; }
       const assetId = generationAssetId(work.sceneId);
       const totalFrames = saved.durationMs ? Math.round(saved.durationMs * GENERATION_FRAME_RATE / 1000) : work.outputFrames ?? work.request.frames;
       const sceneSegments = work.request.latentBridge
@@ -804,6 +832,7 @@ export class WorkQueue {
       work.session.update(sceneResultUpdate(work.sceneId, version, saved.note));
       try {
         await work.session.save();
+        if (work.cancelled) { this.cancelled(work); return; }
         this.patch(work.id, { status: "completed", progress: 1, detail: "Video saved", error: saved.note });
       } catch (reason) {
         this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Video created; project save failed", error: describeDiagnosticError(reason) });

@@ -4,7 +4,7 @@ import { compileImagePrompt } from "./imagePrompt";
 import { compileImageEdits } from "./imageEditing";
 import { imageScenePrompt } from "./imageScene";
 import { longShotBlocker } from "./longShot";
-import { continuationBlocker, continuationSceneId, generationAssetId, sceneGenerationSnapshot, sceneTypeFor } from "./project";
+import { continuationBlocker, continuationSceneId, generationAssetId, sceneGenerationPending, sceneGenerationSnapshot, sceneTypeFor } from "./project";
 import type { ProjectSession } from "./projectSession";
 import { sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "./sceneGeneration";
 import { generatorPathFields, loadGeneratorTemplateSettings, templateSupportsMusic, templateUsable } from "./settings";
@@ -128,15 +128,15 @@ export async function generateAgentScene(queue: WorkQueue, session: ProjectSessi
   }
   const source = config.generationJobs.find((candidate) => candidate.id === continuationSceneId(job, config.generationJobs));
   const blocker = continuationBlocker(job, config.generationJobs)
-    ?? longShotBlocker(job, config)
-    ?? (source && (!source.latentRelativePath || source.status !== "completed") ? "Generate the selected source scene first." : null)
+    ?? longShotBlocker(job, config, true, true)
+    ?? (source && !sceneGenerationPending(source) && (!source.latentRelativePath || source.status !== "completed") ? "Generate or queue the selected source scene first." : null)
     ?? templateSceneBlocker(sceneTypeFor(job), template) ?? sendBlocker(job, config.references, config);
   if (blocker) throw new Error(blocker);
   const request = sceneGenerationRequest(job, config, session.record.folderPath, template.defaultSteps, template);
   const [id] = queue.enqueue(session, [{ job, request, snapshot: sceneGenerationSnapshot(job, request) }], template);
   if (!id) throw new Error("This scene is already queued.");
-  // Stop affects only the work this agent started. Encoding already in progress
-  // is allowed to finish safely, but the stopped agent will not resume.
+  // Stop cancels this run and its linked generation group. Encoding already in
+  // progress is allowed to finish safely, but the stopped agent will not resume.
   const cancel = () => { void queue.cancel(id).catch(() => undefined); };
   signal.addEventListener("abort", cancel, { once: true });
   try {

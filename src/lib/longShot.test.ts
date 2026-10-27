@@ -35,6 +35,17 @@ it("alternates within consecutive runs and blocks missing, failed and short anch
   expect(longShotPosition(config.generationJobs[3], config.generationJobs)?.bridge).toBe(false);
 });
 
+it("allows queued Long Shot anchors while retaining readiness and compatibility checks", () => {
+  const config = project(), bridge = config.generationJobs[1], source = config.generationJobs[2];
+  source.status = "queued"; source.latentRelativePath = null; source.outputRelativePath = null;
+  expect(longShotBlocker(bridge, config)).toContain("Generate");
+  expect(longShotBlocker(bridge, config, true, true)).toBeNull();
+  source.status = "failed";
+  expect(longShotBlocker(bridge, config, true, true)).toContain("Generate");
+  source.status = "generating"; source.latentUpscale = true;
+  expect(longShotBlocker(bridge, config, true, true)).toContain("Latent upscale");
+});
+
 it("continues the last scene from the joined archive and invalidates it when a following anchor is added", () => {
   const config = project();
   const fifth = config.generationJobs.pop()!;

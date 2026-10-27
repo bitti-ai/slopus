@@ -25,6 +25,7 @@ Changes since 0.3.2.
 - Video cards match Shot sizing, show the opening playback frame and open scenes on click; playback shares Timeline's prepared players. Returning to the Video tab restores the open video.
 - Editing generated music creates a separate draft; cards distinguish drafts from playable songs.
 - Single Shot uses previous latents only as its starting anchor, fresh noise for the middle and a generated ending anchor, avoiding repeated source imagery.
+- Dependent scenes can queue behind active sources; cancelling any linked generation cancels the whole pending group.
 - Updated First/Last Frame Fast to the eight-step FastH3 Omni model and corrected Omni and First/Last Frame weight fallbacks.
 - Image edits preserve source images, prompts and settings; queued results get separate entries, and whole-image edits disable feathering.
 - Imported images now expose steps, seed and resolution; new images use generator step defaults, and renamed image roots retain their names.

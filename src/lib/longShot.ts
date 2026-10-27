@@ -1,4 +1,4 @@
-import { sceneSiblings, generationAssetId, sceneDurationSeconds, sceneOutputFrames, type GenerationJob, type ProjectAsset, type ProjectConfig, type SceneGenerationInput, type SceneMediaSegment } from "./project";
+import { sceneGenerationPending, sceneSiblings, generationAssetId, sceneDurationSeconds, sceneOutputFrames, type GenerationJob, type ProjectAsset, type ProjectConfig, type SceneGenerationInput, type SceneMediaSegment } from "./project";
 
 export const LONG_SHOT_CONTEXT = 22;
 export const bridgeGapFrames = (frames: number) => Math.max(12, Math.ceil((frames - 12) / 17) * 17 + 12);
@@ -22,19 +22,20 @@ export function longShotDependencies(job: GenerationJob, jobs: readonly Generati
   return position?.left ? [position.left, position.right].filter((source): source is GenerationJob => !!source) : [];
 }
 
-export function longShotBlocker(job: GenerationJob, config: ProjectConfig, requireCompleted = true): string | null {
+export function longShotBlocker(job: GenerationJob, config: ProjectConfig, requireCompleted = true, allowPending = false): string | null {
   const position = longShotPosition(job, sceneSiblings(job, config));
   if (!position?.left) return null;
   const neighbors: [GenerationJob, number][] = [[position.left, position.continuation ? 0 : job.bridgeLeftMargin ?? 17]];
   if (position.right) neighbors.push([position.right, job.bridgeRightMargin ?? 17]);
   for (const [source, margin] of neighbors) {
-    if (requireCompleted && (source.status !== "completed" || !source.latentRelativePath || !source.outputRelativePath))
+    const needsOutput = requireCompleted && !(allowPending && sceneGenerationPending(source));
+    if (needsOutput && (source.status !== "completed" || !source.latentRelativePath || !source.outputRelativePath))
       return `Generate “${source.title}” first, or use Generate all. ${position.continuation ? "The previous clip needs saved latents." : "Both neighboring clips need saved latents."}`;
     const sourceAsset = config.assets.find((asset) => asset.id === generationAssetId(source.id));
-    if (requireCompleted && (sourceAsset?.sceneSegments?.length ?? 0) > 1)
+    if (needsOutput && (sourceAsset?.sceneSegments?.length ?? 0) > 1)
       return `Regenerate “${source.title}” as a fresh Long Shot anchor first.`;
     const plannedFrames = Math.max(22, Math.ceil((sceneDurationSeconds(source) * 24 - 5) / 17) * 17 + 5);
-    const frames = requireCompleted ? sceneOutputFrames(source, config) : Math.max(sceneOutputFrames(source, config) ?? 0, plannedFrames);
+    const frames = needsOutput ? sceneOutputFrames(source, config) : requireCompleted ? plannedFrames : Math.max(sceneOutputFrames(source, config) ?? 0, plannedFrames);
     if (frames != null && frames < margin + LONG_SHOT_CONTEXT) return `“${source.title}” needs at least ${margin + LONG_SHOT_CONTEXT} frames for this bridge. Reduce its editable margin or lengthen the source.`;
     if (!!source.latentUpscale !== !!job.latentUpscale) return "Use the same Latent upscale setting for the bridge and both neighboring clips.";
   }

@@ -1081,6 +1081,8 @@ export function continuationSceneId(job: GenerationJob, jobs: readonly Generatio
   return undefined;
 }
 
+export const sceneGenerationPending = (job: GenerationJob) => ["queued", "generating", "ready"].includes(job.status);
+
 export function continuationBlocker(job: GenerationJob, jobs: readonly GenerationJob[]): string | null {
   if (job.sceneType === "single-shot" && !job.continuationSceneId) return null;
   if (job.sceneType !== "continue" && job.sceneType !== "single-shot" && !job.usePreviousSceneLastFrame) return null;

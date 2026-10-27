@@ -169,6 +169,21 @@ it.each(["prompt", "single-shot"] as const)("queues a starting %s scene before S
   expect(submissions[1].request.previousSceneId).toBe("start");
 });
 
+it.each(["queued", "generating", "ready", "draft", "failed"] as const)("allows Single Shot to wait for a source that is %s", (status) => {
+  const initial = project();
+  initial.generationJobs = [
+    { ...createDraftGenerationJob("Start", { id: "start" }), status },
+    { ...createDraftGenerationJob("Next", { id: "next", sceneType: "single-shot" }), continuationSceneId: "start" },
+  ];
+  const submitted = vi.fn();
+  render(<GeneratorView config={initial} folderPath="C:/project" runtime={readyRuntime} selectedJobId="next" onChange={vi.fn()} onGenerate={submitted} onOpenTimeline={() => {}} />);
+  const generate = within(screen.getByRole("complementary", { name: "Scene: Next" })).getByRole("button", { name: "Generate" });
+  if (["draft", "failed"].includes(status)) { expect(generate).toBeDisabled(); return; }
+  expect(generate).toBeEnabled(); fireEvent.click(generate);
+  expect(submitted.mock.calls[0][0]).toHaveLength(1);
+  expect(submitted.mock.calls[0][0][0].request.previousSceneId).toBe("start");
+});
+
 it("persists Long Shot boundary controls and inherits the scene type for new scenes", () => {
   const initial = project();
   initial.generationJobs.push(createDraftGenerationJob("Keep walking", { id: "third" }));

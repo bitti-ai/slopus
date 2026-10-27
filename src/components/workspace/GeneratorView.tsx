@@ -6,7 +6,7 @@ export { templateSceneBlocker } from "../../lib/sceneGeneration";
 import type { GenerationSubmission } from "../../lib/workQueue";
 import { loadLoras, subscribeLoras } from "../../lib/loras";
 import { refreshDownloadedLoras } from "../../lib/weightDownloads";
-import { continuationBlocker, continuationSceneId, isVideoTransition, sceneGenerationSteps, sceneTypeFor } from "../../lib/project";
+import { continuationBlocker, continuationSceneId, isVideoTransition, sceneGenerationPending, sceneGenerationSteps, sceneTypeFor } from "../../lib/project";
 import { Add16, Delete16, GridView16, GridView16Filled, ListView16, ListView16Filled, Scene16, Scene32, Sparkle16, Stop14, Wand16 } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -448,8 +448,8 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
     if (job.status === "ready") return "Saving this scene.";
     const source = config.generationJobs.find((candidate) => candidate.id === continuationSceneId(job, config.generationJobs));
     return continuationBlocker(job, config.generationJobs)
-      ?? longShotBlocker(job, config)
-      ?? (source && (!source.latentRelativePath || source.status !== "completed") ? "Generate the selected source scene first, or use Generate all." : null)
+      ?? longShotBlocker(job, config, true, true)
+      ?? (source && !sceneGenerationPending(source) && (!source.latentRelativePath || source.status !== "completed") ? "Generate or queue the selected source scene first, or use Generate all." : null)
       ?? templateSceneBlocker(sceneTypeFor(job), templateFor(job)) ?? sendBlocker(job, config.references, config);
   };
 
