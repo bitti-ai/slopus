@@ -5,11 +5,13 @@ import { listen } from "@tauri-apps/api/event";
 import { createProjectConfig } from "./project";
 import { defaultExportSettings, buildExportPlan } from "./export";
 import { runExport, writeExportFile, type ExportProgress, type ExportResult } from "./exportPipeline";
-import { cancelExportJob, clearFinishedExports, getExportJobs, resetExportJobForTests, startExportJob, startImageExportJob, startMotionReferenceJob } from "./exportJob";
+import { cancelExportJob, clearFinishedExports, getExportJobs, resetExportJobForTests, startExportJob, startImageExportJob, startMotionReferenceJob, startMusicExportJob } from "./exportJob";
+import { runMusicExport } from "./musicExport";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 vi.mock("./nativeShell", () => ({ setTaskbarProgress: vi.fn(async () => undefined) }));
+vi.mock("./musicExport", () => ({ runMusicExport: vi.fn() }));
 vi.mock("./exportPipeline", async (original) => ({ ...await original<typeof import("./exportPipeline")>(), runExport: vi.fn(), writeExportFile: vi.fn(async () => 42) }));
 beforeEach(() => { resetExportJobForTests(); vi.clearAllMocks(); vi.mocked(invoke).mockResolvedValue(24); });
 
@@ -20,6 +22,29 @@ const video = () => {
   const settings = defaultExportSettings(config);
   return { folderPath: "D:/Movie", config, settings, plan: buildExportPlan(config, settings), bitrate: 1000, destination: "D:/movie.mp4" };
 };
+
+it("queues music with other exports, snapshots the song and cancels before writing", async () => {
+  let finishVideo!: (result: ExportResult) => void, finishMusic!: (bytes: Uint8Array) => void;
+  vi.mocked(runExport).mockImplementation(() => new Promise((resolve) => { finishVideo = resolve; }));
+  vi.mocked(runMusicExport).mockImplementation(() => new Promise((resolve) => { finishMusic = resolve; }));
+  const first = startExportJob(video());
+  const options = { folderPath: "D:/Music", projectName: "Music", title: "Evening", asset: { id: "audio", kind: "audio" as const, name: "Evening", mimeType: "audio/wav", relativePath: "media/song.wav", createdAt: "now" }, settings: { format: "wav" as const, bitrate: 192000 }, destination: "D:/evening.wav" };
+  const second = startMusicExportJob(options);
+  options.asset.relativePath = "changed.wav"; options.settings.bitrate = 96000;
+  expect(getExportJobs().map((job) => [job.kind, job.status])).toEqual([["video", "running"], ["music", "queued"]]);
+  finishVideo(result); await first;
+  await vi.waitFor(() => expect(runMusicExport).toHaveBeenCalled());
+  expect(runMusicExport).toHaveBeenCalledWith(expect.objectContaining({ asset: expect.objectContaining({ relativePath: "media/song.wav" }), settings: { format: "wav", bitrate: 192000 } }));
+  cancelExportJob(getExportJobs()[1].id);
+  expect(vi.mocked(runMusicExport).mock.calls[0][0].cancelled()).toBe(true);
+  finishMusic(new Uint8Array([1, 2])); await second;
+  expect(getExportJobs()[1].status).toBe("cancelled");
+  expect(writeExportFile).toHaveBeenCalledTimes(1);
+  vi.mocked(runMusicExport).mockResolvedValue(new Uint8Array([1, 2]));
+  await startMusicExportJob(options);
+  expect(writeExportFile).toHaveBeenLastCalledWith("D:/evening.wav", new Uint8Array([1, 2]));
+  expect(getExportJobs()[2]).toMatchObject({ kind: "music", status: "completed", outcome: { kind: "saved", bytes: 42 } });
+});
 
 it("queues image and video exports together, snapshots settings, and retains their results", async () => {
   let finish!: (result: ExportResult) => void;

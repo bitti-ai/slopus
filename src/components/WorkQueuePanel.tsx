@@ -26,7 +26,7 @@ function StateGlyph({ item }: { item: WorkItem }) {
 
 export type WorkQueueTarget = { kind: "work"; item: WorkItem }
   | { kind: "download"; download: DownloadState }
-  | { kind: "export"; folderPath: string; exportKind?: "video" | "image" };
+  | { kind: "export"; folderPath: string; exportKind?: "video" | "image" | "music" };
 
 export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClose, onNavigate }: {
   queue: WorkQueue;
@@ -80,7 +80,7 @@ export function WorkQueuePanel({ queue, items, open = true, anchor = null, onClo
         {items.length === 0 && !download && !queuedDownloads.length && !exports.length && <div className="work-queue__empty"><WorkQueue32 aria-hidden="true" /><strong>No work yet</strong><span>Generation, exports, and downloads show up here.</span></div>}
         {current.length > 0 && <section aria-label="In progress"><ul>{current.map(row)}</ul></section>}
         {exports.length > 0 && <section aria-label="Export"><ul>{exports.map((exportJob) => {
-          const exportTitle = exportJob.kind === "image" ? `Export image · ${exportJob.projectName}` : `Export ${exportJob.projectName ?? ""}`;
+          const exportTitle = exportJob.kind === "image" ? `Export image · ${exportJob.projectName}` : exportJob.kind === "music" ? `Export music · ${exportJob.projectName}` : `Export ${exportJob.projectName ?? ""}`;
           const exporting = exportJob.progress;
           const exportPercent = Math.floor(exportFraction(exporting) * 100);
           return <li key={exportJob.id} className={`work-queue__row${onNavigate && exportJob.folderPath ? " work-queue__row--navigable" : ""}`}>

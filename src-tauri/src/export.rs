@@ -93,7 +93,7 @@ fn was_chosen_this_session(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Checks the SHAPE of a destination: absolute, `.mp4`, in a folder that
+/// Checks the SHAPE of a destination: absolute, a supported video/audio extension, in a folder that
 /// exists, not itself a folder. Necessary and not sufficient — see
 /// [`authorized_destination`], which is what the write actually goes through.
 fn checked_destination(value: &str) -> Result<PathBuf, String> {
@@ -105,8 +105,8 @@ fn checked_destination(value: &str) -> Result<PathBuf, String> {
         .extension()
         .and_then(|value| value.to_str())
         .map(str::to_ascii_lowercase);
-    if extension.as_deref() != Some("mp4") {
-        return Err(format!("{value} does not end in .mp4."));
+    if !matches!(extension.as_deref(), Some("mp4" | "m4a" | "webm" | "ogg" | "wav")) {
+        return Err(format!("{value} must end in .mp4, .m4a, .webm, .ogg or .wav."));
     }
     let parent = path
         .parent()
@@ -228,6 +228,35 @@ pub struct DefaultDestination {
     exists: bool,
 }
 
+fn music_format(format: &str) -> Result<&'static str, String> {
+    match format {
+        "m4a" => Ok("M4A audio"), "webm" => Ok("WebM audio"),
+        "ogg" => Ok("Ogg audio"), "wav" => Ok("WAV audio"),
+        _ => Err("Choose M4A, WebM, Ogg or WAV for music export.".into()),
+    }
+}
+
+#[tauri::command]
+pub async fn choose_music_export_destination(app: AppHandle, suggested_name: String, format: String) -> Result<Option<String>, String> {
+    let label = music_format(&format)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let name = safe_file_name(&suggested_name);
+        let name = if name.to_ascii_lowercase().ends_with(&format!(".{format}")) { name } else { format!("{name}.{format}") };
+        let mut dialog = app.dialog().file().set_title("Export music").set_file_name(name).add_filter(label, &[&format]);
+        if let Some(folder) = starting_folder(&app) { dialog = dialog.set_directory(folder); }
+        let Some(selected) = dialog.blocking_save_file() else { return Ok(None); };
+        let path = selected.into_path().map_err(|error| format!("Could not use the selected path: {error}"))?;
+        // Do not silently write one container under another format's extension.
+        if !path.extension().is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case(&format)) {
+            return Err(format!("Choose a file ending in .{format}."));
+        }
+        checked_destination(&path.to_string_lossy())?;
+        remember_destination(&path);
+        remember_export_folder(&app, &path);
+        Ok(Some(path.to_string_lossy().into_owned()))
+    }).await.map_err(|error| format!("The save dialog stopped unexpectedly: {error}"))?
+}
+
 /// The destination the Export screen shows before the user has opened any
 /// dialog: the suggested name in the last export folder (or Videos). Rust
 /// builds the whole path itself — the webview only supplies a name, which is
@@ -321,7 +350,7 @@ pub fn read_lut_file(path: String) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// Writes the muxed MP4 to the chosen path and reports how many bytes landed,
+/// Writes the finished video/audio file to the chosen path and reports how many bytes landed,
 /// so the frontend can state the size of a file that demonstrably exists rather
 /// than the size it hoped for.
 #[tauri::command]
@@ -349,6 +378,22 @@ pub fn write_export_file(app: AppHandle, request: Request<'_>) -> Result<u64, St
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn music_formats_require_supported_extensions_and_dialog_authorization() {
+        let folder = tempfile::tempdir().unwrap();
+        for extension in ["m4a", "webm", "ogg", "wav"] {
+            assert!(music_format(extension).is_ok());
+            let path = folder.path().join(format!("song.{extension}"));
+            assert!(checked_destination(&path.to_string_lossy()).is_ok());
+            assert!(authorized_destination(&path.to_string_lossy()).is_err());
+            remember_destination(&path);
+            assert_eq!(authorized_destination(&path.to_string_lossy()).unwrap(), path);
+            let other = folder.path().join(format!("other.{extension}"));
+            assert!(authorized_destination(&other.to_string_lossy()).is_err());
+        }
+        for extension in ["exe", "mp3", "../wav", "mp4"] { assert!(music_format(extension).is_err()); }
+    }
 
     #[test]
     fn percent_decode_restores_a_windows_path() {

@@ -53,6 +53,11 @@
   background: var(--surface-chrome);
 }
 
+.music-export-library { flex: 1; min-height: 0; overflow: auto; padding: var(--space-3); }
+.music-export-player { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-top: 1px solid var(--line); background: var(--surface-pane); }
+.music-export-player > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.music-export-player audio { flex: 2; width: 100%; min-width: 160px; height: 40px; }
+
 /* The stage is the screen plus its transport bar. It is also the element that
    goes fullscreen, so the bar comes along. */
 .export-stage {

@@ -1,4 +1,4 @@
-/* Export jobs live independently of their views. Images and videos share one
+/* Export jobs live independently of their views. Images, videos and music share one
    serial queue, and retain their results in Work Queue after completion.
 
    The Export screen used to own its run, so leaving the tab unmounted the
@@ -20,6 +20,7 @@ import type { ExportPlan, ExportSettings } from "./export";
 import { ExportCancelled, runExport, writeExportFile, type ExportProgress } from "./exportPipeline";
 import { setTaskbarProgress } from "./nativeShell";
 import type { ProjectConfig } from "./project";
+import { runMusicExport, type RunMusicExportOptions } from "./musicExport";
 
 export type ExportOutcome =
   | { kind: "saved"; path: string; bytes: number; audioProblems: string[]; audioShortfalls: string[] }
@@ -28,7 +29,7 @@ export type ExportOutcome =
 
 export interface ExportJobState {
   id: string | null;
-  kind: "video" | "image";
+  kind: "video" | "image" | "music";
   status: "queued" | "running" | "completed" | "cancelled" | "failed";
   /** The project folder the run (or its outcome) belongs to. */
   folderPath: string | null;
@@ -69,7 +70,7 @@ export function subscribeExportJob(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
-export function useExportJob(folderPath?: string, kind?: "video" | "image"): ExportJobState {
+export function useExportJob(folderPath?: string, kind?: ExportJobState["kind"]): ExportJobState {
   const snapshot = () => folderPath ? jobs.find((job) => job.folderPath === folderPath && job.kind === kind && isExportActive(job))
     ?? [...jobs].reverse().find((job) => job.folderPath === folderPath && job.kind === kind) ?? IDLE : state;
   return useSyncExternalStore(subscribeExportJob, snapshot, snapshot);
@@ -228,6 +229,30 @@ async function runVideoExport(options: StartExportOptions): Promise<void> {
 }
 
 export interface ImageExportOptions { format: "jpg" | "png"; width?: number; height?: number; quality?: number; upscale?: UpscaleConfig }
+
+export interface StartMusicExportOptions extends Omit<RunMusicExportOptions, "cancelled" | "onProgress"> { projectName: string; destination: string }
+export function startMusicExportJob(options: StartMusicExportOptions): Promise<void> {
+  const snapshot = structuredClone(options);
+  return enqueueExport({ folderPath: snapshot.folderPath, projectName: snapshot.projectName, destination: snapshot.destination, kind: "music" }, async () => {
+    void setTaskbarProgress(0).catch(() => undefined);
+    try {
+      const bytes = await runMusicExport({ ...snapshot, cancelled: () => cancelRequested, onProgress: (progress) => {
+        set({ progress });
+        void setTaskbarProgress(exportFraction(progress)).catch(() => undefined);
+      } });
+      if (cancelRequested) throw new ExportCancelled();
+      set({ progress: { phase: "writing", framesDone: 1, frameCount: 1, detail: "Writing audio file…" } });
+      const written = await writeExportFile(snapshot.destination, bytes);
+      set({ progress: null, outcome: { kind: "saved", path: snapshot.destination, bytes: written, audioProblems: [], audioShortfalls: [] } });
+      void setTaskbarProgress(null).catch(() => undefined);
+    } catch (reason) {
+      const cancelled = cancelRequested || reason instanceof ExportCancelled;
+      set({ progress: null, outcome: cancelled ? { kind: "cancelled" } : { kind: "failed", message: String(reason) } });
+      void setTaskbarProgress(cancelled ? null : 1, cancelled ? undefined : "error").catch(() => undefined);
+    }
+  });
+}
+
 export interface StartImageExportOptions { folderPath: string; projectName: string; relativePath: string; destination: string; options: ImageExportOptions }
 export function startImageExportJob(options: StartImageExportOptions): Promise<void> {
   const snapshot = structuredClone(options);

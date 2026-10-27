@@ -21,6 +21,7 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.11.0",
     "clipper-lib": "^6.4.2",
+    "mediabunny": "^1.62.1",
     "mp4-muxer": "^5.2.2",
     "mp4box": "^2.4.1",
     "react": "^18.3.1",

@@ -15,6 +15,7 @@ import { AgentDock } from "./workspace/AgentDock";
 import { generateAgentMedia } from "../lib/agentGeneration";
 import { ExportView } from "./workspace/ExportView";
 import { ImageExportView } from "./workspace/ImageExportView";
+import { MusicExportView } from "./workspace/MusicExportView";
 import { GeneratorView } from "./workspace/GeneratorView";
 import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView, type ConfigUpdate } from "./workspace/TimelineView";
@@ -29,7 +30,7 @@ import { outputDimensions, videoDurationMs } from "../lib/export";
  *  a project "on the agent" still means something: the pane opens with it. */
 export type ProjectView = "music" | "timeline" | "generator" | "references" | "agent" | "export" | "editor";
 type ShownView = Exclude<ProjectView, "agent">;
-export interface WorkspaceNavigation { view: ShownView; sceneId?: string; imageId?: string; songId?: string; referenceId?: string; exportKind?: "video" | "image" }
+export interface WorkspaceNavigation { view: ShownView; sceneId?: string; imageId?: string; songId?: string; referenceId?: string; exportKind?: "video" | "image" | "music" }
 
 /** The scene badge includes native generation and the final encoding step. */
 export const isGenerationOngoing = (job: GenerationJob) =>
@@ -126,10 +127,11 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
   const [view, setShownView] = useState<ShownView>(openingView);
   const [musicVisited, setMusicVisited] = useState(openingView === "music");
   const [musicPlaying, setMusicPlaying] = useState(false);
-  const [mediaMode, setMediaMode] = useState<"video" | "image">(() => openingView === "editor" || ((openingView === "references" || openingView === "export") && config.generationType === "image") ? "image" : "video");
+  const [mediaMode, setMediaMode] = useState<"video" | "image" | "music">(() => openingView === "music" ? "music" : openingView === "editor" || ((openingView === "references" || openingView === "export") && config.generationType === "image") ? "image" : "video");
   const setView = (next: ShownView) => {
     if (next === "music") setMusicVisited(true);
     if (next === "editor") setMediaMode("image");
+    else if (next === "music") setMediaMode("music");
     else if (next === "generator" || next === "timeline") setMediaMode("video");
     setShownView(next);
   };
@@ -304,8 +306,8 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
         {view === "generator" && <GeneratorView onGenerate={(submissions) => queue.enqueue(session, submissions)} onCancelGeneration={(ids) => queue.cancelScenes(session, ids)} cancellingJobIds={cancellingJobIds} config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.slopfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onSelectedJobChange={setSelectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
         {view === "references" && <ReferencesView openReference={referenceNavigation} onReferenceOpened={() => setReferenceNavigation(undefined)} config={config} folderPath={project.folderPath} onChange={changeConfig} onRegenerateIcon={(id) => queue.regenerateReferenceIcon(session, id)} onExportRefmod={(id, outputPath) => queue.exportReferenceRefmod(session, id, outputPath)} onGenerateBuiltinIcons={() => queue.generateBuiltinReferenceIcons(session)} onRegenerateBuiltinIcon={(id) => queue.regenerateBuiltinReferenceIcon(session, id)} pendingBuiltinIconIds={queue.pendingBuiltinIconIds()} pendingIconIds={new Set(config.references.filter((reference) => queue.isReferenceIconPending(session, reference.id)).map((reference) => reference.id))} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setView("generator"); }} />}
         {view === "export" && <div className="project-export">
-          <SelectorBar aria-label="Export type" className="project-export__types" value={mediaMode} onChange={setMediaMode} items={[{ value: "video", label: "Video" }, { value: "image", label: "Image" }]} />
-          {mediaMode === "image"
+          <SelectorBar aria-label="Export type" className="project-export__types" value={mediaMode} onChange={setMediaMode} items={[{ value: "video", label: "Video" }, { value: "image", label: "Image" }, { value: "music", label: "Music" }]} />
+          {mediaMode === "music" ? <MusicExportView config={config} folderPath={project.folderPath} /> : mediaMode === "image"
             ? <ImageExportView config={config} folderPath={project.folderPath} />
             : <ExportView config={config} folderPath={project.folderPath} onClose={() => setView("timeline")} />}
         </div>}
@@ -315,7 +317,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
           survive the pane being closed. */}
       <aside ref={agentPaneRef} id={`${panelId}-agent`} className="project-agent-pane" aria-label="Agent" hidden={!agentOpen}>
         <AgentDock
-          mode={mediaMode}
+          mode={mediaMode === "image" ? "image" : "video"}
           context={view === "music" ? "the music library" : view === "editor" ? "this image composition" : view === "timeline" ? "the edit" : view === "generator" ? "this generation queue" : view === "references" ? "project references" : "this export"}
           record={{ ...project, config }}
           providers={runtime?.providers ?? CHECKING_PROVIDERS}

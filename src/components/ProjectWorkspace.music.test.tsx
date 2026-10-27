@@ -72,17 +72,19 @@ it("keeps music and its playlist alive across tabs, preserves position and stops
   expect(audio.pause).toHaveBeenCalled();
 });
 
-it.each([["Timeline", "Timeline preview"], ["Video", "Shot"], ["Video", "Popout"], ["Export", "Export preview"]])(
+it.each([["Timeline", "Timeline preview"], ["Video", "Shot"], ["Video", "Popout"], ["Export", "Export preview"], ["Export", "Music export playback"]])(
   "pauses background music when %s playback starts (%s), then allows manual resume", async (tab, preview) => {
     workspace();
     const audio = await start();
     audio.currentTime = 7;
     fireEvent.click(screen.getByRole("tab", { name: tab }));
+    if (preview === "Export preview") fireEvent.click(within(screen.getByRole("tablist", { name: "Export type" })).getByRole("tab", { name: "Video" }));
     expect(screen.getByRole("tab", { name: "Music Playing" })).toBeInTheDocument();
     fireEvent.play(screen.getByLabelText(preview));
-    expect(within(screen.getByRole("tab", { name: "Music" })).queryByRole("img", { name: "Playing" })).not.toBeInTheDocument();
+    const musicTab = within(screen.getByRole("tablist", { name: "Project views" })).getByRole("tab", { name: "Music" });
+    expect(within(musicTab).queryByRole("img", { name: "Playing" })).not.toBeInTheDocument();
     expect(audio.currentTime).toBe(7);
-    fireEvent.click(screen.getByRole("tab", { name: "Music" }));
+    fireEvent.click(musicTab);
     expect(screen.getByRole("button", { name: "Play music" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Play music" }));
     expect(screen.getByRole("tab", { name: "Music Playing" })).toBeInTheDocument();
