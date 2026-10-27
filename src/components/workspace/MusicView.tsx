@@ -4,7 +4,7 @@ import { isTauri, readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateSupportsMusic, templateUsable, generatorPathFields, type GeneratorTemplate } from "../../lib/settings";
 import { musicSettingsForModel, moveSong, newMusicFolder, newSong, newSongVariation, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
-import { ComboBox, CommandBarButton, InfoBar, ProgressBar, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
+import { ComboBox, CommandBarButton, InfoBar, ProgressBar, ProgressRing, PropRow, PropSection, Slider, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
 import { Add16, Audio16, Delete16, Edit16, FolderAdd16, FolderOpen16, GoToEnd16, GoToStart16, GridView16, ListView16, Pause16, Play16, References16, Speaker14, Sparkle16, Stop14 } from "../ui/icons";
 import { generatorOptions } from "../generatorOptions";
 import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
@@ -280,7 +280,8 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
                   <span className="music-song__info"><strong>{song.title}</strong><span>{song.style || "Add a style to get started"}</span></span>
                   <span className="music-song__status" id={`music-status-${song.id}`}>{work ? `${work.detail} · ${Math.round(work.progress * 100)}%` : asset ? `Ready · ${time((asset.durationMs ?? 0) / 1000)}` : generated ? "Audio unavailable" : song.status === "draft" ? "Draft · Not generated" : song.status}</span>
                 </button>
-                {asset && <button type="button" className="icon-button music-song__play" aria-label={`Play ${song.title}`} onClick={() => startSong(asset)}><Play16 /></button>}
+                {work ? <span className="music-song__play music-song__progress"><ProgressRing size={20} value={work.status !== "queued" && work.progress > 0 ? work.progress * 100 : undefined} aria-label={`${song.title} generation progress`} /></span>
+                  : asset && <button type="button" className="icon-button music-song__play" aria-label={`Play ${song.title}`} onClick={() => startSong(asset)}><Play16 /></button>}
               </div>;
             })}
           </div>}

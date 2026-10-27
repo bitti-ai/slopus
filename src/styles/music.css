@@ -36,6 +36,7 @@
 .music-song__info > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .music-song__status { padding-right: 28px; text-transform: capitalize; }
 .music-song__play { position: absolute; right: var(--space-2); bottom: var(--space-2); }
+.music-song__progress { display: grid; place-items: center; width: var(--icon-button); height: var(--icon-button); pointer-events: none; }
 .music-songs--list { gap: var(--space-1); }
 .music-songs--list .music-song__select { flex-direction: row; align-items: center; padding-right: 48px; }
 .music-songs--list .music-song__art { width: 44px; height: 44px; aspect-ratio: auto; flex: none; }
