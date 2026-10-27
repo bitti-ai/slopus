@@ -109,7 +109,7 @@ fn single_shot_generates_ending_first_then_attaches_it_with_the_starting_source(
         let mut temporary_paths = Vec::new();
         let (metadata, _) = run_single_shot(&item, |stage| {
             calls += 1;
-            assert_eq!(stage.request.continuation_source_noise, if continued { Some(noise.unwrap_or(0.7)) } else { None });
+            assert_eq!(stage.request.continuation_source_noise, None);
             assert_eq!(stage.request.reference_paths, item.request.reference_paths);
             assert_eq!(stage.request.seed, item.request.seed);
             if calls == 1 {

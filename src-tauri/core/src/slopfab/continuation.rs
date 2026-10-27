@@ -36,8 +36,10 @@ pub(super) fn validate(request: &GenerationRequest) -> Result<(), String> {
 }
 
 pub(super) fn source_noise(request: &GenerationRequest) -> Option<f32> {
-    request.continuation_source_noise.or_else(||
-        (request.single_shot.is_some() && (request.continuation_path.is_some() || request.continuation_relative_path.is_some())).then_some(0.7))
+    // Single Shot uses boundary anchors only. Applying the source prior across
+    // the entire new interval can freeze/repeat the starting scene. Ignore old
+    // queued source-noise values during planning as well as generation.
+    if request.single_shot.is_some() { None } else { request.continuation_source_noise }
 }
 
 fn integer(meta: &Value, key: &str) -> Result<usize, String> {
@@ -342,7 +344,7 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn source_initialization_validates_and_resolves_with_both_backends() {
+    fn single_shot_ignores_old_source_initialization_during_native_planning() {
         use super::super::{ffi::{Api, RequestHandle}, h3::configure_request, config::Configuration,
             platform::ComputePlatform, planning::RequestPurpose, types::SingleShotRequest};
         let source = archive(124).into_temp_path();
@@ -356,10 +358,24 @@ pub(super) mod tests {
                     continuation_source_noise: Some(noise), single_shot: Some(SingleShotRequest {
                         ending_prompt: "Walk out of view".into(), ending_path: Some(ending.to_path_buf()) }), ..Default::default() };
                 validate(&request).unwrap();
+                assert_eq!(source_noise(&request), None);
                 let handle = RequestHandle::new(&api).unwrap();
                 configure_request(&api, &handle, &request, &Configuration::from_settings(&BTreeMap::new()), backend,
                     RequestPurpose::Plan, &ReferenceVideos::default()).unwrap();
-                assert!(api.resolve(&handle).unwrap().aligned_frames > 124);
+                let plan = api.resolve(&handle).unwrap();
+                assert!(plan.aligned_frames > 124);
+                let mut fresh = request.clone();
+                fresh.continuation_source_noise = None;
+                let baseline = RequestHandle::new(&api).unwrap();
+                configure_request(&api, &baseline, &fresh, &Configuration::from_settings(&BTreeMap::new()), backend,
+                    RequestPurpose::Plan, &ReferenceVideos::default()).unwrap();
+                let baseline_plan = api.resolve(&baseline).unwrap();
+                assert_eq!(plan.aligned_frames, baseline_plan.aligned_frames);
+                assert_eq!(plan.num_model_evaluations, baseline_plan.num_model_evaluations);
+                // Other native continuation callers may still opt into the API.
+                fresh.single_shot = None;
+                fresh.continuation_source_noise = Some(noise);
+                assert_eq!(source_noise(&fresh), Some(noise));
             }
         }
         for noise in [0.0, -0.1, 1.01, f32::NAN, f32::INFINITY] {

@@ -118,7 +118,7 @@ it("keeps Single Shot prompts in the shot panel and the ending prompt and starti
   initial.generationJobs.push(createDraftGenerationJob("A regular scene", { id: "ordinary", title: "Ordinary" }));
   const state = setup(initial);
   choose("Scene type", "Single Shot");
-  expect(screen.getByRole("spinbutton", { name: "Continuation" })).toBeDisabled();
+  expect(screen.queryByRole("spinbutton", { name: "Continuation" })).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Describe shot 1")).not.toBeInTheDocument();
   const ending = screen.getByLabelText("Ending prompt");
   typePrompt(ending, "Wave goodbye.");
@@ -132,10 +132,8 @@ it("keeps Single Shot prompts in the shot panel and the ending prompt and starti
   expect(optionNames(source)).toEqual(["None", "Second scene", "Ordinary"]);
   chooseOption(source, "Second scene");
   expect(state.latest().generationJobs[0].continuationSceneId).toBe("scene-second");
-  const continuation = screen.getByRole("spinbutton", { name: "Continuation" });
-  expect(continuation).toHaveValue(30);
-  fireEvent.change(continuation, { target: { value: "65" } }); fireEvent.blur(continuation);
-  expect(state.latest().generationJobs[0].continuationStrength).toBe(0.65);
+  expect(screen.queryByRole("spinbutton", { name: "Continuation" })).not.toBeInTheDocument();
+  expect(screen.getByText(/middle starts from fresh noise/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
   expect(screen.queryByRole("spinbutton", { name: "Continuation" })).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Ending prompt")).not.toBeInTheDocument();

@@ -54,7 +54,9 @@ fn run_single_shot(
     for index in 0..2 {
         if item.cancel.load(Ordering::Acquire) { return Err("Single Shot generation cancelled.".into()); }
         let mut request = item.request.clone();
-        request.continuation_source_noise = super::continuation::source_noise(&item.request);
+        // Clear legacy source initialization before removing single_shot for
+        // the ending pass. Both passes use fresh noise between fixed anchors.
+        request.continuation_source_noise = None;
         if index == 0 {
             request.single_shot = None;
             request.prompt = single.ending_prompt.clone();

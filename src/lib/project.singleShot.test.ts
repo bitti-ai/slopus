@@ -6,21 +6,27 @@ import { duplicateScene, sceneInput } from "./sceneHistory";
 const project = () => createProjectConfig({ name: "Single", prompt: "A dancer walks", resolution: "416p", aspectRatio: "16:9", targetDurationSeconds: 10 });
 const shot = (id: string): GenerationJob => createDraftGenerationJob("A dancer walks", { id, sceneType: "single-shot", durationSeconds: 6 });
 
-it("maps Single Shot Continuation to source noise, persists it in takes and invalidates snapshots", () => {
+it("uses fresh middle noise with locked start/end anchors and ignores legacy Continuation values", () => {
   const config = project(), source = { ...shot("source"), latentRelativePath: "latents/source.safetensors" };
   const job = { ...shot("next"), continuationSceneId: source.id }; config.generationJobs = [source, job];
   const request = sceneGenerationRequest(job, config, "D:/Project", 8);
-  expect(request.continuationSourceNoise).toBe(0.7);
+  expect(request.continuationSourceNoise).toBeUndefined();
+  expect(request.continuationRelativePath).toBe("latents/source.safetensors");
+  expect(request.continuationLockOverlap).toBe(true);
+  expect(request.continuationOverlapFrames).toBe(22);
+  expect(request.singleShot?.endingPrompt).toBeTruthy();
   const changed = { ...job, continuationStrength: 0.65 };
   const changedRequest = sceneGenerationRequest(changed, config, "D:/Project", 8);
-  expect(changedRequest.continuationSourceNoise).toBe(0.35);
-  expect(sceneGenerationSnapshot(changed, changedRequest)).not.toBe(sceneGenerationSnapshot(job, request));
+  expect(changedRequest.continuationSourceNoise).toBeUndefined();
+  expect(sceneGenerationSnapshot(changed, changedRequest)).toBe(sceneGenerationSnapshot(job, request));
+  expect(sceneGenerationSnapshot(changed, changedRequest)).not.toBe(sceneGenerationSnapshot(changed, { ...changedRequest, continuationSourceNoise: 0.35 }));
   expect(sceneInput(changed).continuationStrength).toBe(0.65);
   config.generationJobs[1] = changed;
   expect(parseProjectConfig(JSON.parse(JSON.stringify(config))).generationJobs[1].continuationStrength).toBe(0.65);
   expect(duplicateScene(config, changed.id)?.config.generationJobs.at(-1)?.continuationStrength).toBe(0.65);
-  expect(sceneGenerationRequest({ ...job, continuationStrength: 0 }, config, "D:/Project", 8).continuationSourceNoise).toBe(1);
-  expect(sceneGenerationRequest({ ...job, continuationStrength: 0.99 }, config, "D:/Project", 8).continuationSourceNoise).toBe(0.01);
+  for (const continuationStrength of [0, 0.3, 0.65, 0.99]) {
+    expect(sceneGenerationRequest({ ...job, continuationStrength }, config, "D:/Project", 8).continuationSourceNoise).toBeUndefined();
+  }
   expect(sceneGenerationRequest({ ...changed, continuationSceneId: null }, config, "D:/Project", 8).continuationSourceNoise).toBeUndefined();
   expect(sceneGenerationRequest({ ...changed, sceneType: "continue" }, config, "D:/Project", 8).continuationSourceNoise).toBeUndefined();
   config.generationJobs[1] = { ...job, continuationStrength: 1 };

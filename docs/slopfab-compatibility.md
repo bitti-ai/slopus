@@ -5,7 +5,7 @@
 Windows and Linux runtimes use SlopFab commit `bcc1d26d92433475434447f34017550f9f823fe2`
 from `D:\Projects\slopfab`, with CUDA and Vulkan enabled and FFmpeg disabled.
 This update adds source-initialized continuation and music progress fixes.
-Single Shot uses source initialization and latent ending anchors. LAN protocol is 20. Restart Slopus and
+Single Shot uses latent boundary anchors and fresh middle noise. LAN protocol is 21. Restart Slopus and
 update workers to load the new runtime.
 
 The Linux runtime passes C API and embedded-tokenizer checks. Slopus core and desktop
@@ -37,19 +37,16 @@ final duration; Single Shot requires at least two seconds.
 Only the final joined output and latents enter scene history. Timeline ranges
 identify each scene's own portion, retaining the shared decode at joins.
 Temporary endings are removed on success, failure and cancellation. Starting
-scenes must use compatible resolution and latent-upscale settings. Protocol 20
-prevents older workers from silently skipping source initialization.
+scenes must use compatible resolution and latent-upscale settings. Protocol 21
+prevents older workers from restoring their source-initialization default.
 
-**Continuation** controls appearance retention for Single Shot's starting video,
-from 0–99%, defaulting to 30%. Both passes call
-`slopfab_request_set_continuation_source_init` with noise strength
-`1 - continuationStrength` (0.7 by default). New video starts from the final
-packed source latent slice mixed with noise; new audio keeps its full-noise
-schedule. Zero uses fresh video noise while retaining boundary anchors. Higher
-values can reduce motion; this experimental mode does not extrapolate motion or
-guarantee seamless output. It needs standard H3 sampling, not fixed/distilled
-schedules; approximate caches are disabled. Without a starting video, the value
-is inactive. It persists in scene drafts/takes and generation fingerprints.
+Single Shot disables `slopfab_request_set_continuation_source_init` in both
+passes: repeating the final source latent slice across the new interval can
+freeze the middle. Only the starting and ending contexts are fixed; new video
+and audio start from fresh noise. The former Continuation strength control is
+removed. Saved values remain readable in drafts/takes but do not affect new
+requests; native planning and execution also ignore queued source-noise values
+for Single Shot. Old generation fingerprints differ, allowing regeneration.
 
 Checks cover prompt/reference compilation, persistence, dependency ordering,
 queue snapshots, cancellation, temporary cleanup and native anchored planning.
