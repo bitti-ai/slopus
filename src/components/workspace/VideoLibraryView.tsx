@@ -6,7 +6,7 @@ import { mergeVideoScenes, newVideo, resolveVideoSource, songScenes, videoLibrar
 import { newMusicFolder } from "../../lib/music";
 import { askNative } from "../../lib/nativeShell";
 import { CommandBarButton, ComboBox, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
-import { Add16, Delete16, Film32, FolderAdd16, FolderOpen16, GridView16, ListView16, OpenExternal16, Play16 } from "../ui/icons";
+import { Add16, Delete16, Film32, FolderAdd16, FolderOpen48, GridView16, ListView16, OpenExternal16, Play16 } from "../ui/icons";
 import { GeneratorView } from "./GeneratorView";
 import { VideoPlayback, videoPlaylist } from "./VideoPlayback";
 import { VideoPoster } from "./VideoPoster";
@@ -36,6 +36,11 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
   useBackNavigation(props.onBackNavigationChange, open ? "Back to Video" : null, () => setOpenId(undefined));
   useEffect(() => { props.onOpenVideoChange?.(open?.id); }, [open?.id, props.onOpenVideoChange]);
   const playing = videos.find((video) => video.id === playback?.id);
+  const folderContents = (id: string) => {
+    const videoCount = videos.filter((video) => video.folderId === id).length;
+    const folderCount = folders.filter((folder) => folder.parentId === id).length;
+    return [videoCount ? `${videoCount} video${videoCount === 1 ? "" : "s"}` : "", folderCount ? `${folderCount} folder${folderCount === 1 ? "" : "s"}` : ""].filter(Boolean).join(" \u00b7 ") || "Empty folder";
+  };
   const breadcrumbs: { id: string | null; name: string }[] = [];
   const visited = new Set<string>();
   let ancestor = currentFolder;
@@ -105,8 +110,8 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
             <button className="primary-button" disabled={!folderName.trim()}>Create folder</button><button type="button" className="secondary-button" onClick={() => setCreatingFolder(false)}>Cancel</button>
           </form>}
           <div className={`music-songs music-songs--${view}`} role="list" aria-label="Video contents">
-            {folders.filter((folder) => (folder.parentId ?? null) === currentFolderId).map((folder) => <div className="music-song music-folder" role="listitem" key={folder.id} {...dropProps(folder.id)} onContextMenu={(event) => menu.open(event, [...newItems(), { separator: true }, { label: "Remove folder", icon: <Delete16 />, onSelect: () => update((current) => ({ ...current, videoFolders: current.videoFolders?.filter((item) => item.id !== folder.id).map((item) => item.parentId === folder.id ? { ...item, parentId: folder.parentId } : item), videos: current.videos!.map((video) => video.folderId === folder.id ? { ...video, folderId: folder.parentId } : video) })) }])}>
-              <button type="button" className="music-song__select" aria-label={`Open ${folder.name}`} onClick={() => browse(folder.id)}><span className="music-song__art"><FolderOpen16 /></span><span className="music-song__info"><strong>{folder.name}</strong></span></button>
+            {folders.filter((folder) => (folder.parentId ?? null) === currentFolderId).map((folder) => <div className="music-song music-folder video-folder" role="listitem" key={folder.id} {...dropProps(folder.id)} onContextMenu={(event) => menu.open(event, [...newItems(), { separator: true }, { label: "Remove folder", icon: <Delete16 />, onSelect: () => update((current) => ({ ...current, videoFolders: current.videoFolders?.filter((item) => item.id !== folder.id).map((item) => item.parentId === folder.id ? { ...item, parentId: folder.parentId } : item), videos: current.videos!.map((video) => video.folderId === folder.id ? { ...video, folderId: folder.parentId } : video) })) }])}>
+              <button type="button" className="music-song__select" aria-label={`Open ${folder.name}`} onClick={() => browse(folder.id)}><span className="music-song__art"><FolderOpen48 /></span><span className="music-song__info"><strong title={folder.name}>{folder.name}</strong><span>{folderContents(folder.id)}</span></span></button>
             </div>)}
             {visible.map((video) => {
               const scenes = videoScenes(video, config), playlist = videoPlaylist(video, config), playable = playlist.length, first = playlist[0];
