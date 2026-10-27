@@ -3,12 +3,12 @@ import type { ProjectConfig, ProjectVideo } from "../../lib/project";
 import { outputDimensions } from "../../lib/export";
 import { videoPlaybackConfig, videoPlaylist } from "../../lib/videoPlayback";
 import { ProgramMonitor } from "./ProgramMonitor";
-import { Dismiss16, Pause20, Play20Filled } from "../ui/icons";
+import { Dismiss16, OpenExternal16, Pause20, Play20Filled } from "../ui/icons";
 export { videoPlaylist } from "../../lib/videoPlayback";
 
 /** Timeline's continuous clock, prepared players and persistent compositor. */
-export function VideoPlayback({ video: item, config, folderPath, popout, onClose }: {
-  video: ProjectVideo; config: ProjectConfig; folderPath: string; popout: boolean; onClose: () => void;
+export function VideoPlayback({ video: item, config, folderPath, popout, onClose, onPopout }: {
+  video: ProjectVideo; config: ProjectConfig; folderPath: string; popout: boolean; onClose: () => void; onPopout?: () => void;
 }) {
   // Play the takes opened by the user. Progress updates and completed renders
   // must not recreate media objects, unload decoders or replace a playing file.
@@ -35,14 +35,20 @@ export function VideoPlayback({ video: item, config, folderPath, popout, onClose
       if (popout && focused?.isConnected) focused.focus();
     };
   }, [popout]);
+  const playButton = <button type="button" className={popout ? "shot-popout__play" : undefined} aria-label={(playing ? "Pause " : "Replay ") + item.title} disabled={!duration} onClick={() => {
+    if (playing) setPlaying(false);
+    else { if (playhead >= duration) setPlayhead(0); setPlaying(true); }
+  }}>{playing ? <Pause20 /> : <Play20Filled />}</button>;
   const player = <div className={popout ? "shot-popout__frame" : "video-card__player"} ref={frame} tabIndex={-1}
     role={popout ? "dialog" : "group"} aria-label={item.title + " preview"} style={{ "--shot-aspect": dimensions.width / dimensions.height } as CSSProperties}>
     <ProgramMonitor config={preview} folderPath={folderPath} playheadMs={Math.min(playhead, Math.max(0, duration - 1))} playing={playing} waitForInitialFrame onSeek={setPlayhead} onPlayingChange={setPlaying} />
-    <button type="button" className="shot-popout__close" aria-label="Close video preview" onClick={onClose}><Dismiss16 /></button>
-    <button type="button" className="shot-popout__play" aria-label={(playing ? "Pause " : "Replay ") + item.title} disabled={!duration} onClick={() => {
-      if (playing) setPlaying(false);
-      else { if (playhead >= duration) setPlayhead(0); setPlaying(true); }
-    }}>{playing ? <Pause20 /> : <Play20Filled />}</button>
+    {popout ? <>
+      <button type="button" className="shot-popout__close" aria-label="Close video preview" onClick={onClose}><Dismiss16 /></button>
+      {playButton}
+    </> : <div className="video-card__playback-controls">
+      {playButton}
+      {onPopout && <button type="button" aria-label={`Pop out ${item.title}`} onClick={onPopout}><OpenExternal16 /></button>}
+    </div>}
     <span className="video-card__position">{playhead >= duration ? playlist.length : index + 1} / {playlist.length} · {current?.title}</span>
   </div>;
   return popout ? <div className="shot-popout">{player}</div> : player;

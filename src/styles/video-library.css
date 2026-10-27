@@ -19,16 +19,17 @@
 .video-folder .music-song__art { flex: none; aspect-ratio: 16 / 9; background: color-mix(in srgb, var(--accent) 8%, var(--surface-pane)); }
 .video-folder .music-song__art svg { width: 64px; height: 64px; }
 .video-card__controls { position: absolute; top: calc((100cqw - 12px) / var(--video-card-aspect, 1.7777778) / 2 + 6px); left: 50%; transform: translate(-50%, -50%); display: flex; gap: var(--space-2); }
-.video-card__controls button { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #ffffff80; border-radius: 50%; background: #15191fe6; color: #fff; box-shadow: 0 1px 6px #0008; }
-.video-card__controls button:hover { background: #363d48; }
+.video-card__playback-controls { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; gap: var(--space-2); }
+.video-card__controls button, .video-card__playback-controls button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid #ffffff80; border-radius: 50%; background: #15191fe6; color: #fff; box-shadow: 0 1px 6px #0008; }
+.video-card__controls button:hover, .video-card__playback-controls button:hover { background: #363d48; }
+.video-card__controls svg, .video-card__playback-controls svg { width: 20px; height: 20px; }
 .video-card__player { position: absolute; top: 6px; left: 6px; right: 6px; aspect-ratio: var(--video-card-aspect, 16 / 9); background: #000; z-index: 2; }
 .video-card__player video { width: 100%; height: 100%; object-fit: contain; }
 .video-card__position { position: absolute; left: var(--space-2); top: var(--space-2); color: #fff; background: #000b; padding: 2px 5px; font-size: var(--text-xs); pointer-events: none; max-width: 70%; }
-.music-songs--list .video-card > .music-song__select { padding-right: 100px; min-height: 82px; }
+.music-songs--list .video-card > .music-song__select { min-height: 82px; }
 .music-songs--list .video-card .music-song__art { width: 120px; height: 67.5px; }
 .music-songs--list .video-folder > .music-song__select { min-height: 82px; padding-right: 6px; }
 .music-songs--list .video-folder .music-song__art { width: 120px; height: 67.5px; }
 .music-songs--list .video-folder .music-song__art svg { width: 32px; height: 32px; }
-.music-songs--list .video-card__controls { top: 50%; left: auto; right: 12px; transform: translateY(-50%); }
-.music-songs--list .video-card--busy .video-card__controls { top: calc(50% - 8px); }
-.music-songs--list .video-card__player { inset: 0; aspect-ratio: auto; }
+.music-songs--list .video-card__controls { top: 50%; left: 66px; transform: translate(-50%, -50%); }
+.music-songs--list .video-card__player { top: 50%; right: auto; width: 120px; height: 67.5px; aspect-ratio: auto; transform: translateY(-50%); }

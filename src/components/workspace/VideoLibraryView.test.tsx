@@ -153,6 +153,15 @@ it("uses the first playback frame as the poster and keeps playback buttons separ
   await screen.findByRole('img', {name: 'First frame of Film'});
   expect(shotPoster).toHaveBeenCalledWith('D:/Project','media/film.mp4',4);
   expect(screen.queryByRole('button',{name:'Open scenes'})).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', {name: 'Play Film'}));
+  const inline = view.container.querySelector<HTMLElement>('.video-card__player')!;
+  expect(within(inline).getByRole('button', {name: 'Pause Film'}).parentElement).toHaveClass('video-card__playback-controls');
+  expect(within(inline).getByRole('button', {name: 'Pop out Film'})).toBeInTheDocument();
+  expect(screen.queryByRole('button', {name: 'Close video preview'})).not.toBeInTheDocument();
+  expect(view.container.querySelector('.video-card__controls')).toBeNull();
+  fireEvent.click(within(inline).getByRole('button', {name: 'Pause Film'}));
+  fireEvent.click(within(inline).getByRole('button', {name: 'Replay Film'}));
+  expect(within(inline).getByRole('button', {name: 'Pause Film'})).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'Pop out Film'})); expect(screen.getByRole('dialog')).toBeInTheDocument(); expect(screen.queryByLabelText('Scenes editor')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'Close video preview'}));
   fireEvent.click(screen.getByRole('button',{name:'Open Film'}).closest('[role="listitem"]')!); expect(screen.getByLabelText('Scenes editor')).toBeInTheDocument();
