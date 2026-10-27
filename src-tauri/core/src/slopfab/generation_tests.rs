@@ -92,8 +92,9 @@ fn single_shot_item() -> (QueueItem, tempfile::TempPath) {
 
 #[test]
 fn single_shot_generates_ending_first_then_attaches_it_with_the_starting_source() {
-    for continued in [false, true] {
+    for (continued, noise) in [(false, None), (true, None), (true, Some(0.35)), (true, Some(1.0))] {
         let (mut item, source) = single_shot_item();
+        item.request.continuation_source_noise = noise;
         let original_source = std::fs::read(&source).unwrap();
         if !continued {
             item.request.continuation_path = None;
@@ -108,6 +109,7 @@ fn single_shot_generates_ending_first_then_attaches_it_with_the_starting_source(
         let mut temporary_paths = Vec::new();
         let (metadata, _) = run_single_shot(&item, |stage| {
             calls += 1;
+            assert_eq!(stage.request.continuation_source_noise, if continued { Some(noise.unwrap_or(0.7)) } else { None });
             assert_eq!(stage.request.reference_paths, item.request.reference_paths);
             assert_eq!(stage.request.seed, item.request.seed);
             if calls == 1 {

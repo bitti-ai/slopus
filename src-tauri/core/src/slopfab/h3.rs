@@ -20,6 +20,8 @@ pub(super) fn configure_request(
     if request.music.is_some() { return super::music::configure(api, handle, request, configuration, platform); }
     configuration.validate_inputs(request)?;
     if request.single_shot.is_some() { api.require_end_anchor()?; }
+    let source_noise = super::continuation::source_noise(request);
+    if source_noise.is_some() { api.require_continuation_source_init()?; }
     if crate::models::generator_features(&configuration.model_type).cuda_only {
         if platform == ComputePlatform::Vulkan {
             return Err(format!("{} requires CUDA. Select a CUDA backend or worker.", crate::models::generator_features(&configuration.model_type).label));
@@ -138,7 +140,7 @@ pub(super) fn configure_request(
     let lock_overlap = request.continuation_path.is_some() && request.continuation_lock_overlap;
     let independent_audio = request.audio_steps.is_some_and(|steps| steps != video_steps);
     // Overlap locking and different audio/video step counts require full evaluations.
-    api.set_motion_cache(handle, configuration.motion_cache && !dmad && request.image_edit.is_none() && !lock_overlap && !independent_audio && request.latent_bridge.is_none() && request.single_shot.is_none())?;
+    api.set_motion_cache(handle, configuration.motion_cache && !dmad && request.image_edit.is_none() && !lock_overlap && !independent_audio && request.latent_bridge.is_none() && request.single_shot.is_none() && source_noise.is_none())?;
     if let Some(bridge) = &request.latent_bridge {
         api.set_latent_bridge_files(handle,
             request.bridge_left_path.as_deref().ok_or("Missing left Long Shot archive.")?,
@@ -161,6 +163,7 @@ pub(super) fn configure_request(
     if let Some(path) = request.single_shot.as_ref().and_then(|single| single.ending_path.as_ref()) {
         api.set_end_anchor_file(handle, path)?;
     }
+    if let Some(noise) = source_noise { api.set_continuation_source_init(handle, noise)?; }
     if purpose == RequestPurpose::Generate {
         if let Some(path) = &request.save_latents_path {
             api.set_save_latents(handle, path)?;

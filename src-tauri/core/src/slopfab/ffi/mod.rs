@@ -163,6 +163,11 @@ impl Api {
         self.inner.set_latent_bridge_files(r.pointer.as_ptr(), left, right, left_margin, right_margin, context)
     }
     pub fn require_end_anchor(&self) -> Result<(), String> { self.inner.require_end_anchor() }
+    pub fn require_continuation_source_init(&self) -> Result<(), String> { self.inner.require_continuation_source_init() }
+    pub fn set_continuation_source_init(&self, r: &RequestHandle, noise: f32) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_continuation_source_init(r.pointer.as_ptr(), noise)
+    }
     pub fn set_end_anchor_file(&self, r: &RequestHandle, path: &Path) -> Result<(), String> {
         self.check(r)?;
         self.inner.set_end_anchor_file(r.pointer.as_ptr(), path)

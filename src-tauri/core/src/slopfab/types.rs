@@ -107,6 +107,8 @@ pub struct GenerationRequest {
     pub continuation_from: Option<String>,
     #[serde(default)]
     pub continuation_lock_overlap: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continuation_source_noise: Option<f32>,
     #[serde(default)]
     pub continuation_source_frames: Option<i32>,
     #[serde(default)]

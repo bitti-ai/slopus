@@ -107,6 +107,7 @@ pub struct Api {
     set_save_latents: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_continuation_file: Option<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>,
     set_end_anchor_file: Option<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>,
+    set_continuation_source_init: Option<unsafe extern "C" fn(*mut Request, i32, f32) -> i32>,
     set_latent_bridge_files: Option<unsafe extern "C" fn(*mut Request, *const c_char, *const c_char, i32, i32, i32) -> i32>,
     set_continuation_lock_overlap: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_video_transition: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
@@ -283,6 +284,7 @@ impl Api {
                     .ok()
                     .map(|symbol| *symbol),
                 set_end_anchor_file: library.get::<unsafe extern "C" fn(*mut Request, *const c_char, i32) -> i32>(b"slopfab_request_set_end_anchor_file\0").ok().map(|symbol| *symbol),
+                set_continuation_source_init: library.get::<unsafe extern "C" fn(*mut Request, i32, f32) -> i32>(b"slopfab_request_set_continuation_source_init\0").ok().map(|symbol| *symbol),
                 set_continuation_lock_overlap: library
                     .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_continuation_lock_overlap\0")
                     .ok().map(|symbol| *symbol),
@@ -530,6 +532,13 @@ impl Api {
     }
     pub fn require_end_anchor(&self) -> Result<(), String> {
         self.set_end_anchor_file.map(|_| ()).ok_or("Single Shot requires SlopFab API 1.40 or newer. Update the app and workers.".into())
+    }
+    pub fn require_continuation_source_init(&self) -> Result<(), String> {
+        self.set_continuation_source_init.map(|_| ()).ok_or("Single Shot continuation requires SlopFab API 1.41 or newer. Update the app and workers.".into())
+    }
+    pub fn set_continuation_source_init(&self, r: *mut Request, noise: f32) -> Result<(), String> {
+        self.require_continuation_source_init()?;
+        self.error(unsafe { self.set_continuation_source_init.unwrap()(r, 1, noise) })
     }
     pub fn set_end_anchor_file(&self, r: *mut Request, path: &Path) -> Result<(), String> {
         self.require_end_anchor()?;

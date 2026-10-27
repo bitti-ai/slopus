@@ -9,6 +9,12 @@ use std::{
 };
 
 pub(super) fn validate(request: &GenerationRequest) -> Result<(), String> {
+    if let Some(noise) = request.continuation_source_noise {
+        if !noise.is_finite() || noise <= 0.0 || noise > 1.0
+            || request.continuation_path.is_none() && request.continuation_relative_path.is_none() {
+            return Err("Source initialization needs previous latents and a finite noise strength greater than zero and at most one.".into());
+        }
+    }
     let overlap = request.continuation_overlap_frames.unwrap_or(22);
     if !(22..=362).contains(&overlap) || overlap % 17 != 5 {
         return Err("Continuation overlap must be 22, 39, 56, … frames (at most 362).".into());
@@ -27,6 +33,11 @@ pub(super) fn validate(request: &GenerationRequest) -> Result<(), String> {
         return Err("The selected scene is shorter than the continuation overlap.".into());
     }
     Ok(())
+}
+
+pub(super) fn source_noise(request: &GenerationRequest) -> Option<f32> {
+    request.continuation_source_noise.or_else(||
+        (request.single_shot.is_some() && (request.continuation_path.is_some() || request.continuation_relative_path.is_some())).then_some(0.7))
 }
 
 fn integer(meta: &Value, key: &str) -> Result<usize, String> {
@@ -328,6 +339,35 @@ pub(super) mod tests {
             request.frames = 22;
             assert!(validate_generation_controls(&request).unwrap_err().contains("at least 2 seconds"));
         }
+    }
+
+    #[test]
+    fn source_initialization_validates_and_resolves_with_both_backends() {
+        use super::super::{ffi::{Api, RequestHandle}, h3::configure_request, config::Configuration,
+            platform::ComputePlatform, planning::RequestPurpose, types::SingleShotRequest};
+        let source = archive(124).into_temp_path();
+        let ending = archive(22).into_temp_path();
+        let api = Api::load(&crate::slopfab::default_dll_path()).unwrap();
+        api.require_continuation_source_init().unwrap();
+        for backend in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+            for noise in [0.01, 0.35, 0.7, 1.0] {
+                let request = GenerationRequest { prompt: "Keep walking".into(), frames: 119, steps: 8, seed: 1,
+                    canvas_width: 64, canvas_height: 32, continuation_path: Some(source.to_path_buf()),
+                    continuation_source_noise: Some(noise), single_shot: Some(SingleShotRequest {
+                        ending_prompt: "Walk out of view".into(), ending_path: Some(ending.to_path_buf()) }), ..Default::default() };
+                validate(&request).unwrap();
+                let handle = RequestHandle::new(&api).unwrap();
+                configure_request(&api, &handle, &request, &Configuration::from_settings(&BTreeMap::new()), backend,
+                    RequestPurpose::Plan, &ReferenceVideos::default()).unwrap();
+                assert!(api.resolve(&handle).unwrap().aligned_frames > 124);
+            }
+        }
+        for noise in [0.0, -0.1, 1.01, f32::NAN, f32::INFINITY] {
+            let request = GenerationRequest { continuation_path: Some(source.to_path_buf()), continuation_source_noise: Some(noise), ..Default::default() };
+            assert!(validate(&request).is_err());
+            assert!(api.set_continuation_source_init(&RequestHandle::new(&api).unwrap(), noise).is_err());
+        }
+        assert!(validate(&GenerationRequest { continuation_source_noise: Some(0.7), ..Default::default() }).is_err());
     }
 
     #[test]
