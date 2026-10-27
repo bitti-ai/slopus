@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type ComponentProps, type CSSProperties, type DragEvent } from "react";
-import { referenceTypeLabel, sceneDurationSeconds, type ProjectConfig, type ProjectVideo, type VideoSource } from "../../lib/project";
+import { referenceTypeLabel, sceneDurationSeconds, sceneGenerationPending, type ProjectConfig, type ProjectVideo, type VideoSource } from "../../lib/project";
 import { citableReferences } from "./SceneEditor";
 import { referenceMediaTypes } from "../../lib/referenceSelection";
 import { mergeVideoScenes, newVideo, resolveVideoSource, songScenes, videoLibrary, videoScenes } from "../../lib/videoLibrary";
 import { newMusicFolder } from "../../lib/music";
 import { askNative } from "../../lib/nativeShell";
-import { CommandBarButton, ComboBox, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
+import { CommandBarButton, ComboBox, ProgressRing, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
 import { Add16, Delete16, Film32, FolderAdd16, FolderOpen48, GridView16, ListView16, OpenExternal16, Play16 } from "../ui/icons";
 import { GeneratorView } from "./GeneratorView";
 import { VideoPlayback, videoPlaylist } from "./VideoPlayback";
@@ -117,13 +117,16 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
               const scenes = videoScenes(video, config), playlist = videoPlaylist(video, config), playable = playlist.length, first = playlist[0];
               const [width, height] = config.settings.aspectRatio.split(":").map(Number);
               const aspect = first?.asset.width && first.asset.height ? first.asset.width / first.asset.height : width / height;
-              const busy = scenes.some((scene) => ["queued", "generating"].includes(scene.status));
-              return <div key={video.id} role="listitem" style={{ "--video-card-aspect": aspect } as CSSProperties} className={`music-song video-card${selected?.id === video.id ? " music-song--selected" : ""}${playable ? "" : " music-song--draft"}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData(VIDEO_DRAG, JSON.stringify({ projectId: config.id, videoId: video.id })); }}
+              const pending = scenes.filter(sceneGenerationPending), running = pending.filter((scene) => scene.status !== "queued");
+              const busy = pending.length > 0;
+              const progress = running.reduce((sum, scene) => sum + scene.progress, 0) / Math.max(1, running.length) * 100;
+              return <div key={video.id} role="listitem" style={{ "--video-card-aspect": aspect } as CSSProperties} className={`music-song video-card${busy ? " video-card--busy" : ""}${selected?.id === video.id ? " music-song--selected" : ""}${playable ? "" : " music-song--draft"}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData(VIDEO_DRAG, JSON.stringify({ projectId: config.id, videoId: video.id })); }}
                 onClick={(event) => { if (!(event.target as Element).closest("button, .video-card__player")) openVideo(video); }}
                 onContextMenu={(event) => { setSelectedId(video.id); menu.open(event, [{ label: "Open scenes", onSelect: () => openVideo(video) }, { label: "Video settings", onSelect: () => setSelectedId(video.id) }, ...newItems(), { separator: true }, { label: "Remove video", icon: <Delete16 />, disabled: busy, danger: true, onSelect: () => { void remove(video); } }]); }}>
                 <button type="button" className="music-song__select" aria-label={`Open ${video.title}`} onFocus={() => setSelectedId(video.id)} onClick={() => openVideo(video)}>
                   <span className="music-song__art"><VideoPoster folderPath={folderPath} relativePath={first?.asset.relativePath} seconds={first?.start ?? 0} revision={props.generationCompletionTimes?.[first?.sceneId ?? ""] ?? first?.asset.createdAt} title={video.title} /></span><span className="music-song__info"><strong>{video.title}</strong><span>{scenes.length} scenes · {scenes.reduce((seconds, scene) => seconds + sceneDurationSeconds(scene), 0).toFixed(1)} s</span><span>{busy ? "Generating" : playable ? `${playable} / ${scenes.length} scenes ready` : "Draft"}</span></span>
                 </button>
+                {busy && <ProgressRing className="video-card__progress" size={20} value={progress > 0 ? progress : undefined} aria-label={`${video.title} generation progress`} />}
                 {playable > 0 && <div className="video-card__controls"><button type="button" aria-label={`Play ${video.title}`} onClick={() => setPlayback({ id: video.id, popout: false })}><Play16 /></button><button type="button" aria-label={`Pop out ${video.title}`} onClick={() => setPlayback({ id: video.id, popout: true })}><OpenExternal16 /></button></div>}
                 {playing?.id === video.id && !playback?.popout && <VideoPlayback key={video.id} video={video} config={config} folderPath={folderPath} popout={false} onClose={() => setPlayback(undefined)} />}
               </div>;
