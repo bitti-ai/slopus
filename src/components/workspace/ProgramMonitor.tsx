@@ -52,7 +52,9 @@ const clamp = (value: number, minimum: number, maximum: number) => Math.max(mini
 const angleAt = (x: number, y: number, centerX: number, centerY: number) => Math.atan2(y - centerY, x - centerX) * 180 / Math.PI;
 const normalizedAngle = (value: number) => ((value + 180) % 360 + 360) % 360 - 180;
 
-export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate = 1, onSeek, onPlayingChange, selectedClipId = null, transformEditingDisabled = false, onSelectClip, onTransformChange, selectedMotionNodeId, onSelectMotionNode, onMotionChange }: {
+export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate = 1, onSeek, onPlayingChange, waitForInitialFrame = false, selectedClipId = null, transformEditingDisabled = false, onSelectClip, onTransformChange, selectedMotionNodeId, onSelectMotionNode, onMotionChange }: {
+  /** Card/popout autoplay waits for its opening picture before advancing the clock. */
+  waitForInitialFrame?: boolean;
   selectedMotionNodeId?: string | null;
   onSelectMotionNode?: (id: string) => void;
   onMotionChange?: (motion: Motion) => void;
@@ -80,7 +82,7 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
   const receiveMotionFrame = useCallback((id: string, nodes: MotionNode[]) => {
     if (id === selectedClipId && !playing) setMotionFrame({ id, nodes });
   }, [selectedClipId, playing]);
-  const tracks = useMemo(() => continuationPlaybackTracks(config), [config.timeline.tracks, config.assets, config.generationJobs]);
+  const tracks = useMemo(() => continuationPlaybackTracks(config), [config.timeline.tracks, config.assets, config.generationJobs, config.videos]);
   const assetsById = useMemo(() => new Map(config.assets.map((candidate) => [candidate.id, candidate])), [config.assets]);
   const segments = useMemo(() => previewSegments(tracks, assetsById), [tracks, assetsById]);
   const segmentIndex = previewSegmentIndex(segments, playheadMs);
@@ -172,6 +174,7 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
 
   const callbacks = useRef({ onSeek, onPlayingChange });
   callbacks.current = { onSeek, onPlayingChange };
+  const currentPicture = useRef({ layers, playerKeys }); currentPicture.current = { layers, playerKeys };
   const report = useCallback((ms: number) => {
     const rounded = Math.round(ms);
     /* Keep the local clock advancing even when React batches visual updates
@@ -208,9 +211,19 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
   useEffect(() => {
     if (!playing) return;
     let frame = 0;
+    let started = !waitForInitialFrame;
     let lastTick = performance.now();
     const step = () => {
       const now = performance.now();
+      if (!started) {
+        started = currentPicture.current.layers.every((layer) => {
+          const element = media.get(currentPicture.current.playerKeys.get(layer.id) ?? layer.id);
+          return element instanceof HTMLVideoElement ? element.readyState >= 2 && !element.seeking
+            : element instanceof HTMLImageElement ? element.complete && element.naturalWidth > 0 : Boolean(element);
+        });
+        lastTick = now;
+        frame = requestAnimationFrame(step); return;
+      }
       const elapsed = now - lastTick;
       lastTick = now;
       /* Media currentTime can be exposed in coarse jumps while Chromium is
@@ -237,7 +250,7 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [playing, rate, contentEndMs, report]);
+  }, [playing, rate, contentEndMs, report, waitForInitialFrame, media]);
   /* The status bar's playback rate: counted by the picture on every tick,
      published once a second, never through this component's state. */
   useEffect(() => {

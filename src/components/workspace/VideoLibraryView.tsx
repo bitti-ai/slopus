@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentProps, type DragEvent } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type CSSProperties, type DragEvent } from "react";
 import { referenceTypeLabel, sceneDurationSeconds, type ProjectConfig, type ProjectVideo, type VideoSource } from "../../lib/project";
 import { citableReferences } from "./SceneEditor";
 import { referenceMediaTypes } from "../../lib/referenceSelection";
@@ -9,6 +9,7 @@ import { CommandBarButton, ComboBox, PropRow, PropSection, Splitter, useContextM
 import { Add16, Delete16, Film32, FolderAdd16, FolderOpen16, GridView16, ListView16, OpenExternal16, Play16 } from "../ui/icons";
 import { GeneratorView } from "./GeneratorView";
 import { VideoPlayback, videoPlaylist } from "./VideoPlayback";
+import { VideoPoster } from "./VideoPoster";
 import { PromptTextField } from "./PromptTextField";
 
 const VIDEO_DRAG = "application/x-slopus-video";
@@ -105,15 +106,17 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
               <button type="button" className="music-song__select" aria-label={`Open ${folder.name}`} onClick={() => browse(folder.id)}><span className="music-song__art"><FolderOpen16 /></span><span className="music-song__info"><strong>{folder.name}</strong></span></button>
             </div>)}
             {visible.map((video) => {
-              const scenes = videoScenes(video, config), playable = videoPlaylist(video, config).length;
+              const scenes = videoScenes(video, config), playlist = videoPlaylist(video, config), playable = playlist.length, first = playlist[0];
+              const [width, height] = config.settings.aspectRatio.split(":").map(Number);
+              const aspect = first?.asset.width && first.asset.height ? first.asset.width / first.asset.height : width / height;
               const busy = scenes.some((scene) => ["queued", "generating"].includes(scene.status));
-              return <div key={video.id} role="listitem" className={`music-song video-card${selected?.id === video.id ? " music-song--selected" : ""}${playable ? "" : " music-song--draft"}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData(VIDEO_DRAG, JSON.stringify({ projectId: config.id, videoId: video.id })); }}
-                onContextMenu={(event) => menu.open(event, [{ label: "Open scenes", onSelect: () => openVideo(video) }, ...newItems(), { separator: true }, { label: "Remove video", icon: <Delete16 />, disabled: busy, danger: true, onSelect: () => { void remove(video); } }])}>
-                <button type="button" className="music-song__select" aria-label={`Select ${video.title}`} aria-pressed={selected?.id === video.id} onClick={() => setSelectedId(video.id)} onDoubleClick={() => openVideo(video)}>
-                  <span className="music-song__art"><Film32 /></span><span className="music-song__info"><strong>{video.title}</strong><span>{scenes.length} scenes · {scenes.reduce((seconds, scene) => seconds + sceneDurationSeconds(scene), 0).toFixed(1)} s</span><span>{busy ? "Generating" : playable ? `${playable} / ${scenes.length} scenes ready` : "Draft"}</span></span>
+              return <div key={video.id} role="listitem" style={{ "--video-card-aspect": aspect } as CSSProperties} className={`music-song video-card${selected?.id === video.id ? " music-song--selected" : ""}${playable ? "" : " music-song--draft"}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData(VIDEO_DRAG, JSON.stringify({ projectId: config.id, videoId: video.id })); }}
+                onClick={(event) => { if (!(event.target as Element).closest("button, .video-card__player")) openVideo(video); }}
+                onContextMenu={(event) => { setSelectedId(video.id); menu.open(event, [{ label: "Open scenes", onSelect: () => openVideo(video) }, { label: "Video settings", onSelect: () => setSelectedId(video.id) }, ...newItems(), { separator: true }, { label: "Remove video", icon: <Delete16 />, disabled: busy, danger: true, onSelect: () => { void remove(video); } }]); }}>
+                <button type="button" className="music-song__select" aria-label={`Open ${video.title}`} onFocus={() => setSelectedId(video.id)} onClick={() => openVideo(video)}>
+                  <span className="music-song__art"><VideoPoster folderPath={folderPath} relativePath={first?.asset.relativePath} seconds={first?.start ?? 0} revision={props.generationCompletionTimes?.[first?.sceneId ?? ""] ?? first?.asset.createdAt} title={video.title} /></span><span className="music-song__info"><strong>{video.title}</strong><span>{scenes.length} scenes · {scenes.reduce((seconds, scene) => seconds + sceneDurationSeconds(scene), 0).toFixed(1)} s</span><span>{busy ? "Generating" : playable ? `${playable} / ${scenes.length} scenes ready` : "Draft"}</span></span>
                 </button>
                 {playable > 0 && <div className="video-card__controls"><button type="button" aria-label={`Play ${video.title}`} onClick={() => setPlayback({ id: video.id, popout: false })}><Play16 /></button><button type="button" aria-label={`Pop out ${video.title}`} onClick={() => setPlayback({ id: video.id, popout: true })}><OpenExternal16 /></button></div>}
-                <button type="button" className="video-card__open secondary-button" onClick={() => openVideo(video)}>Open scenes</button>
                 {playing?.id === video.id && !playback?.popout && <VideoPlayback key={video.id} video={video} config={config} folderPath={folderPath} popout={false} onClose={() => setPlayback(undefined)} />}
               </div>;
             })}
@@ -137,7 +140,7 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
             update((current) => ({ ...current, generationJobs: [...current.generationJobs, ...scenes], videos: current.videos!.map((video) => video.id === selected.id ? { ...video, sceneIds: scenes.map((scene) => scene.id) } : video) })); openVideo(selected);
           }}>Create scenes for song</button>}
         </PropSection>
-        <PropSection title="Scenes"><button type="button" className="primary-button" onClick={() => openVideo(selected)}>Open scenes</button>
+        <PropSection title="Scenes">
           <p className="video-reference-help">{videoScenes(selected, config).map((scene, index, all) => { const start = all.slice(0, index).reduce((sum, item) => sum + sceneDurationSeconds(item), 0); return <span className="video-reference-range" key={scene.id}>{scene.title}: {start.toFixed(1)}–{(start + sceneDurationSeconds(scene)).toFixed(1)} s</span>; })}</p>
         </PropSection>
       </> : <p className="music-inspector__empty">Select a video to edit its settings.</p>}</div></aside>

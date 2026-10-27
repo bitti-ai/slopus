@@ -5,12 +5,13 @@ import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createDraftGenerationJob, createProjectConfig, generationAssetId, type ProjectConfig } from "../../lib/project";
 import { newVideo } from "../../lib/videoLibrary";
-import { readMediaFileUrl } from "../../lib/persistence";
+import { PreviewSources } from "../../lib/exportPipeline";
+import { shotPoster } from "./ShotThumbnail";
 import { VideoLibraryView } from "./VideoLibraryView";
 import { VideoPlayback } from "./VideoPlayback";
 import { choose } from "./comboTestUtils";
 
-vi.mock("../../lib/persistence", async (original) => ({ ...await original<typeof import("../../lib/persistence")>(), readMediaFileUrl: vi.fn(async (_, item) => `blob:${item.relativePath}`) }));
+vi.mock("./ShotThumbnail", async (original) => ({ ...await original<typeof import("./ShotThumbnail")>(), shotPoster: vi.fn(async () => ({ poster: "data:image/jpeg;base64,preview", failed: false })) }));
 vi.mock("../../lib/nativeShell", async (original) => ({ ...await original<typeof import("../../lib/nativeShell")>(), askNative: vi.fn(async () => true) }));
 vi.mock("./GeneratorView", () => ({ GeneratorView: ({ config, sceneIds, onChange }: { config: ProjectConfig; sceneIds: string[]; onChange: (next: ProjectConfig) => void }) => <div aria-label="Scenes editor">
   <span>{sceneIds.join(",")}</span><span data-testid="all-scenes">{config.generationJobs.length}</span>
@@ -19,10 +20,11 @@ vi.mock("./GeneratorView", () => ({ GeneratorView: ({ config, sceneIds, onChange
 
 beforeEach(() => {
   localStorage.clear();
+  vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(); vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   vi.stubGlobal("URL", Object.assign(URL, { revokeObjectURL: vi.fn() }));
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); vi.unstubAllGlobals(); delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__; });
 const project = () => createProjectConfig({ name: "Library", prompt: "", resolution: "416p", aspectRatio: "16:9", targetDurationSeconds: 30 });
 function mount(config = project(), openScene?: { id: string }) {
   let latest = config;
@@ -37,7 +39,7 @@ it("creates nested folders and videos, moves cards to a folder, and opens only t
   const video = view.config().videos!.find((video) => video.title === "New video")!;
   expect(video.folderId).toBe(view.config().videoFolders![0].id);
   fireEvent.change(screen.getByRole("textbox", { name: "Video title" }), { target: { value: "Track one" } });
-  fireEvent.doubleClick(screen.getByRole("button", { name: "Select Track one" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Track one" }));
   expect(screen.getByTestId("all-scenes")).toHaveTextContent("1"); fireEvent.click(screen.getByRole("button", { name: "Add scene" }));
   expect(view.config().videos!.find((item) => item.id === video.id)?.sceneIds).toEqual(["added"]);
   expect(view.config().generationJobs.map((scene) => scene.id)).toEqual(["legacy", "added"]);
@@ -47,7 +49,7 @@ it("creates nested folders and videos, moves cards to a folder, and opens only t
   fireEvent.drop(screen.getByRole("button", { name: "Open Album" }).closest('[role="listitem"]')!, { dataTransfer });
   expect(view.config().videos!.find((item) => item.id === "video-default")?.folderId).toBe(video.folderId);
   fireEvent.click(screen.getByRole("button", { name: "List view" })); fireEvent.click(screen.getByRole("button", { name: "Open Album" }));
-  expect(screen.getByRole("button", { name: "Select Track one" })).toBeInTheDocument(); expect(screen.getByRole("button", { name: "Select Library" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Open Track one" })).toBeInTheDocument(); expect(screen.getByRole("button", { name: "Open Library" })).toBeInTheDocument();
 });
 
 it("creates a whole-song scene sequence and opens the owner for a timeline navigation", () => {
@@ -62,27 +64,50 @@ it("creates a whole-song scene sequence and opens the owner for a timeline navig
 it("removes folders without deleting their videos and removes video scenes without removing timeline media", async () => {
   const config = project(); config.videoFolders = [{ id: "folder", name: "Collection" }]; config.videos = [{ ...newVideo("folder"), title: "Film", sceneIds: ["a"] }]; config.generationJobs = [createDraftGenerationJob("A", { id: "a" })];
   const view = mount(config); fireEvent.contextMenu(screen.getByRole("button", { name: "Open Collection" })); fireEvent.click(screen.getByRole("menuitem", { name: "Remove folder" }));
-  expect(view.config().videoFolders).toHaveLength(0); expect(screen.getByRole("button", { name: "Select Film" })).toBeInTheDocument();
-  fireEvent.contextMenu(screen.getByRole("button", { name: "Select Film" })); fireEvent.click(screen.getByRole("menuitem", { name: "Remove video" }));
+  expect(view.config().videoFolders).toHaveLength(0); expect(screen.getByRole("button", { name: "Open Film" })).toBeInTheDocument();
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Open Film" })); fireEvent.click(screen.getByRole("menuitem", { name: "Remove video" }));
   await waitFor(() => expect(view.config().videos).toHaveLength(0)); expect(view.config().generationJobs).toHaveLength(0); expect(view.config().timeline).toEqual(config.timeline);
 });
 
-it("plays successive scene ranges, replays the full video, closes outside the popout and releases media", async () => {
+it("prepares later clips before playback, retains decoders across cuts, replays and closes the popout", async () => {
+  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  vi.spyOn(PreviewSources.prototype, "url").mockImplementation(async (asset) => 'blob:' + asset.relativePath);
+  const ready = vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(0);
+  let now = 0, nextId = 0;
+  const frames = new Map<number, FrameRequestCallback>();
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++nextId, callback); return nextId; });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+  const tick = async (ms: number) => { await act(async () => { now += ms; const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach((callback) => callback(now)); }); };
   const config = project(); config.generationJobs = ["a", "b"].map((id) => createDraftGenerationJob("Dance", { id, durationSeconds: 3 }));
-  config.assets = config.generationJobs.map((job, index) => ({ id: generationAssetId(job.id), kind: "generated", name: job.id, relativePath: `media/${job.id}.mp4`, mimeType: "video/mp4", createdAt: config.createdAt, durationMs: 10000,
-    sceneSegments: [{ sceneId: job.id, startFrame: index * 96, frameCount: 96, latentRelativePath: `latents/${job.id}.safetensors` }] }));
+  config.assets = config.generationJobs.map((job, index) => ({ id: generationAssetId(job.id), kind: "generated", name: job.id, relativePath: 'media/' + job.id + '.mp4', mimeType: "video/mp4", createdAt: config.createdAt, durationMs: 10000,
+    sceneSegments: [{ sceneId: job.id, startFrame: index * 96, frameCount: 96, latentRelativePath: 'latents/' + job.id + '.safetensors' }] }));
   const video = { ...newVideo(null), title: "Film", sceneIds: ["a", "b"] }, close = vi.fn();
   const view = render(<VideoPlayback video={video} config={config} folderPath="D:/Project" popout onClose={close} />);
-  const player = view.container.querySelector("video")!;
-  await waitFor(() => expect(player).toHaveAttribute("src", "blob:media/a.mp4"));
-  await act(async () => { fireEvent.loadedMetadata(player); }); expect(player.currentTime).toBe(0);
-  player.currentTime = 3; fireEvent.timeUpdate(player);
-  await waitFor(() => expect(player).toHaveAttribute("src", "blob:media/b.mp4"));
-  await act(async () => { fireEvent.loadedMetadata(player); }); expect(player.currentTime).toBe(4);
-  fireEvent.ended(player); fireEvent.click(screen.getByRole("button", { name: "Replay Film" }));
-  await waitFor(() => expect(player).toHaveAttribute("src", "blob:media/a.mp4"));
+  await waitFor(() => expect(view.container.querySelectorAll("video")).toHaveLength(2));
+  const incoming = view.container.querySelector<HTMLVideoElement>('[data-clip-id="video-preview-b"] video')!;
+  await tick(5000); expect(view.container.querySelector('.video-card__position')).toHaveTextContent('1 / 2');
+  ready.mockReturnValue(4); fireEvent.loadedData(incoming); expect(incoming.currentTime).toBe(4);
+  await tick(16); await tick(3001);
+  expect(view.container.querySelector('[data-clip-id="video-preview-b"] video')).toBe(incoming);
+  expect(view.container.querySelector('.video-card__position')).toHaveTextContent('2 / 2');
+  await tick(3100); fireEvent.click(screen.getByRole("button", { name: "Replay Film" }));
+  expect(view.container.querySelector('.video-card__position')).toHaveTextContent('1 / 2');
   fireEvent.pointerDown(screen.getByRole("dialog")); expect(close).not.toHaveBeenCalled();
   fireEvent.pointerDown(view.container.querySelector(".shot-popout")!); expect(close).toHaveBeenCalledTimes(1);
-  view.unmount(); expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:media/a.mp4"); expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:media/b.mp4");
-  expect(readMediaFileUrl).toHaveBeenCalledTimes(3);
+  view.unmount(); expect(incoming.pause).toHaveBeenCalled(); expect(incoming).not.toHaveAttribute('src');
+});
+
+it("uses the first playback frame as the poster and keeps playback buttons separate from opening scenes", async () => {
+  const config = project(), job = createDraftGenerationJob('Dance', {id: 'clip'});
+  config.generationJobs = [job]; config.videos = [{...newVideo(null), title: 'Film', sceneIds: [job.id]}];
+  config.assets = [{id:generationAssetId(job.id),kind:'generated',name:'Film',relativePath:'media/film.mp4',mimeType:'video/mp4',createdAt:config.createdAt,durationMs:10000,sceneSegments:[{sceneId:job.id,startFrame:96,frameCount:96,latentRelativePath:'latents/clip.safetensors'}]}];
+  const view = mount(config);
+  await screen.findByRole('img', {name: 'First frame of Film'});
+  expect(shotPoster).toHaveBeenCalledWith('D:/Project','media/film.mp4',4);
+  expect(screen.queryByRole('button',{name:'Open scenes'})).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Pop out Film'})); expect(screen.getByRole('dialog')).toBeInTheDocument(); expect(screen.queryByLabelText('Scenes editor')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Close video preview'}));
+  fireEvent.click(screen.getByRole('button',{name:'Open Film'}).closest('[role="listitem"]')!); expect(screen.getByLabelText('Scenes editor')).toBeInTheDocument();
+  expect(view.config().timeline).toEqual(config.timeline);
 });
