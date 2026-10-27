@@ -17,6 +17,7 @@ import { ExportView } from "./workspace/ExportView";
 import { ImageExportView } from "./workspace/ImageExportView";
 import { MusicExportView } from "./workspace/MusicExportView";
 import { VideoLibraryView } from "./workspace/VideoLibraryView";
+import type { BackNavigation } from "./workspace/useBackNavigation";
 import { ReferencesView } from "./workspace/ReferencesView";
 import { TimelineView, type ConfigUpdate } from "./workspace/TimelineView";
 import { UnsavedProjectDialog } from "./UnsavedProjectDialog";
@@ -153,6 +154,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
   const [selectedGenerationJobId, setSelectedGenerationJobId] = useState<string | undefined>(project.config.generationJobs[0]?.id);
   const [videoNavigation, setVideoNavigation] = useState<{ id: string }>();
   const [openVideoId, setOpenVideoId] = useState<string>();
+  const [backNavigation, setBackNavigation] = useState<BackNavigation | null>(null);
   const [imageNavigation, setImageNavigation] = useState<{ id: string }>();
   const [musicNavigation, setMusicNavigation] = useState<{ id: string }>();
   const [referenceNavigation, setReferenceNavigation] = useState<{ id: string }>();
@@ -189,7 +191,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
     } catch { /* The session supplies the save error and keeps the dialog open. */ }
     finally { setSavingToLeave(false); }
   };
-  const goBack = () => { if (dirty) setLeaving(true); else onBack(); };
+  const goBack = () => { if (backNavigation) backNavigation.run(); else if (dirty) setLeaving(true); else onBack(); };
 
   /* Scene removal can come from the Generator or from Slop replacing the
      project document. Keep derived disk caches honest at this shared boundary
@@ -254,7 +256,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
 
     <TitleBar
       className="project-titlebar"
-      leading={<button type="button" className="icon-button" onClick={goBack} aria-label="Back to project library" data-tooltip="Back to projects" data-tooltip-shortcut="Alt+Left" aria-keyshortcuts="Alt+ArrowLeft"><Back16 /></button>}
+      leading={<button type="button" className="icon-button" onClick={goBack} aria-label={backNavigation?.label ?? "Back to project library"} data-tooltip={backNavigation?.label ?? "Back to projects"} data-tooltip-shortcut="Alt+Left" aria-keyshortcuts="Alt+ArrowLeft"><Back16 /></button>}
       title={<button type="button" className="project-title" aria-label={`Edit project settings for ${config.name}`} aria-haspopup="dialog" aria-expanded={editingProject} data-tooltip="Project settings" onClick={() => { session.dismissError(); setEditingProject(true); }}><span className="project-title__name">{config.name}</span><ChevronDown12 aria-hidden="true" /></button>}
       /* Save, then Undo and Redo, right after the project's name: the commands
          about the document sit with the document's title. */
@@ -303,9 +305,9 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
         {musicVisited && <div hidden={view !== "music"} style={{ height: "100%", display: view === "music" ? "block" : "none" }}>
           <MusicView active={view === "music"} onPlayingChange={setMusicPlaying} openSong={musicNavigation} onSongOpened={() => setMusicNavigation(undefined)} config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(id, template) => queue.enqueueMusic(session, id, template)} onCancel={(id) => void queue.cancel(id)} workItems={projectItems.filter((item) => item.kind === "music")} />
         </div>}
-        {view === "editor" && <ImageEditor openImage={imageNavigation} onImageOpened={() => setImageNavigation(undefined)} config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(template, count) => queue.enqueueImage(session, template, count)} onGenerateCharacterSheet={(template, sourceId, options) => queue.enqueueCharacterSheet(session, template, sourceId, options)} onGenerateExtend={(template, sourceId, options) => queue.enqueueExtendImage(session, template, sourceId, options)} onCancel={(id) => queue.cancel(id)} workItems={projectItems.filter((item) => item.kind === "image")} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setVideoNavigation(jobId ? { id: jobId } : undefined); setView("generator"); }} onOpenReferences={() => setView("references")} />}
+        {view === "editor" && <ImageEditor onBackNavigationChange={setBackNavigation} openImage={imageNavigation} onImageOpened={() => setImageNavigation(undefined)} config={config} folderPath={project.folderPath} onChange={changeConfig} onGenerate={(template, count) => queue.enqueueImage(session, template, count)} onGenerateCharacterSheet={(template, sourceId, options) => queue.enqueueCharacterSheet(session, template, sourceId, options)} onGenerateExtend={(template, sourceId, options) => queue.enqueueExtendImage(session, template, sourceId, options)} onCancel={(id) => queue.cancel(id)} workItems={projectItems.filter((item) => item.kind === "image")} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setVideoNavigation(jobId ? { id: jobId } : undefined); setView("generator"); }} onOpenReferences={() => setView("references")} />}
         {view === "timeline" && <TimelineView config={config} openSceneId={selectedGenerationJobId} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} onChange={changeConfig} onMeasured={recordMeasurement} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setVideoNavigation(jobId ? { id: jobId } : undefined); setView("generator"); }} />}
-        {view === "generator" && <VideoLibraryView initialOpenVideoId={openVideoId} onOpenVideoChange={setOpenVideoId} openScene={videoNavigation} onSceneOpened={() => setVideoNavigation(undefined)} onGenerate={(submissions) => queue.enqueue(session, submissions)} onCancelGeneration={(ids) => queue.cancelScenes(session, ids)} cancellingJobIds={cancellingJobIds} config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.slopfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onSelectedJobChange={setSelectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
+        {view === "generator" && <VideoLibraryView onBackNavigationChange={setBackNavigation} initialOpenVideoId={openVideoId} onOpenVideoChange={setOpenVideoId} openScene={videoNavigation} onSceneOpened={() => setVideoNavigation(undefined)} onGenerate={(submissions) => queue.enqueue(session, submissions)} onCancelGeneration={(ids) => queue.cancelScenes(session, ids)} cancellingJobIds={cancellingJobIds} config={config} folderPath={project.folderPath} generationCompletionTimes={generationCompletionTimes} runtime={runtime?.slopfab ?? null} onRuntimeChange={onGeneratorRuntimeChange} onChange={changeConfig} selectedJobId={selectedGenerationJobId} onSelectedJobChange={setSelectedGenerationJobId} onOpenTimeline={() => setView("timeline")} />}
         {view === "references" && <ReferencesView openReference={referenceNavigation} onReferenceOpened={() => setReferenceNavigation(undefined)} config={config} folderPath={project.folderPath} onChange={changeConfig} onRegenerateIcon={(id) => queue.regenerateReferenceIcon(session, id)} onExportRefmod={(id, outputPath) => queue.exportReferenceRefmod(session, id, outputPath)} onGenerateBuiltinIcons={() => queue.generateBuiltinReferenceIcons(session)} onRegenerateBuiltinIcon={(id) => queue.regenerateBuiltinReferenceIcon(session, id)} pendingBuiltinIconIds={queue.pendingBuiltinIconIds()} pendingIconIds={new Set(config.references.filter((reference) => queue.isReferenceIconPending(session, reference.id)).map((reference) => reference.id))} onOpenGenerator={(jobId) => { setSelectedGenerationJobId(jobId); setVideoNavigation(jobId ? { id: jobId } : undefined); setView("generator"); }} />}
         {view === "export" && <div className="project-export">
           <SelectorBar aria-label="Export type" className="project-export__types" value={mediaMode} onChange={setMediaMode} items={[{ value: "video", label: "Video" }, { value: "image", label: "Image" }, { value: "music", label: "Music" }]} />

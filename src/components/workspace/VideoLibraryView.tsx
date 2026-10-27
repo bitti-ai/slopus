@@ -11,12 +11,13 @@ import { GeneratorView } from "./GeneratorView";
 import { VideoPlayback, videoPlaylist } from "./VideoPlayback";
 import { VideoPoster } from "./VideoPoster";
 import { PromptTextField } from "./PromptTextField";
+import { useBackNavigation, type BackNavigationChange } from "./useBackNavigation";
 
 const VIDEO_DRAG = "application/x-slopus-video";
 const sourceValue = (source: VideoSource | null | undefined) => source ? `${source.kind}:${source.id}` : "";
 const parseSource = (value: string): VideoSource | null => value ? { kind: value.startsWith("asset:") ? "asset" : "reference", id: value.slice(value.indexOf(":") + 1) } : null;
 
-export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & { openScene?: { id: string }; onSceneOpened?: () => void; initialOpenVideoId?: string; onOpenVideoChange?: (id: string | undefined) => void }) {
+export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & { openScene?: { id: string }; onSceneOpened?: () => void; initialOpenVideoId?: string; onOpenVideoChange?: (id: string | undefined) => void; onBackNavigationChange?: BackNavigationChange }) {
   const { config, onChange, folderPath } = props;
   const latest = useRef(config); latest.current = config;
   const videos = videoLibrary(config), folders = config.videoFolders ?? [];
@@ -32,6 +33,7 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
   const visible = videos.filter((video) => (video.folderId ?? null) === currentFolderId);
   const selected = visible.find((video) => video.id === selectedId) ?? visible[0];
   const open = videos.find((video) => video.id === openId);
+  useBackNavigation(props.onBackNavigationChange, open ? "Back to Video" : null, () => setOpenId(undefined));
   useEffect(() => { props.onOpenVideoChange?.(open?.id); }, [open?.id, props.onOpenVideoChange]);
   const playing = videos.find((video) => video.id === playback?.id);
   const breadcrumbs: { id: string | null; name: string }[] = [];
@@ -85,7 +87,7 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
   ];
   if (open) return <div className="video-scenes">
     <GeneratorView {...props} key={open.id} config={{ ...config, videos }} sceneIds={open.sceneIds} selectedJobId={open.sceneIds.includes(props.selectedJobId ?? "") ? props.selectedJobId : undefined}
-      toolbarStart={<><button type="button" className="secondary-button" onClick={() => setOpenId(undefined)}>Back to Video</button><strong className="video-scenes__title" title={open.title}>{open.title}</strong></>}
+      toolbarStart={<strong className="video-scenes__title" title={open.title}>{open.title}</strong>}
       onChange={(next, key) => onChange(mergeVideoScenes(latest.current, open.id, next), key)} />
   </div>;
   return <div className="video-library-view" style={pane.style}>

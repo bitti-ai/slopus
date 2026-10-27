@@ -23,6 +23,7 @@ Changes since 0.3.2.
 ## Fixes and improvements
 
 - Video cards match Shot sizing, show the opening playback frame and open scenes on click; playback shares Timeline's prepared players. Returning to the Video tab restores the open video.
+- Application Back returns from scenes to Video and from image versions to their parent bar.
 - Editing generated music creates a separate draft; cards distinguish drafts from playable songs.
 - Single Shot uses previous latents only as its starting anchor, fresh noise for the middle and a generated ending anchor, avoiding repeated source imagery.
 - Dependent scenes can queue behind active sources; cancelling any linked generation cancels the whole pending group.

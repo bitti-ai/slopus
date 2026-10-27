@@ -22,6 +22,7 @@ import { ReferenceImage } from "./ReferenceImage";
 import { PromptTextField } from "./PromptTextField";
 import { ReferenceIcon } from "./ReferenceIcon";
 import { ImageBar } from "./ImageBar";
+import type { BackNavigationChange } from "./useBackNavigation";
 import { CharacterSheetSettings } from "./CharacterSheetSettings";
 import { ExtendSettings } from "./ExtendSettings";
 import { ExtendCanvas } from "./ExtendCanvas";
@@ -52,7 +53,7 @@ function UsedImageSeed({ id, seed, onError }: { id: string; seed: number | undef
   </PropRow>;
 }
 
-export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onGenerateCharacterSheet, onGenerateExtend, onCancel, onOpenGenerator, onOpenReferences, workItems = [], openImage, onImageOpened }: {
+export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onGenerateCharacterSheet, onGenerateExtend, onCancel, onOpenGenerator, onOpenReferences, workItems = [], openImage, onImageOpened, onBackNavigationChange }: {
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate) => void;
   onGenerate: (template: GeneratorTemplate, count: number) => void; onCancel: (id: string) => Promise<void>; workItems?: readonly WorkItem[];
   onGenerateCharacterSheet?: (template: GeneratorTemplate, sourceId: string, options: CharacterSheetOptions) => void;
@@ -61,6 +62,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   onOpenReferences?: () => void;
   openImage?: { id: string };
   onImageOpened?: () => void;
+  onBackNavigationChange?: BackNavigationChange;
 }) {
   const scene = useMemo(() => config.imageScene ?? { ...createImageScene(config.brief.prompt), steps: selectedImageGeneratorTemplate().defaultSteps }, [config.imageScene, config.brief.prompt]);
   const settings = imageSettings(config);
@@ -777,7 +779,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       </div></div>}
       {(error || work?.error) && <InfoBar className="image-error" severity="error" title="Couldn’t update the image" message={error ?? work?.error ?? ""} onClose={error ? () => setError(null) : undefined} />}
       <div className="image-status" role="status">{active && <ProgressBar value={work.progress * 100} aria-label="Image generation progress" />}<span>{active ? work.detail : extendMode && extendOptions ? `Zoom: ${extendSize?.width ?? "-"} \u00d7 ${extendSize?.height ?? "-"} px` : templateSnapshot ? `${templateSnapshot.kind === "extend" ? "Zoom" : "Character sheet"} · ${width} × ${height} px` : imageRoot ? editingBlocked ?? editPlan?.error ?? `${width} × ${height} · ${editPlan?.edits.length} edits in hierarchy order` : inputBlocked ?? (!isTauri() ? "Image generation is available in the desktop app." : `${width} × ${height}${isMiniMaxH3 ? "" : " · Placement boxes guide the prompt"}`)}</span></div>
-      <ImageBar ref={imageResults} workItems={workItems} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
+      <ImageBar ref={imageResults} onBackNavigationChange={onBackNavigationChange} workItems={workItems} images={images} selectedId={scene.outputAssetId} folderPath={folderPath} onSelect={selectImage}
         onMenu={(id, x, y, inFamily) => { setContextMenu(null); setImageMenu({ id, x, y, inFamily, source: "bar" }); }} />
     </section>
     <Splitter {...inspectorPane.splitterProps} reverse aria-label="Resize inspector" />

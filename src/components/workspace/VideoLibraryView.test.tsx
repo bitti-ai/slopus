@@ -9,6 +9,7 @@ import { PreviewSources } from "../../lib/exportPipeline";
 import { shotPoster } from "./ShotThumbnail";
 import { VideoLibraryView } from "./VideoLibraryView";
 import { VideoPlayback } from "./VideoPlayback";
+import type { BackNavigation } from "./useBackNavigation";
 import { choose } from "./comboTestUtils";
 
 vi.mock("./ShotThumbnail", async (original) => ({ ...await original<typeof import("./ShotThumbnail")>(), shotPoster: vi.fn(async () => ({ poster: "data:image/jpeg;base64,preview", failed: false })) }));
@@ -29,7 +30,10 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); vi.unstub
 const project = () => createProjectConfig({ name: "Library", prompt: "", resolution: "416p", aspectRatio: "16:9", targetDurationSeconds: 30 });
 function mount(config = project(), openScene?: { id: string }) {
   let latest = config;
-  function Harness() { const [value, setValue] = useState(config); latest = value; return <VideoLibraryView config={value} folderPath="D:/Project" onChange={setValue} onOpenTimeline={() => {}} openScene={openScene} />; }
+  function Harness() {
+    const [value, setValue] = useState(config), [back, setBack] = useState<BackNavigation | null>(null); latest = value;
+    return <>{back && <button onClick={back.run}>{back.label}</button>}<VideoLibraryView onBackNavigationChange={setBack} config={value} folderPath="D:/Project" onChange={setValue} onOpenTimeline={() => {}} openScene={openScene} /></>;
+  }
   return { ...render(<Harness />), config: () => latest };
 }
 
@@ -70,9 +74,11 @@ it("restores the open video after leaving the tab, respects Back and lets scene 
   function Harness() {
     const [visible, setVisible] = useState(true), [openId, setOpenId] = useState<string>();
     const [openScene, setOpenScene] = useState<{ id: string }>();
+    const [back, setBack] = useState<BackNavigation | null>(null);
     return <><button onClick={() => setVisible(!visible)}>Switch tab</button><button onClick={() => { setOpenScene({ id: "b" }); setVisible(true); }}>Open scene B</button>
+      {back && <button onClick={back.run}>{back.label}</button>}
       {visible && <VideoLibraryView config={config} folderPath="D:/Project" onChange={() => {}} onOpenTimeline={() => {}}
-        initialOpenVideoId={openId} onOpenVideoChange={setOpenId} openScene={openScene} onSceneOpened={() => setOpenScene(undefined)} />}</>;
+        onBackNavigationChange={setBack} initialOpenVideoId={openId} onOpenVideoChange={setOpenId} openScene={openScene} onSceneOpened={() => setOpenScene(undefined)} />}</>;
   }
   render(<Harness />);
   const switchTab = () => fireEvent.click(screen.getByRole("button", { name: "Switch tab" }));

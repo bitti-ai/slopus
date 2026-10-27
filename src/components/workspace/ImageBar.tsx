@@ -4,6 +4,7 @@ import type { ProjectAsset } from "../../lib/project";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import { ChevronLeft16, Edit11, Image24 } from "../ui/icons";
 import { ReferenceImage } from "./ReferenceImage";
+import { useBackNavigation, type BackNavigationChange } from "./useBackNavigation";
 import "../../styles/image-editor.css";
 
 /* The strip of an image project's images along the foot of the Editor and the
@@ -15,8 +16,9 @@ import "../../styles/image-editor.css";
 
    An image regenerated or edited from another joins that image's family. The
    bar lists the primary images; while an image with a family is selected it
-   shows just that family — the primary first, then the other versions — with
-   a back button at its leading edge that returns to all primary images. */
+   shows just that family — the primary first, then the other versions.
+   The application back button returns to primaries; standalone bars keep a
+   local back button. */
 export const ImageBar = forwardRef<HTMLDivElement | null, {
   images: ProjectAsset[];
   selectedId: string | null | undefined;
@@ -24,7 +26,8 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
   workItems?: readonly WorkItem[];
   onSelect: (id: string) => void;
   onMenu?: (id: string | null, x: number, y: number, inFamily: boolean) => void;
-}>(function ImageBar({ images, selectedId, folderPath, workItems = [], onSelect, onMenu }, ref) {
+  onBackNavigationChange?: BackNavigationChange;
+}>(function ImageBar({ images, selectedId, folderPath, workItems = [], onSelect, onMenu, onBackNavigationChange }, ref) {
   const bar = useRef<HTMLDivElement>(null);
   useImperativeHandle(ref, () => bar.current as HTMLDivElement);
 
@@ -35,6 +38,8 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
   const [showAll, setShowAll] = useState(false);
   useEffect(() => setShowAll(false), [selectedId]);
   const inFamily = !showAll && family.length > 1;
+  const goBack = () => { setShowAll(true); bar.current?.focus(); };
+  useBackNavigation(onBackNavigationChange, inFamily ? "Back to all images" : null, goBack);
   const primaries = images.filter((asset) => imageFamilyRoot(images, asset.id) === asset.id);
   const shown = inFamily ? family : primaries;
   const pressed = inFamily ? selectedId : root;
@@ -113,8 +118,8 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
       const bounds = event.currentTarget.getBoundingClientRect();
       onMenu(null, bounds.left, bounds.top, inFamily);
     }}>
-    {inFamily && <button type="button" className="image-results__back" aria-label="Back to all images" data-tooltip="All images"
-      onClick={() => { setShowAll(true); bar.current?.focus(); }}><ChevronLeft16 aria-hidden="true" /></button>}
+    {inFamily && !onBackNavigationChange && <button type="button" className="image-results__back" aria-label="Back to all images" data-tooltip="All images"
+      onClick={goBack}><ChevronLeft16 aria-hidden="true" /></button>}
     {shown.map((asset) => <button key={asset.id} type="button" data-image-asset={asset.id} data-tooltip={asset.name}
       aria-label={`View ${asset.name}${!inFamily && childCount(asset.id) ? `, ${childCount(asset.id) + 1} versions` : ""}`} aria-pressed={asset.id === pressed} aria-busy={pending.has(asset.id)}
       onContextMenu={onMenu && ((event) => { event.preventDefault(); event.stopPropagation(); onMenu(asset.id, event.clientX, event.clientY, inFamily); })}
