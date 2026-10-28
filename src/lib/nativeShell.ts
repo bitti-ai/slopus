@@ -498,11 +498,27 @@ export function installBrowserGuards(target: Window = window): () => void {
       .then(({ invoke }) => invoke("show_text_context_menu", { request: text }))
       .catch(() => undefined);
   };
+  // Mouse Back invokes the visible title-bar action, including Settings subpages.
+  // Cancel every browser-history phase, but navigate only once, on release.
+  const onMouseBack = (event: MouseEvent) => {
+    if (event.button !== 3) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.type !== "mouseup") return;
+    const visible = (element: Element) => !element.closest('[hidden], [inert], [aria-hidden="true"]');
+    const modal = [...doc.querySelectorAll('[aria-modal="true"]')].filter(visible).at(-1);
+    const back = [...doc.querySelectorAll<HTMLButtonElement>('button[data-app-back]:not(:disabled)')]
+      .find((button) => visible(button) && (!modal || modal.contains(button)));
+    back?.click();
+  };
+  const mouseBackEvents = ["mousedown", "mouseup", "auxclick"] as const;
+  for (const name of mouseBackEvents) target.addEventListener(name, onMouseBack, true);
   target.addEventListener("keydown", onKeyDownCapture, true);
   doc.addEventListener("dragover", onDragOver);
   doc.addEventListener("drop", onDrop);
   doc.addEventListener("contextmenu", onContextMenu);
   return () => {
+    for (const name of mouseBackEvents) target.removeEventListener(name, onMouseBack, true);
     target.removeEventListener("keydown", onKeyDownCapture, true);
     unregisterFallback();
     doc.removeEventListener("dragover", onDragOver);

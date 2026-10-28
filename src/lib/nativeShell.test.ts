@@ -312,6 +312,27 @@ describe("browser guards", () => {
     uninstall = installBrowserGuards();
   });
 
+  it("routes mouse Back once to the visible global button, even over text, and respects dialogs", () => {
+    document.body.innerHTML = '<div hidden><button data-app-back id="hidden-back"></button></div><button data-app-back id="back"></button><input id="field" />';
+    const back = vi.fn(), hidden = vi.fn();
+    document.getElementById("back")!.addEventListener("click", back);
+    document.getElementById("hidden-back")!.addEventListener("click", hidden);
+    const mouse = (type: string, button = 3) => {
+      const event = new MouseEvent(type, { button, bubbles: true, cancelable: true });
+      document.getElementById("field")!.dispatchEvent(event);
+      return event;
+    };
+    for (const type of ["mousedown", "mouseup", "auxclick"]) expect(mouse(type).defaultPrevented).toBe(true);
+    expect(back).toHaveBeenCalledTimes(1); expect(hidden).not.toHaveBeenCalled();
+    for (const button of [0, 1, 2, 4]) expect(mouse("mouseup", button).defaultPrevented).toBe(false);
+    expect(back).toHaveBeenCalledTimes(1);
+    const modal = document.createElement("div"); modal.setAttribute("aria-modal", "true"); document.body.append(modal);
+    expect(mouse("mouseup").defaultPrevented).toBe(true); expect(back).toHaveBeenCalledTimes(1);
+    modal.remove();
+    uninstall(); expect(mouse("mouseup").defaultPrevented).toBe(false); expect(back).toHaveBeenCalledTimes(1);
+    uninstall = installBrowserGuards();
+  });
+
   it("refuses a drop nothing accepted, and leaves drop targets and dropzones alone", () => {
     const drag = (target: Element, accept = false) => {
       const event = new Event("dragover", { bubbles: true, cancelable: true });

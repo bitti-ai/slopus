@@ -262,7 +262,7 @@ export function ProjectWorkspace({ project, initialView, runtime = null, onBack,
 
     <TitleBar
       className="project-titlebar"
-      leading={<button type="button" className="icon-button" onClick={goBack} aria-label={backNavigation?.label ?? "Back to project library"} data-tooltip={backNavigation?.label ?? "Back to projects"} data-tooltip-shortcut="Alt+Left" aria-keyshortcuts="Alt+ArrowLeft"><Back16 /></button>}
+      leading={<button type="button" className="icon-button" data-app-back onClick={goBack} aria-label={backNavigation?.label ?? "Back to project library"} data-tooltip={backNavigation?.label ?? "Back to projects"} data-tooltip-shortcut="Alt+Left" aria-keyshortcuts="Alt+ArrowLeft"><Back16 /></button>}
       title={<button type="button" className="project-title" aria-label={`Edit project settings for ${config.name}`} aria-haspopup="dialog" aria-expanded={editingProject} data-tooltip="Project settings" onClick={() => { session.dismissError(); setEditingProject(true); }}><span className="project-title__name">{config.name}</span><ChevronDown12 aria-hidden="true" /></button>}
       /* Save, then Undo and Redo, right after the project's name: the commands
          about the document sit with the document's title. */

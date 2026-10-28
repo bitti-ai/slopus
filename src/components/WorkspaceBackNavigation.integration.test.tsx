@@ -6,14 +6,17 @@ import { ProjectWorkspace } from "./ProjectWorkspace";
 import { createProjectConfig } from "../lib/project";
 import { createEmptyImage } from "../lib/imageHistory";
 import { newVideo } from "../lib/videoLibrary";
+import { installBrowserGuards } from "../lib/nativeShell";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
+let uninstallGuards: () => void;
 beforeEach(() => {
   localStorage.clear();
+  uninstallGuards = installBrowserGuards();
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { uninstallGuards(); cleanup(); vi.restoreAllMocks(); });
 const project = () => createProjectConfig({ name: "Back navigation", prompt: "Walk", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 30 });
 
 it("uses application Back and Alt+Left for scenes, clears the action on tab switches and preserves the project exit guard", () => {
@@ -21,23 +24,26 @@ it("uses application Back and Alt+Left for scenes, clears the action on tab swit
   config.videos = [{ ...newVideo(null), title: "Film", sceneIds: config.generationJobs.map((scene) => scene.id) }];
   const view = render(<ProjectWorkspace project={{ folderPath: "D:/Back", config }} initialView="generator" onBack={onBack} onSave={async () => {}} />);
   fireEvent.change(screen.getByRole("textbox", { name: "Video title" }), { target: { value: "Renamed film" } });
-  fireEvent.click(screen.getByRole("button", { name: "Open Renamed film" }));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Select Renamed film" }));
   expect(within(view.container.querySelector(".video-scenes")!).queryByRole("button", { name: "Back to Video" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Back to Video" }));
-  expect(screen.getByRole("button", { name: "Open Renamed film" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Select Renamed film" })).toBeInTheDocument();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument(); expect(onBack).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Open Renamed film" }));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Select Renamed film" }));
   fireEvent.click(screen.getByRole("tab", { name: "References" }));
   expect(screen.getByRole("button", { name: "Back to project library" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "Video" }));
   expect(screen.getByRole("button", { name: "Back to Video" })).toBeInTheDocument();
   fireEvent.keyDown(document.body, { key: "ArrowLeft", code: "ArrowLeft", altKey: true });
-  expect(screen.getByRole("button", { name: "Open Renamed film" })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Back to project library" }));
+  expect(screen.getByRole("button", { name: "Select Renamed film" })).toBeInTheDocument();
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Select Renamed film" }));
+  fireEvent.mouseUp(document.body, { button: 3 });
+  expect(screen.getByRole("button", { name: "Select Renamed film" })).toBeInTheDocument();
+  fireEvent.mouseUp(document.body, { button: 3 });
   expect(screen.getByRole("dialog")).toBeInTheDocument(); expect(onBack).not.toHaveBeenCalled();
 });
 
-it.each(["local", "global"])("uses %s Back to show parent images, then restores the project back action", (action) => {
+it.each(["local", "global", "mouse"])("uses %s Back to show parent images, then restores the project back action", (action) => {
   let config = createEmptyImage(project());
   const root = config.imageScene!.outputAssetId!;
   config = createEmptyImage(config, undefined, root);
@@ -49,7 +55,8 @@ it.each(["local", "global"])("uses %s Back to show parent images, then restores 
   const localBack = within(bar).getByRole("button", { name: "Back to all images" });
   const globalBack = screen.getAllByRole("button", { name: "Back to all images" }).find((button) => !bar.contains(button))!;
   expect(globalBack).toBeInTheDocument();
-  fireEvent.click(action === "local" ? localBack : globalBack);
+  if (action === "mouse") fireEvent.mouseUp(document.body, { button: 3 });
+  else fireEvent.click(action === "local" ? localBack : globalBack);
   expect(bar.querySelector(`[data-image-asset="${child}"]`)).not.toBeInTheDocument();
   expect(bar.querySelector(`[data-image-asset="${root}"]`)).toHaveAttribute("aria-pressed", "true");
   expect(onBack).not.toHaveBeenCalled();

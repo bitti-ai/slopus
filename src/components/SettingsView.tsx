@@ -694,7 +694,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
         leaves a sub-page first, then Settings. */}
     <TitleBar
       title="Settings"
-      leading={<button type="button" className="icon-button" onClick={back} aria-label="Back" data-tooltip="Back" data-tooltip-shortcut="Alt+Left" aria-keyshortcuts="Alt+ArrowLeft"><Back16 /></button>}
+      leading={<button type="button" className="icon-button" data-app-back onClick={back} aria-label="Back" data-tooltip="Back" data-tooltip-shortcut="Alt+Left" aria-keyshortcuts="Alt+ArrowLeft"><Back16 /></button>}
       actions={<>
         <button ref={agentToggle} type="button" className={`icon-button${agentOpen ? " icon-button--checked" : ""}${agentBusy ? " icon-button--busy" : ""}`}
           aria-label="Agent" aria-pressed={agentOpen} aria-busy={agentBusy} aria-controls="settings-agent"

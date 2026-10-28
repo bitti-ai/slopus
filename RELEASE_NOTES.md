@@ -32,6 +32,7 @@ Changes since 0.3.2.
 - Video cards match Shot sizing and show the opening playback frame. Click to select settings; double-click or choose Edit Scenes to open scenes. Playback shares Timeline's prepared players, and returning to Video restores the open video.
 - Video card and popout playback preserve full rendered scene ranges and keep decoders running through background updates.
 - Application Back returns from scenes to Video and from image versions to their parent bar.
+- The mouse Back button follows the global Back action, including Settings and nested views.
 - Editing generated music creates a separate draft; cards distinguish drafts from playable songs.
 - Single Shot uses previous latents only as its starting anchor, fresh noise for the middle and a generated ending anchor, avoiding repeated source imagery.
 - Dependent scenes can queue behind active sources; cancelling any linked generation cancels the whole pending group.
