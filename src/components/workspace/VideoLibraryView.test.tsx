@@ -43,7 +43,12 @@ it("creates nested folders and videos, moves cards to a folder, and opens only t
   fireEvent.click(within(screen.getByRole("toolbar", { name: "Video library actions" })).getByRole("button", { name: "New video" }));
   const video = view.config().videos!.find((video) => video.title === "New video")!;
   expect(video.folderId).toBe(view.config().videoFolders![0].id);
-  fireEvent.change(screen.getByRole("textbox", { name: "Video title" }), { target: { value: "Track one" } });
+  const title = screen.getByRole("textbox", { name: "Video title" });
+  expect(title.closest(".ui-item-header")).toBeInTheDocument();
+  fireEvent.keyDown(screen.getByLabelText("Video library"), { key: "F2" });
+  expect(title).toHaveFocus();
+  expect((title as HTMLInputElement).selectionEnd).toBe("New video".length);
+  fireEvent.change(title, { target: { value: "Track one" } });
   fireEvent.click(screen.getByRole("button", { name: "Select Track one" }));
   expect(screen.queryByLabelText("Scenes editor")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Edit Scenes" }));

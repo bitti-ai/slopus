@@ -2,13 +2,14 @@ import { useEffect, useRef, useState, type ComponentProps, type CSSProperties, t
 import { PROJECT_RESOLUTIONS, referenceTypeLabel, sceneDurationSeconds, sceneGenerationPending, type AspectRatio, type Resolution, type ProjectConfig, type ProjectVideo, type VideoSource } from "../../lib/project";
 import { outputDimensions } from "../../lib/export";
 import { SHOT_TAG_GROUPS } from "../../lib/shot-tags";
+import { useShortcut } from "../../lib/commands";
 import { citableReferences } from "./SceneEditor";
 import { referenceMediaTypes } from "../../lib/referenceSelection";
 import { mergeVideoScenes, newVideo, resolveVideoSource, songScenes, videoLibrary, videoScenes, videoSettings } from "../../lib/videoLibrary";
 import { newMusicFolder } from "../../lib/music";
 import { askNative } from "../../lib/nativeShell";
-import { CommandBar, CommandBarButton, ComboBox, ProgressRing, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
-import { Add16, Delete16, Edit16, Film32, FolderAdd16, FolderOpen48, GridView16, GridView16Filled, ListView16, ListView16Filled, OpenExternal16, Play16 } from "../ui/icons";
+import { CommandBar, CommandBarButton, ComboBox, ItemHeader, ProgressRing, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
+import { Add16, Delete16, Edit16, Film16, Film32, FolderAdd16, FolderOpen48, GridView16, GridView16Filled, ListView16, ListView16Filled, OpenExternal16, Play16 } from "../ui/icons";
 import { GeneratorView } from "./GeneratorView";
 import { VideoPlayback, videoPlaylist } from "./VideoPlayback";
 import { VideoPoster } from "./VideoPoster";
@@ -22,6 +23,7 @@ const parseSource = (value: string): VideoSource | null => value ? { kind: value
 
 export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & { openScene?: { id: string }; onSceneOpened?: () => void; initialOpenVideoId?: string; onOpenVideoChange?: (id: string | undefined) => void; onBackNavigationChange?: BackNavigationChange }) {
   const { config, onChange, folderPath } = props;
+  const root = useRef<HTMLDivElement>(null), titleInput = useRef<HTMLInputElement>(null);
   const latest = useRef(config); latest.current = config;
   const videos = videoLibrary(config), folders = config.videoFolders ?? [];
   const [folderId, setFolderId] = useState<string | null>(() => videos.find((video) => video.id === props.initialOpenVideoId)?.folderId ?? null);
@@ -38,6 +40,7 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
   const selectedSettings = videoSettings(selected, config);
   const resolutionLabel = (resolution: Resolution) => { const size = outputDimensions(resolution, selectedSettings.aspectRatio); return `${size.width} × ${size.height}`; };
   const open = videos.find((video) => video.id === openId);
+  useShortcut("F2", () => { titleInput.current?.focus(); titleInput.current?.select(); }, { scope: root, enabled: Boolean(selected) && !open });
   useBackNavigation(props.onBackNavigationChange, open ? "Back to Video" : null, () => setOpenId(undefined));
   useEffect(() => { props.onOpenVideoChange?.(open?.id); }, [open?.id, props.onOpenVideoChange]);
   const playing = videos.find((video) => video.id === playback?.id);
@@ -100,7 +103,7 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
       toolbarStart={<strong className="video-scenes__title" title={open.title}>{open.title}</strong>}
       onChange={(next, key) => onChange(mergeVideoScenes(latest.current, open.id, next), key)} />
   </div>;
-  return <div className="video-library-view" style={pane.style}>
+  return <div ref={root} className="video-library-view" style={pane.style}>
     <CommandBar className="generator-command" aria-label="Video library actions" end={<>
       <CommandBarButton icon={view === "grid" ? <GridView16Filled /> : <GridView16 />} label="Grid view" pressed={view === "grid"} onClick={() => { setView("grid"); localStorage.setItem("slopus.video.view", "grid"); }} />
       <CommandBarButton icon={view === "list" ? <ListView16Filled /> : <ListView16 />} label="List view" pressed={view === "list"} onClick={() => { setView("list"); localStorage.setItem("slopus.video.view", "list"); }} />
@@ -145,8 +148,12 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
         {playing && playback?.popout && <VideoPlayback key={playing.id} video={playing} config={config} folderPath={folderPath} popout onClose={() => setPlayback(undefined)} />}
       </div>
       <Splitter {...pane.splitterProps} reverse aria-label="Resize video inspector" />
-      <aside className="music-inspector" aria-label="Video settings"><div className="music-inspector__fields">{selected ? <>
-        <PropSection title="Video"><PropRow label="Title"><input className="text-field" aria-label="Video title" maxLength={200} value={selected.title} onChange={(event) => edit({ title: event.target.value || "New video" })} /></PropRow>
+      <aside className="music-inspector" aria-label="Video settings">
+        {selected && <ItemHeader color="var(--clip-generated)" icon={<Film16 />}
+          name={<h2 className="generator-panel__name"><input ref={titleInput} className="ui-item-header__input" aria-label="Video title" aria-keyshortcuts="F2" maxLength={200} value={selected.title} onChange={(event) => edit({ title: event.target.value || "New video" })} /></h2>}
+          meta={`${videoScenes(selected, config).length} scenes · ${videoScenes(selected, config).reduce((seconds, scene) => seconds + sceneDurationSeconds(scene), 0).toFixed(1)} s`} />}
+        <div className="music-inspector__fields">{selected ? <>
+        <PropSection title="Video">
           <div className="music-prompt"><span>Shared prompt</span><PromptTextField aria-label="Video prompt" rows={5} value={selected.prompt} references={citableReferences(config.references).map((reference) => ({ id: reference.id, name: reference.name, mediaTypes: referenceMediaTypes(reference), detail: referenceTypeLabel(reference) }))} placeholder="Visual style and references for every scene…" onChange={(prompt) => edit({ prompt: prompt.slice(0, 30000) })} /></div>
         </PropSection>
         <PropSection title="Settings">
