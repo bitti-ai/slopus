@@ -964,16 +964,8 @@ function endSentence(text: string): string {
   return !text || /[.!?…]$/.test(text) ? text : `${text}.`;
 }
 
-/* Base guide §4.6: `overall_soundscape` may only be N/A when the user asks for
-   complete silence, so a line is always emitted instead. That line is
-   deliberately CONTENT-NEUTRAL: it names no ambience, location or weather and
-   only points back at what the description already established, because the
-   user never told us where the scene is — the previous "Ambient room tone"
-   wording put a room around a rocket launch. §4.7: music must be
-   instrumentation/tempo/dynamics and never abstract mood or emotional
-   function — we emit N/A because the user never asked for a score, and
-   inventing one is a fabrication of its own. */
-const DEFAULT_SOUNDSCAPE = "The ambient sound and physical action sounds are those the scene and actions described above naturally produce. Nothing beyond what that description already establishes is added.";
+// Empty Sound and Music prompts explicitly compile to N/A.
+const DEFAULT_SOUNDSCAPE = "N/A";
 const DEFAULT_MUSIC = "N/A";
 
 const referenceLabel = (reference: ProjectReference, index: number) => `<Subject ${index + 1}>`;
@@ -1455,7 +1447,8 @@ function compileCharacterReplaceSegments(job: GenerationJob, references: Project
       return [frame(`${index ? "\n" : ""}[Shot ${index + 1}] ${index ? `At ${timestamp}, ` : ""}`), ...replacement(shot),
         ...(sourceAudio ? [frame(` Reuse ${audioLabel(sourceAudio.id)} in sync with this shot.`)] : [frame(" Do not reuse the source soundtrack.")])];
     }),
-    frame(`\n\noverall_soundscape:\n${audioVideos.length ? `Reuse the ambience, physical sounds and speech from ${audioVideos.map((reference) => audioLabel(reference.id)).join(", ")} in their corresponding shots.` : "Use only ambience and physical sounds consistent with the source scene; no added speech."}`),
+    frame("\n\noverall_soundscape:\n"),
+    job.soundscape?.trim() ? own(job.soundscape.trim()) : frame(DEFAULT_SOUNDSCAPE),
     frame(`\n\nnon_diegetic_music:\n${audioVideos.length ? "Retain only music already present in the reused source soundtrack. Add no new score." : "N/A"}`),
   ];
 }

@@ -325,15 +325,9 @@ describe("project schema", () => {
     }
   });
 
-  it("keeps the default soundscape free of any ambience the user never described", () => {
-    // Base guide §4.6: N/A only on an explicit request for silence, so a line
-    // must still be emitted — but it may not invent a place or a weather.
+  it("uses N/A when no Sound prompt is given", () => {
     const soundscape = section(compileMiniMaxH3Prompt("a rocket launch over the ocean"), "overall_soundscape");
-    expect(soundscape.trim().length).toBeGreaterThan(0);
-    expect(soundscape.trim()).not.toBe("N/A");
-    for (const invented of ["room tone", "wind", "rain", "traffic", "birds", "indoor", "street"]) {
-      expect(soundscape.toLowerCase()).not.toContain(invented);
-    }
+    expect(soundscape.trim()).toBe("N/A");
   });
 
   it("never compiles an audio-tagged reference as a visible subject", () => {
