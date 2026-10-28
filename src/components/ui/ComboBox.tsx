@@ -89,8 +89,8 @@ export interface ComboBoxProps<V extends ComboValue = string> {
   /** Editable mode: the value typed text stands for, or null to reject it.
    *  Default: the option whose label or value matches, ignoring case. */
   parseText?: (text: string) => V | null;
-  /** Editable mode: the field's text while nothing is being typed. Default:
-   *  the selected option's text (or empty). */
+  /** Override the selected text without changing the option labels.
+   *  In editable mode, shown while nothing is being typed. */
   displayText?: string;
 }
 
@@ -297,7 +297,7 @@ function SelectComboBox<V extends ComboValue = string>(props: ComboBoxProps<V>) 
         onFocus={onFocus}
       >
         {selected?.icon && <span className="ui-combo__icon" aria-hidden="true">{selected.icon}</span>}
-        <span className={cx("ui-combo__value", !selected && "ui-combo__value--placeholder")}>{selected ? selected.label : placeholder ?? " "}</span>
+        <span className={cx("ui-combo__value", !selected && "ui-combo__value--placeholder")}>{props.displayText ?? (selected ? selected.label : placeholder ?? " ")}</span>
         <ChevronDown12 className="ui-combo__chevron" aria-hidden="true" />
       </button>
       {name !== undefined && <input type="hidden" name={name} value={value === null || value === undefined ? "" : String(value)} />}

@@ -148,15 +148,15 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
           <div className="music-prompt"><span>Shared prompt</span><PromptTextField aria-label="Video prompt" rows={5} value={selected.prompt} references={citableReferences(config.references).map((reference) => ({ id: reference.id, name: reference.name, mediaTypes: referenceMediaTypes(reference), detail: referenceTypeLabel(reference) }))} placeholder="Visual style and references for every scene…" onChange={(prompt) => edit({ prompt: prompt.slice(0, 30000) })} /></div>
         </PropSection>
         <PropSection title="Settings">
-          <PropRow label="Look"><ComboBox aria-label="Video Look" value={selected.defaultLook ?? ""} options={[
+          <PropRow label="Look"><ComboBox aria-label="Video Look" value={selected.defaultLook ?? ""} displayText={LOOKS.find((look) => look.id === selectedSettings.defaultLook)?.label ?? selectedSettings.defaultLook ?? "None"} options={[
             { value: "", label: `Project default (${LOOKS.find((look) => look.id === config.settings.defaultLook)?.label ?? config.settings.defaultLook ?? "None"})` },
             ...LOOKS.map((look) => ({ value: look.id, label: look.label })),
           ]} onChange={(value) => edit({ defaultLook: value || null })} /></PropRow>
-          <PropRow label="Aspect ratio"><ComboBox aria-label="Video aspect ratio" value={selected.aspectRatio ?? ""} options={[
+          <PropRow label="Aspect ratio"><ComboBox aria-label="Video aspect ratio" value={selected.aspectRatio ?? ""} displayText={selectedSettings.aspectRatio} options={[
             { value: "", label: `Project default (${config.settings.aspectRatio})` },
             ...(["16:9", "9:16", "1:1", "4:5"] as const).map((value) => ({ value, label: value })),
           ]} onChange={(value) => edit({ aspectRatio: value ? value as AspectRatio : null })} /></PropRow>
-          <PropRow label="Resolution"><ComboBox aria-label="Video resolution" value={selected.resolution ?? ""} options={[
+          <PropRow label="Resolution"><ComboBox aria-label="Video resolution" value={selected.resolution ?? ""} displayText={resolutionLabel(selectedSettings.resolution)} options={[
             { value: "", label: `Project default (${resolutionLabel(config.settings.resolution)})` },
             ...[...new Set([...PROJECT_RESOLUTIONS, selectedSettings.resolution])].map((value) => ({ value, label: resolutionLabel(value) })),
           ]} onChange={(value) => edit({ resolution: value ? value as Resolution : null })} /></PropRow>

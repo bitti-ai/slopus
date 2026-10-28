@@ -197,12 +197,13 @@ it("edits Video overrides and restores project defaults without changing the pro
   const config = project(); config.settings.defaultLook = "watercolor";
   config.videos = [{ ...newVideo(null), title: "First" }, { ...newVideo(null), title: "Second" }];
   const view = mount(config);
-  expect(screen.getByRole("combobox", { name: "Video Look" })).toHaveTextContent("Project default (Watercolor)");
+  expect(screen.getByRole("combobox", { name: "Video Look" })).toHaveTextContent(/^Watercolor$/);
+  expect(screen.getByRole("combobox", { name: "Video resolution" })).toHaveTextContent(/^736 × 416$/);
   choose("Video Look", "Claymation"); choose("Video aspect ratio", "9:16"); choose("Video resolution", "544 × 960");
   expect(view.config().videos![0]).toMatchObject({ defaultLook: "claymation", aspectRatio: "9:16", resolution: "544p" });
   expect(view.config().settings).toEqual(config.settings);
   fireEvent.click(screen.getByRole("button", { name: "Select Second" }));
-  expect(screen.getByRole("combobox", { name: "Video aspect ratio" })).toHaveTextContent("Project default (16:9)");
+  expect(screen.getByRole("combobox", { name: "Video aspect ratio" })).toHaveTextContent(/^16:9$/);
   fireEvent.click(screen.getByRole("button", { name: "Select First" }));
   choose("Video Look", /Project default/); choose("Video aspect ratio", /Project default/); choose("Video resolution", /Project default/);
   expect(view.config().videos![0]).toMatchObject({ defaultLook: null, aspectRatio: null, resolution: null });
