@@ -29,6 +29,42 @@ const edit = (config: ProjectConfig, music: string) => saveSceneDrafts({ ...conf
   shots: j.shots!.map(shot => ({ ...shot, action: music, speech: `${music} speech` })) })) }, config);
 
 describe("scene generation history", () => {
+  it.each([false, true])("renames a scene without creating a draft, including legacy history %s", legacy => {
+    const config = finish(initial(), "one");
+    if (legacy) delete config.generationJobs[0].generationHistory;
+    const originalTitle = config.generationJobs[0].title;
+    const session = new ProjectSession({ folderPath: "C:/history", config }, vi.fn(async () => {}));
+    session.edit(current => ({ ...current, generationJobs: current.generationJobs.map(job => ({ ...job, title: "Renamed scene" })) }));
+    const renamed = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config))).generationJobs[0];
+    expect(renamed.title).toBe("Renamed scene");
+    expect(renamed.generationHistory!.selectedId).toBe(renamed.generationHistory!.primaryId);
+    expect(renamed.generationHistory!.draft).toBeNull();
+    expect(renamed.generationHistory!.versions).toHaveLength(1);
+    expect(session.undo()).toBe(true);
+    expect(session.getSnapshot().config.generationJobs[0].title).toBe(originalTitle);
+    expect(session.redo()).toBe(true);
+    expect(session.getSnapshot().config.generationJobs[0]).toMatchObject({ title: "Renamed scene", generationHistory: { draft: null } });
+  });
+
+  it("keeps the renamed scene title when switching takes and restoring an existing draft", () => {
+    let config = edit(finish(edit(initial(), "First"), "one"), "Pending");
+    const id = config.generationJobs[0].id, draft = config.generationJobs[0].generationHistory!.draft;
+    config = saveSceneDrafts({ ...config, generationJobs: config.generationJobs.map(job => ({ ...job, title: "Renamed scene" })) }, config);
+    expect(config.generationJobs[0].generationHistory!.draft).toBe(draft);
+    config = selectSceneGeneration(config, id, "one");
+    expect(config.generationJobs[0]).toMatchObject({ title: "Renamed scene", music: "First", generationHistory: { selectedId: "one" } });
+    config = selectSceneGeneration(config, id, null);
+    expect(config.generationJobs[0]).toMatchObject({ title: "Renamed scene", music: "Pending", generationHistory: { selectedId: null } });
+  });
+
+  it("selects a completed take without creating a draft after renaming during generation", () => {
+    let config = finish(initial(), "one");
+    const submitted = take(config, "two"), id = config.generationJobs[0].id;
+    config = { ...config, generationJobs: config.generationJobs.map(job => ({ ...job, title: "Renamed while rendering", status: "generating" as const })) };
+    config = completeSceneGeneration(config, id, submitted);
+    expect(config.generationJobs[0]).toMatchObject({ title: "Renamed while rendering", generationHistory: { selectedId: "two", primaryId: "two", draft: null } });
+  });
+
   it("removes an unselected take without changing the primary or current draft", () => {
     let config = finish(edit(initial(), "First"), "one");
     config = edit(finish(edit(config, "Second"), "two"), "Pending");

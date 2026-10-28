@@ -8,12 +8,14 @@ function canonical(value: unknown): unknown {
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).filter(([, v]) => v != null).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, canonical(v)]));
   return value;
 }
-export const sameSceneInput = (a: SceneInput, b: SceneInput) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+// The scene name is metadata shared by all takes, not a generation setting.
+export const sameSceneInput = (a: SceneInput, b: SceneInput) =>
+  JSON.stringify(canonical({ ...a, title: undefined })) === JSON.stringify(canonical({ ...b, title: undefined }));
 function applyInput(job: GenerationJob, input: SceneInput): GenerationJob {
   // Delete absent optional controls too: a newer take may have added one.
   const next = { ...job };
   for (const key of Object.keys(sceneInputSchema.shape)) delete (next as unknown as Record<string, unknown>)[key];
-  return { ...next, ...structuredClone(input), updatedAt: new Date().toISOString() };
+  return { ...next, ...structuredClone(input), title: job.title, updatedAt: new Date().toISOString() };
 }
 
 /** Adopt old projects' existing result before any edit or new generation. */
