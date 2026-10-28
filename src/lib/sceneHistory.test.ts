@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createProjectConfig, generationAssetId, parseProjectConfig, type ProjectConfig, type SceneGenerationVersion } from "./project";
-import { completeSceneGeneration, duplicateScene, makeSceneGenerationPrimary, removeSceneGeneration, saveSceneDrafts, sceneInput, selectSceneGeneration, SCENE_GENERATION_HISTORY_LIMIT } from "./sceneHistory";
+import { completeSceneGeneration, duplicateScene, makeSceneGenerationPrimary, removeSceneDraft, removeSceneGeneration, saveSceneDrafts, sceneInput, selectSceneGeneration, SCENE_GENERATION_HISTORY_LIMIT } from "./sceneHistory";
 import { ProjectSession } from "./projectSession";
 
 const initial = () => createProjectConfig({ name: "History", prompt: "A quiet scene", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 5 });
@@ -29,6 +29,44 @@ const edit = (config: ProjectConfig, music: string) => saveSceneDrafts({ ...conf
   shots: j.shots!.map(shot => ({ ...shot, action: music, speech: `${music} speech` })) })) }, config);
 
 describe("scene generation history", () => {
+  it("removes a selected draft, restores primary settings and supports undo and redo", () => {
+    const config = edit(finish(edit(initial(), "First"), "one"), "Pending");
+    const id = config.generationJobs[0].id;
+    config.generationJobs[0].title = "Renamed scene";
+    const session = new ProjectSession({ folderPath: "C:/history", config }, vi.fn(async () => {}));
+    session.edit(current => removeSceneDraft(current, id));
+    const removed = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
+    expect(removed.generationJobs[0]).toMatchObject({ title: "Renamed scene", music: "First", steps: 4, seed: 10,
+      outputRelativePath: "media/one.mp4", latentRelativePath: "latents/one.safetensors", generationHistory: { draft: null, primaryId: "one", selectedId: "one" } });
+    expect(removed.generationJobs[0].generationHistory!.versions).toEqual(config.generationJobs[0].generationHistory!.versions);
+    expect(session.getSnapshot().config.assets).toBe(config.assets);
+    expect(session.getSnapshot().config.timeline).toBe(config.timeline);
+    expect(session.undo()).toBe(true);
+    expect(session.getSnapshot().config.generationJobs[0]).toMatchObject({ music: "Pending", generationHistory: { selectedId: null, draft: { music: "Pending" } } });
+    expect(session.redo()).toBe(true);
+    expect(session.getSnapshot().config.generationJobs[0].generationHistory!.draft).toBeNull();
+  });
+
+  it("removes an unselected draft without switching the selected or primary Take", () => {
+    let config = edit(finish(edit(finish(edit(initial(), "First"), "one"), "Second"), "two"), "Pending");
+    const id = config.generationJobs[0].id;
+    config = selectSceneGeneration(config, id, "one");
+    config = saveSceneDrafts(removeSceneDraft(config, id));
+    expect(config.generationJobs[0]).toMatchObject({ music: "First", outputRelativePath: "media/two.mp4",
+      generationHistory: { draft: null, primaryId: "two", selectedId: "one" } });
+    expect(edit(config, "New draft").generationJobs[0].generationHistory!.draft?.music).toBe("New draft");
+  });
+
+  it("keeps the only draft and blocks draft removal during generation", () => {
+    const empty = initial();
+    expect(removeSceneDraft(empty, empty.generationJobs[0].id)).toBe(empty);
+    const config = edit(finish(initial(), "one"), "Pending");
+    for (const status of ["queued", "generating", "ready"] as const) {
+      const busy = { ...config, generationJobs: config.generationJobs.map(job => ({ ...job, status })) };
+      expect(removeSceneDraft(busy, busy.generationJobs[0].id)).toBe(busy);
+    }
+  });
+
   it.each([false, true])("renames a scene without creating a draft, including legacy history %s", legacy => {
     const config = finish(initial(), "one");
     if (legacy) delete config.generationJobs[0].generationHistory;

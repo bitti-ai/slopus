@@ -1375,6 +1375,30 @@ it("shows template shifts and locks active LoRA overrides without replacing save
 });
 
 
+it.each(["mouse", "keyboard"])("removes the Draft through its %s context menu and restores the primary Take", method => {
+  let config = project();
+  const job = config.generationJobs[0];
+  config = completeSceneGeneration(config, job.id, { id: "one", scene: sceneInput(job), createdAt: config.createdAt,
+    media: { id: `asset-${job.id}`, kind: "generated", name: job.title, mimeType: "video/mp4", relativePath: "media/one.mp4", createdAt: config.createdAt } });
+  const state = setup(config);
+  fireEvent.change(screen.getByLabelText("The music of this scene"), { target: { value: "Discard this draft" } });
+  const draft = screen.getByRole("button", { name: "Draft of First scene" });
+  if (method === "mouse") fireEvent.contextMenu(draft);
+  else fireEvent.keyDown(draft, { key: "F10", shiftKey: true });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove draft" }));
+  expect(screen.queryByRole("button", { name: "Draft of First scene" })).toBeNull();
+  expect(state.latest().generationJobs[0].music).toBe(job.music);
+  expect(state.latest().generationJobs[0]).toMatchObject({ outputRelativePath: "media/one.mp4",
+    generationHistory: { selectedId: "one", primaryId: "one", draft: null } });
+  expect(screen.getByRole("button", { name: "Generation 1 (Primary) of First scene" })).toHaveAttribute("aria-pressed", "true");
+});
+
+it("disables removing the scene's only Draft", () => {
+  setup();
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Draft of First scene" }));
+  expect(screen.getByRole("menuitem", { name: "Remove draft" })).toBeDisabled();
+});
+
 it("restores older takes and drafts, makes a take primary, removes history and duplicates a scene", () => {
   let config = project();
   const id = config.generationJobs[0].id;

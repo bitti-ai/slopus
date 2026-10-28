@@ -2,7 +2,7 @@ import { generatorOptions } from "../generatorOptions";
 import { sceneUpscaleSubmission, selectedUpscaleTake } from "../../lib/sceneUpscale";
 import { Flyout } from "../ui";
 import { ChevronDown14 } from "../ui/icons";
-import { duplicateScene, makeSceneGenerationPrimary, removeSceneGeneration, saveSceneDrafts, selectSceneGeneration } from "../../lib/sceneHistory";
+import { duplicateScene, makeSceneGenerationPrimary, removeSceneDraft, removeSceneGeneration, saveSceneDrafts, selectSceneGeneration } from "../../lib/sceneHistory";
 import { sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "../../lib/sceneGeneration";
 import { longShotBlocker, longShotDependencies, longShotPosition } from "../../lib/longShot";
 export { templateSceneBlocker } from "../../lib/sceneGeneration";
@@ -588,6 +588,10 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
             onRemoveGeneration={(job, versionId) => {
               onChange(removeSceneGeneration(configRef.current, job.id, versionId));
               void purgeSceneThumbnails(job);
+            }}
+            onRemoveDraft={(job) => {
+              onChange(removeSceneDraft(configRef.current, job.id));
+              setSelection({ jobId: job.id, shotId: null });
             }}
             onDuplicate={(job) => {
               const duplicated = duplicateScene(configRef.current, job.id);

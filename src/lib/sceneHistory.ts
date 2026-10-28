@@ -64,6 +64,20 @@ export function selectSceneGeneration(config: ProjectConfig, sceneId: string, ve
   }) };
 }
 
+/** Discard pending settings, keeping the selected saved take or restoring the primary. */
+export function removeSceneDraft(config: ProjectConfig, sceneId: string): ProjectConfig {
+  const current = config.generationJobs.find(job => job.id === sceneId);
+  if (!current || ["queued", "generating", "ready"].includes(current.status)) return config;
+  const saved = saveSceneDrafts(config);
+  const job = saved.generationJobs.find(job => job.id === sceneId)!;
+  const history = sceneHistory(job, saved.assets);
+  const selected = history.versions.find(version => version.id === history.selectedId)
+    ?? history.versions.find(version => version.id === history.primaryId) ?? history.versions.at(-1);
+  if (!history.draft || !selected) return config;
+  return { ...saved, generationJobs: saved.generationJobs.map(item => item.id === sceneId
+    ? { ...applyInput(item, selected.scene), generationHistory: { ...history, selectedId: selected.id, draft: null } } : item) };
+}
+
 /** Browsing changes the board's preview, never the primary output used by
  * timeline clips, continuations and generation references. */
 export function scenePreviewJob(job: GenerationJob, assets: readonly ProjectAsset[]): GenerationJob {

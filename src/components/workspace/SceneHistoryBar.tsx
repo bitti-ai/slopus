@@ -16,15 +16,19 @@ function TakePoster({ folderPath, media }: { folderPath: string; media: ProjectA
   return url ? <img src={url} alt="" draggable={false} /> : <Film16 aria-hidden="true" />;
 }
 
-export function SceneHistoryBar({ job, assets, folderPath, onSelect, onMakePrimary, onRemove }: {
+export function SceneHistoryBar({ job, assets, folderPath, onSelect, onMakePrimary, onRemove, onRemoveDraft }: {
   job: GenerationJob; assets: ProjectAsset[]; folderPath: string;
   onSelect?: (job: GenerationJob, id: string | null) => void;
   onMakePrimary?: (job: GenerationJob, id: string) => void;
   onRemove?: (job: GenerationJob, id: string) => void;
+  onRemoveDraft?: (job: GenerationJob) => void;
 }) {
   const history = sceneHistory(job, assets);
   const busy = ["queued", "generating", "ready"].includes(job.status);
   const menu = useContextMenu();
+  const draftMenu = (source: Parameters<typeof menu.open>[0]) => menu.open(source, [{ id: "remove-draft", label: "Remove draft", icon: <Delete16 />, danger: true,
+    disabled: busy || !onRemoveDraft || !history.versions.length,
+    onSelect: () => onRemoveDraft?.(job) }], { "aria-label": `Draft actions for ${job.title}` });
   return <aside className="scene-history" aria-label={`Generation history for ${job.title}`}>
     {history.versions.map((version, index) => {
       const primary = version.id === history.primaryId;
@@ -42,7 +46,8 @@ export function SceneHistoryBar({ job, assets, folderPath, onSelect, onMakePrima
       </button>;
     })}
     {(history.draft || !history.versions.length) && <button type="button" className="scene-history__take scene-history__draft" disabled={busy || !onSelect}
-      aria-label={`Draft of ${job.title}`} aria-pressed={!history.selectedId} onClick={() => onSelect?.(job, null)}>
+      aria-label={`Draft of ${job.title}`} aria-pressed={!history.selectedId} onClick={() => onSelect?.(job, null)}
+      onContextMenu={draftMenu} onKeyDown={event => { if (event.key === "ContextMenu" || event.key === "F10" && event.shiftKey) { event.preventDefault(); draftMenu(event); } }}>
       <span className="scene-history__picture"><Edit16 aria-hidden="true" /></span><span>Draft</span>
     </button>}
     {menu.element}
