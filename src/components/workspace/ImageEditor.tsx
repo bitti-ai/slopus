@@ -615,7 +615,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     {!active && <button ref={generationOptionsButton} type="button" className="primary-button image-generation-options" aria-label="Generation options"
       aria-haspopup="dialog" aria-expanded={generationOptionsOpen} data-tooltip="Generation options" disabled={generateDisabled}
       onClick={() => setGenerationOptionsOpen(!generationOptionsOpen)}><ChevronDown14 aria-hidden="true" /></button>}
-    <Flyout open={generationOptionsOpen && !active} anchor={generationOptionsButton} initialFocus={generationCountInput} onClose={() => setGenerationOptionsOpen(false)} placement="top" width={240} aria-label="Generation options" className="image-generation-options-panel">
+    <Flyout open={generationOptionsOpen && !active} anchor={generationOptionsButton} initialFocus={generationCountInput} onClose={() => setGenerationOptionsOpen(false)} placement="top-end" width={240} aria-label="Generation options" className="image-generation-options-panel">
       <PropRow label="Count" tooltip="Different seeds for each image. Resets after generating." htmlFor={rootField("generation-count")}>
         <input ref={generationCountInput} id={rootField("generation-count")} className="text-field" type="number" min={1} max={MAX_IMAGE_BATCH_COUNT} step={1}
           value={generationCount} aria-invalid={!validCount} aria-describedby={!validCount ? rootField("generation-count-help") : undefined} onChange={(event) => setGenerationCount(event.target.value)} />
