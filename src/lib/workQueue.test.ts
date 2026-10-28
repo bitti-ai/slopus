@@ -20,6 +20,8 @@ import { compileImagePrompt } from "./imagePrompt";
 import { addImageNode, createImageEditScene } from "./imageScene";
 import { createEmptyImage, imageGenerationSnapshot, makeImagePrimary, restoreGeneratedImage } from "./imageHistory";
 import { sceneGenerationRequest } from "./sceneGeneration";
+import { sceneUpscaleSubmission } from "./sceneUpscale";
+import { completeSceneGeneration, sceneInput } from "./sceneHistory";
 import { newSong } from "./music";
 import { musicTemplates } from "./settings";
 import { bridgeGapFrames, currentLongShotArchives } from "./longShot";
@@ -64,6 +66,53 @@ const finish = async (queue: WorkQueue, id: string) => {
   emit("slopfab-job", { jobId: id, state: "framesReady", detail: "Frames ready" });
   await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === id)?.status).toBe("completed"));
 };
+
+it("upscales selected Takes repeatedly without diffusion, preserving source lineage and joined scene ranges", async () => {
+  const { queue, first } = setup();
+  const job = first.getSnapshot().config.generationJobs[0];
+  const original = "latents/original.safetensors";
+  const segments = [{ sceneId: job.id, startFrame: 0, frameCount: 124, latentRelativePath: original }];
+  first.update(config => completeSceneGeneration(config, job.id, { id: "original", createdAt: config.createdAt, scene: sceneInput(job), generationSnapshot: "original settings", latentRelativePath: original,
+    media: { id: `asset-${job.id}`, kind: "generated", mimeType: "video/mp4", name: job.title, relativePath: "media/original.mp4", width: 736, height: 416, durationMs: 124 / 24 * 1000, sceneSegments: segments, createdAt: config.createdAt } }));
+  const template = loadGeneratorTemplateSettings().templates[0];
+  let expectedSource = original;
+  for (const scale of [1.5, 2, 4]) {
+    const config = first.getSnapshot().config;
+    const item = sceneUpscaleSubmission(config.generationJobs[0], config, scale, template);
+    const [id] = queue.enqueue(first, [item]);
+    item.request.latentUpscaleSource!.path = "edited-after-queue";
+    await waitFor(() => expect(queue.getSnapshot().find(work => work.id === id)?.status).toBe("generating"));
+    const sent = vi.mocked(enqueueSlopfabGeneration).mock.calls.at(-1)![0];
+    expect(sent.latentUpscaleSource).toEqual({ path: expectedSource, scale });
+    expect(sent.prompt).toBe(""); expect(sent.referencePaths).toEqual([]);
+    expect(sent.singleShot).toBeUndefined(); expect(sent.previousSceneId).toBeUndefined();
+    await finish(queue, id);
+    const result = first.getSnapshot().config.generationJobs[0];
+    const take = result.generationHistory!.versions.at(-1)!;
+    expect(result.latentRelativePath).toBe(original);
+    expect(result.generationSnapshot).toBe("original settings");
+    expect(take.originalLatentRelativePath).toBe(original);
+    expect(take.media.sceneSegments).toEqual(segments);
+    expect(take.upscaleFactor).toBe(scale);
+    expectedSource = take.latentRelativePath!;
+  }
+  expect(vi.mocked(saveGeneratedScene).mock.calls.every(([options]) => !options.outputSize)).toBe(true);
+});
+
+it.each(["failed", "cancelled"])("keeps the original Take usable when upscaling is %s", async state => {
+  const { queue, first } = setup();
+  const job = first.getSnapshot().config.generationJobs[0];
+  first.update(config => completeSceneGeneration(config, job.id, { id: "original", createdAt: config.createdAt, scene: sceneInput(job), latentRelativePath: "latents/original.safetensors",
+    media: { id: `asset-${job.id}`, kind: "generated", mimeType: "video/mp4", name: job.title, relativePath: "media/original.mp4", createdAt: config.createdAt } }));
+  const config = first.getSnapshot().config;
+  const [id] = queue.enqueue(first, [sceneUpscaleSubmission(config.generationJobs[0], config, 2, loadGeneratorTemplateSettings().templates[0])]);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  if (state === "cancelled") await queue.cancel(id);
+  emit("slopfab-job", { jobId: id, state, detail: state });
+  await waitFor(() => expect(queue.getSnapshot()[0].status).toBe(state));
+  expect(first.getSnapshot().config.generationJobs[0]).toMatchObject({ status: "completed", outputRelativePath: "media/original.mp4", latentRelativePath: "latents/original.safetensors" });
+  expect(first.getSnapshot().config.generationJobs[0].generationHistory!.versions).toHaveLength(1);
+});
 
 it("queues an immutable music request and saves its audio into timeline media", async () => {
   const { queue, first, saved } = setup();

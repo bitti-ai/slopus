@@ -569,10 +569,6 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
             onCommit={(value) => onChange({ seed: value })}
           />
         </PropRow>
-        <PropRow label="Latent upscale" htmlFor={`${id}-latent-upscale`} tooltip="Generate at half resolution, then upscale to the selected resolution. Requires Latent upscale weights in Settings → Generator → Other weights.">
-          <ToggleSwitch id={`${id}-latent-upscale`} aria-label="Latent upscale" checked={job.latentUpscale ?? false} disabled={disabled}
-            onChange={(checked) => onChange({ latentUpscale: checked })} />
-        </PropRow>
         <PropRow label="Advanced options" htmlFor={`${id}-advanced-options`} tooltip="Show sigma shifts and a separate audio step count.">
           <ToggleSwitch id={`${id}-advanced-options`} aria-label="Advanced options" checked={job.audioSteps != null} disabled={disabled}
             onChange={(checked) => onChange({ audioSteps: checked ? Math.min(sceneGenerationSteps(job, defaultSteps), MAX_AUDIO_GENERATION_STEPS) : undefined })} />

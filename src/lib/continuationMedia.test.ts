@@ -53,6 +53,15 @@ it("keeps standalone scenes and trims in scene coordinates", () => {
   expect(resolved).toMatchObject({ assetId: "asset-b", sourceStartMs: 124 * 1000 / 24 + 500, durationMs: b.durationMs });
 });
 
+it("plays an upscaled primary at its own resolution even when a later clip shares original latents", () => {
+  const config = project();
+  for (const asset of config.assets) { asset.width = 736; asset.height = 416; }
+  config.assets[0].width = 1472; config.assets[0].height = 832;
+  expect(continuationPlaybackTracks(config)[0].clips.map(clip => clip.assetId)).toEqual(["asset-a", "asset-c", "asset-c"]);
+  config.assets[2].width = 2944; config.assets[2].height = 1664;
+  expect(continuationPlaybackTracks(config)[0].clips.map(clip => clip.assetId)).toEqual(["asset-c", "asset-c", "asset-c"]);
+});
+
 it("shares joined sources across a cut between different tracks", () => {
   const config = project();
   const b = config.timeline.tracks[0].clips.splice(1, 1)[0];

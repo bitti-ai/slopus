@@ -4,6 +4,21 @@ import { completeSceneGeneration, duplicateScene, makeSceneGenerationPrimary, re
 import { ProjectSession } from "./projectSession";
 
 const initial = () => createProjectConfig({ name: "History", prompt: "A quiet scene", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 5 });
+
+it("keeps original reference latents across upscaled primaries, history pruning and reloads", () => {
+  let config = finish(initial(), "original");
+  const id = config.generationJobs[0].id;
+  for (let i = 0; i < 6; i++) {
+    config = completeSceneGeneration(config, id, { ...take(config, `upscale-${i}`), originalLatentRelativePath: "latents/original.safetensors", upscaleFactor: 2 });
+    config = parseProjectConfig(JSON.parse(JSON.stringify(config)));
+    expect(config.generationJobs[0].latentRelativePath).toBe("latents/original.safetensors");
+  }
+  const history = config.generationJobs[0].generationHistory!;
+  expect(history.versions).toHaveLength(SCENE_GENERATION_HISTORY_LIMIT);
+  expect(history.versions.at(-1)?.latentRelativePath).toBe("latents/upscale-5.safetensors");
+  config = makeSceneGenerationPrimary(config, id, history.versions[0].id);
+  expect(config.generationJobs[0].latentRelativePath).toBe("latents/original.safetensors");
+});
 function take(config: ProjectConfig, id: string): SceneGenerationVersion {
   const job = config.generationJobs[0];
   return { id, createdAt: new Date(0).toISOString(), scene: sceneInput(job), generationSnapshot: id, latentRelativePath: `latents/${id}.safetensors`,

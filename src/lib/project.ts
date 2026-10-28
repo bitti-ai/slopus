@@ -643,6 +643,8 @@ export type SceneInput = z.infer<typeof sceneInputSchema>;
 export const sceneGenerationVersionSchema = z.object({
   id: idSchema, createdAt: isoDateSchema, scene: sceneInputSchema, media: projectAssetSchema,
   generationSnapshot: z.string().nullish(), latentRelativePath: projectRelativePathSchema.nullish(),
+  originalLatentRelativePath: projectRelativePathSchema.nullish(),
+  upscaleFactor: z.number().refine(value => [1.5, 2, 4].includes(value)).optional(),
 });
 export type SceneGenerationVersion = z.infer<typeof sceneGenerationVersionSchema>;
 const sceneGenerationHistorySchema = z.object({
@@ -1091,7 +1093,6 @@ export function continuationBlocker(job: GenerationJob, jobs: readonly Generatio
     seen.add(id);
     const source = jobs.find((candidate) => candidate.id === id);
     if (!source) return "The selected source scene no longer exists.";
-    if (current.sceneType === "single-shot" && !!source.latentUpscale !== !!current.latentUpscale) return "Use the same Latent upscale setting for the Single Shot and its starting video.";
     if (source.sceneType !== "continue" && !continuationSceneId(source, jobs)) return null;
     current = source;
   }

@@ -118,6 +118,7 @@ export interface SlopfabGenerationRequest {
   videoSigmaShift?: number;
   audioSigmaShift?: number;
   latentUpscale?: boolean;
+  latentUpscaleSource?: { path: string; scale: number };
   seed: number;
   canvasWidth: number;
   canvasHeight: number;

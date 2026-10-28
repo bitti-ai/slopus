@@ -1,6 +1,11 @@
 import { sceneGenerationPending, sceneSiblings, generationAssetId, sceneDurationSeconds, sceneOutputFrames, type GenerationJob, type ProjectAsset, type ProjectConfig, type SceneGenerationInput, type SceneMediaSegment } from "./project";
 
 export const LONG_SHOT_CONTEXT = 22;
+/** Joined decodes may share original latent identity with an enlarged Take. */
+export function canReuseJoinedVideo(source: ProjectAsset | undefined, candidate: ProjectAsset) {
+  return (!source?.width || (candidate.width ?? 0) >= source.width)
+    && (!source?.height || (candidate.height ?? 0) >= source.height);
+}
 export const bridgeGapFrames = (frames: number) => Math.max(12, Math.ceil((frames - 12) / 17) * 17 + 12);
 
 /** Alternation restarts at the beginning of each consecutive Long Shot run. */
@@ -37,7 +42,6 @@ export function longShotBlocker(job: GenerationJob, config: ProjectConfig, requi
     const plannedFrames = Math.max(22, Math.ceil((sceneDurationSeconds(source) * 24 - 5) / 17) * 17 + 5);
     const frames = needsOutput ? sceneOutputFrames(source, config) : requireCompleted ? plannedFrames : Math.max(sceneOutputFrames(source, config) ?? 0, plannedFrames);
     if (frames != null && frames < margin + LONG_SHOT_CONTEXT) return `“${source.title}” needs at least ${margin + LONG_SHOT_CONTEXT} frames for this bridge. Reduce its editable margin or lengthen the source.`;
-    if (!!source.latentUpscale !== !!job.latentUpscale) return "Use the same Latent upscale setting for the bridge and both neighboring clips.";
   }
   return null;
 }
@@ -82,7 +86,8 @@ export function currentLongShotArchives(config: Pick<ProjectConfig, "assets" | "
 }
 
 export function longShotPlaybackSource(job: GenerationJob, config: Pick<ProjectConfig, "assets" | "generationJobs" | "videos">) {
-  const source = currentLongShotArchives(config).find((asset) => asset.sceneSegments?.some((part) => part.sceneId === job.id && part.latentRelativePath === job.latentRelativePath));
+  const primary = config.assets.find(asset => asset.id === generationAssetId(job.id));
+  const source = currentLongShotArchives(config).find((asset) => canReuseJoinedVideo(primary, asset) && asset.sceneSegments?.some((part) => part.sceneId === job.id && part.latentRelativePath === job.latentRelativePath));
   const segment = source?.sceneSegments?.find((part) => part.sceneId === job.id);
   return source && segment ? { source, segment } : null;
 }

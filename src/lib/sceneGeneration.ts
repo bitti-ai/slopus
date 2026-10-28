@@ -47,7 +47,6 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
     ...generationSigmaShifts(job, template),
     generationEffects: activeGenerationEffects(job.generationEffects),
     ...(job.audioSteps != null ? { audioSteps: job.audioSteps } : {}),
-    ...(job.latentUpscale ? { latentUpscale: true } : {}),
     seed: sceneGenerationSeed(job),
     canvasWidth: canvas.width,
     canvasHeight: canvas.height,

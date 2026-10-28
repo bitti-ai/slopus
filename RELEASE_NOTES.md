@@ -4,6 +4,8 @@ Changes since 0.3.2.
 
 ## What's new
 
+- **Scene upscaling.** Generate's dropdown offers 1.5x, 2x and 4x latent upscaling as new Takes. Upscaled Takes can be enlarged again; scene references always use original latents.
+
 - **Video library.** Organize Videos → Scenes → Shots in folders, play scenes sequentially on cards or in a popout, and apply shared prompts and timed music/video references. Split a complete song into scenes; timeline clips remain individual scenes.
 - **Music export.** Preview and export WAV, MP3, lossless FLAC, AAC/M4A or Opus/WebM/Ogg, with bitrate controls and background export. MP3/FLAC use bundled Mediabunny encoders.
 - **Single Shot.** Generate a short ending first, then anchor a continuous shot to it. Supports references in both prompts and optional continuation from any generated scene.

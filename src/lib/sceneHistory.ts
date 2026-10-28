@@ -85,7 +85,7 @@ export function makeSceneGenerationPrimary(config: ProjectConfig, sceneId: strin
   const media = { ...structuredClone(version.media), id: assetId };
   return { ...config,
     generationJobs: config.generationJobs.map(j => j.id !== sceneId ? j : { ...j, generationHistory: { ...history, primaryId: versionId },
-      outputRelativePath: media.relativePath, latentRelativePath: version.latentRelativePath, generationSnapshot: version.generationSnapshot, status: "completed", stage: "completed", progress: 1, error: null }),
+      outputRelativePath: media.relativePath, latentRelativePath: version.originalLatentRelativePath ?? version.latentRelativePath, generationSnapshot: version.generationSnapshot, status: "completed", stage: "completed", progress: 1, error: null }),
     assets: [...config.assets.map(a => a.id === assetId || a.kind === "generated" && a.relativePath === job.outputRelativePath
       ? { ...media, id: a.id, name: a.name } : a), ...(config.assets.some(a => a.id === assetId) ? [] : [media])],
   };

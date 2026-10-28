@@ -81,7 +81,7 @@ function OtherWeightEditor({ template, desktop, busy, onDone }: {
           onChange={(event) => setPaths({ ...paths, [file.url]: event.target.value })} placeholder="Absolute path to a .safetensors file" />
         <button className="secondary-button" type="button" disabled={!desktop} aria-label={`Browse for ${file.name}`} onClick={() => void browse(file)}>Browse…</button>
       </span></label>)}
-      {template.id === "latent-upscale" && <p>Used by the Latent upscale toggle in scene Generation settings. Workers receive local files or download the standard weights.</p>}
+      {template.id === "latent-upscale" && <p>Upscale saved scene Takes from the Generate menu. Workers receive local files or download the standard weights.</p>}
       {template.id === "seedvr2" && <p>SeedVR2 runs locally or on the selected worker. Workers receive local files and download any weights without a local path.</p>}
       {error && <InfoBar severity="error" message={error} />}
     </fieldset>

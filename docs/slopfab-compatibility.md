@@ -1,11 +1,11 @@
 # Slopfab compatibility
 
-## Bundled runtime (API 1.41.0)
+## Bundled runtime (API 1.43.0)
 
-Windows and Linux runtimes use SlopFab commit `bcc1d26d92433475434447f34017550f9f823fe2`
+Windows and Linux runtimes use SlopFab commit `bf952e73efd66901ebe0558a6c8535ce3a2b0a3e`
 from `D:\Projects\slopfab`, with CUDA and Vulkan enabled and FFmpeg disabled.
-This update adds source-initialized continuation and music progress fixes.
-Single Shot uses latent boundary anchors and fresh middle noise. LAN protocol is 21. Restart Slopus and
+This update adds standalone saved-latent upscaling with in-process video/audio decoding.
+Single Shot uses latent boundary anchors and fresh middle noise. LAN protocol is 22. Restart Slopus and
 update workers to load the new runtime.
 
 The Linux runtime passes C API and embedded-tokenizer checks. Slopus core and desktop
@@ -37,8 +37,8 @@ final duration; Single Shot requires at least two seconds.
 Only the final joined output and latents enter scene history. Timeline ranges
 identify each scene's own portion, retaining the shared decode at joins.
 Temporary endings are removed on success, failure and cancellation. Starting
-scenes must use compatible resolution and latent-upscale settings. Protocol 21
-prevents older workers from restoring their source-initialization default.
+scenes must use compatible original latent resolutions. Protocol 22 also requires
+workers to support saved-latent upscale requests.
 
 Single Shot disables `slopfab_request_set_continuation_source_init` in both
 passes: repeating the final source latent slice across the new interval can
@@ -232,7 +232,7 @@ into a bridge on its next generation.
 The two margin controls replace the previous anchor's ending and the following
 anchor's beginning in multiples of 17 frames (default 17, zero allowed).
 Each anchor must also provide 22 preserved context frames. Use the same canvas,
-VAE models and latent upscale setting throughout the run. Cite original subject
+VAE models and original latent resolution throughout the run. Cite original subject
 references in every scene that needs them.
 
 Slopus calls `slopfab_request_set_latent_bridge_files`. The requested gap rounds
@@ -270,28 +270,26 @@ order, request and callback lifetimes, repeated runs, failures, cancellation
 and the older-runtime fallback. A separate test checks that the bundled
 runtime exports the new entry point; these tests do not run model inference.
 
-## API 1.24: scene latent upscaling
+## API 1.43: saved scene latent upscaling
 
-Scene Generation settings offer an optional **Latent upscale** toggle. Slopus
-passes a half-size diffusion canvas (rounded up to complete 32-pixel patches)
-and calls `slopfab_request_set_latent_upscaler` with scale 2 and temporal chunking.
-Slopfab upscales the video latents before VAE decoding on CUDA or Vulkan; audio
-and frame counts are unchanged. WebCodecs encodes to the exact selected output
-size when patch alignment makes the decoded frames slightly larger. Planning
-reports the selected output size while latent dimensions describe diffusion.
+The Scene Generate dropdown offers **Upscale 1.5x**, **Upscale 2x** and
+**Upscale 4x** for the selected Take. Escape or clicking outside dismisses it.
+Each action queues `slopfab_latent_upscale_decode_file_start`, saves the enlarged
+archive with `slopfab_generation_save_latents`, and encodes the decoded video/audio
+with WebCodecs into a new Take. No prompt conditioning or diffusion runs. Canvas
+dimensions round to the nearest 32 pixels; audio latents and frame counts stay unchanged.
 
-The MiniMax H3 3D conv v1 FP16 checkpoint is downloadable under
-Settings > Generator > Other weights > Latent upscale, with an optional local
-file override. Weights remain machine-local. LAN protocol 8 transfers local
-files or has the worker download the standard checkpoint; older workers must
-be updated so they cannot silently ignore the toggle. Older runtimes reject
-an enabled toggle with an API 1.24 requirement; disabled scenes remain supported.
+Download the MiniMax H3 latent upscaler under **Settings > Generators > Other
+weights**. The action needs that checkpoint and the video/audio VAEs. Protocol 22
+transfers those weights and the saved archive to workers, without transformer,
+text encoder, tokenizer or LoRAs. Workers need API 1.43 or later.
 
-Saved latents retain the diffusion resolution. Continuations must use a source
-archive with matching diffusion dimensions, so use the same upscale setting
-and project resolution throughout a continuation chain. The toggle is captured
-in generation history and in queued requests. Progress identifies the latent
-upscaling stage, and existing cancellation and WebCodecs/MP4 saving apply.
+Each enlarged Take retains its own archive for further upscaling and an
+`originalLatentRelativePath` for continuations and bridges. Making it primary
+changes the playable video while keeping the scene's reference latents original.
+Joined scene ranges and original archives survive history pruning, cancellation
+and errors. The former generation-time Latent upscale toggle is removed; legacy
+values remain readable but new scene generation ignores them.
 
 ## API 1.22: export upscaling
 

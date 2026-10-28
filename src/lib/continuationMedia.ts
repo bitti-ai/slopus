@@ -1,5 +1,5 @@
 import { clipPlaybackRate } from "./clipTiming";
-import { currentLongShotArchives } from "./longShot";
+import { canReuseJoinedVideo, currentLongShotArchives } from "./longShot";
 import { GENERATION_FRAME_RATE, generationAssetId, sceneOutputFrames, type GenerationJob, type ProjectAsset, type ProjectConfig, type SceneMediaSegment, type TimelineClip } from "./project";
 
 const milliseconds = (frames: number) => frames * 1000 / GENERATION_FRAME_RATE;
@@ -60,7 +60,7 @@ export function continuationPlaybackTracks(config: ProjectConfig) {
     const own = asset && assetSceneSegment(asset, config.generationJobs);
     let source = asset;
     let segment = own;
-    const joinedLongShot = own && longShots.find((candidate) => candidate.sceneSegments?.some((part) => part.sceneId === own.sceneId && part.latentRelativePath === own.latentRelativePath));
+    const joinedLongShot = own && longShots.find((candidate) => canReuseJoinedVideo(asset, candidate) && candidate.sceneSegments?.some((part) => part.sceneId === own.sceneId && part.latentRelativePath === own.latentRelativePath));
     if (joinedLongShot) {
       const part = joinedLongShot.sceneSegments!.find((part) => part.sceneId === own!.sceneId)!;
       resolved.set(clip.id, { ...clip, assetId: joinedLongShot.id, sourceStartMs: clip.sourceStartMs + milliseconds(part.startFrame) });
@@ -72,6 +72,7 @@ export function continuationPlaybackTracks(config: ProjectConfig) {
       for (const next of following) {
         const nextClip = resolved.get(next.id);
         const joined = nextClip && assets.get(nextClip.assetId);
+        if (joined && !canReuseJoinedVideo(asset, joined)) continue;
         // Long Shot archives are selected above only after validating all
         // dependencies. Never revive a stale archive through legacy adjacency.
         const joinedOwnIndex = joined?.sceneSegments?.findIndex((part) => generationAssetId(part.sceneId) === joined.id) ?? -1;

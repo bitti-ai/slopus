@@ -35,7 +35,7 @@ import type { SceneMediaSegment } from "./project";
 import { exportReferenceRefmod, refmodExportBlocker, refmodExportRequest, type RefmodExportTarget } from "./refmodExport";
 
 export type WorkStatus = "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed" | "cancelled";
-export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string; template?: GeneratorTemplate }
+export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string; template?: GeneratorTemplate; upscaleSource?: import("./project").SceneGenerationVersion }
 export const MAX_IMAGE_BATCH_COUNT = 100;
 
 function imageGenerationSeed(seed: number): number {
@@ -68,6 +68,7 @@ export interface WorkItem {
   settings: { frames: number; steps: number; audioSteps?: number; videoSigmaShift?: number; audioSigmaShift?: number; latentUpscale?: boolean; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
+  upscaleSource?: import("./project").SceneGenerationVersion;
   music?: MusicSong;
   sceneInput?: SceneInput;
   extend?: { sourceId: string; name: string; options: ExtendOptions };
@@ -234,29 +235,31 @@ export class WorkQueue {
       const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
         slopfab: engineProviderSetting(chosen.paths, current.providerSettings.slopfab, chosen.attention, chosen.loras ?? [], chosen.mode ?? "prompt", chosen.additionalSafetensors ?? [], chosen.motionCache ?? false, chosen.sources ?? {}, chosen),
       } });
-      const captured = { ...submission.job, generatorTemplateId: chosen.id || undefined, steps: submission.request.steps, seed: submission.request.seed };
+      const captured = submission.upscaleSource ? submission.job : { ...submission.job, generatorTemplateId: chosen.id || undefined, steps: submission.request.steps, seed: submission.request.seed };
       config.generationJobs = config.generationJobs.map(j => j.id === captured.id ? structuredClone(captured) : j);
       const id = `work-${crypto.randomUUID()}`;
       ids.push(id);
       let finish!: () => void;
       const done = new Promise<void>((resolve) => { finish = resolve; });
-      const request = structuredClone({ ...submission.request, jobId: id, steps: generationStepsWithLoras(submission.request.steps, config),
-        ...generationSigmaShiftsWithLoras(submission.request, config) });
-      this.work.set(id, { id, session, sceneId: submission.job.id, sceneInput: sceneInput(captured), request, config, snapshot: submission.snapshot, cancelled: false, submitted: false, done, finish });
+      const request = structuredClone({ ...submission.request, jobId: id, ...(!submission.upscaleSource ? { steps: generationStepsWithLoras(submission.request.steps, config),
+        ...generationSigmaShiftsWithLoras(submission.request, config) } : {}) });
+      this.work.set(id, { id, session, sceneId: submission.job.id, sceneInput: structuredClone(submission.upscaleSource?.scene ?? sceneInput(captured)), upscaleSource: submission.upscaleSource && structuredClone(submission.upscaleSource), request, config, snapshot: submission.snapshot, cancelled: false, submitted: false, done, finish });
       this.items = [...this.items, {
         id, generationGroupId: id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
         sceneId: submission.job.id, title: submission.job.title, submittedAt: new Date().toISOString(),
-        status: "queued", progress: 0, detail: "Waiting to generate", error: null, completionAt: null,
+        status: "queued", progress: 0, detail: submission.upscaleSource ? "Waiting to upscale" : "Waiting to generate", error: null, completionAt: null,
         cancelling: false, needsSave: false,
         settings: { frames: request.frames, steps: request.steps, audioSteps: request.audioSteps, videoSigmaShift: request.videoSigmaShift, audioSigmaShift: request.audioSigmaShift, latentUpscale: request.latentUpscale, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight },
       }];
-      this.updateScene(this.work.get(id)!, { status: "queued", stage: "queued", progress: 0, error: null, generationSnapshot: submission.snapshot, generatorTemplateId: captured.generatorTemplateId, steps: captured.steps, seed: captured.seed });
+      this.updateScene(this.work.get(id)!, { status: "queued", stage: "queued", progress: 0, error: null,
+        ...(!submission.upscaleSource ? { generationSnapshot: submission.snapshot, generatorTemplateId: captured.generatorTemplateId, steps: captured.steps, seed: captured.seed } : {}) });
     }
     // Link after the whole batch is present, including sources submitted in
     // earlier calls. Group IDs survive completed-work cleanup and draft edits.
     for (const id of ids) {
       const work = this.work.get(id)!;
       const job = work.config.generationJobs.find((job) => job.id === work.sceneId)!;
+      if (work.upscaleSource) continue;
       const sources = new Set([work.request.previousSceneId, work.request.latentBridge?.leftSceneId,
         work.request.latentBridge?.rightSceneId, longShotPosition(job, sceneSiblings(job, work.config))?.previousBridge?.id]);
       const group = this.items.find((item) => item.id === id)!.generationGroupId!;
@@ -523,7 +526,7 @@ export class WorkQueue {
           continue;
         }
         const work = this.work.get(next.id)!;
-        this.patch(work.id, { status: "preparing", detail: work.refmod ? "Preparing refmod" : "Preparing generation" });
+        this.patch(work.id, { status: "preparing", detail: work.refmod ? "Preparing refmod" : work.upscaleSource ? "Preparing upscale" : "Preparing generation" });
         try {
           await this.ready;
           if (work.cancelled) continue;
@@ -563,8 +566,9 @@ export class WorkQueue {
               const blocker = continuationBlocker(captured, live.generationJobs);
               if (blocker) throw new Error(blocker);
               const sourceInput = JSON.parse(previous.generationSnapshot ?? "null");
-              if (sourceInput && (sourceInput.canvasWidth !== work.request.canvasWidth || sourceInput.canvasHeight !== work.request.canvasHeight || !!sourceInput.latentUpscale !== !!work.request.latentUpscale))
-                throw new Error("Use the starting video's resolution and Latent upscale setting.");
+              const divisor = sourceInput?.latentUpscale ? 2 : 1;
+              if (sourceInput && (Math.ceil(sourceInput.canvasWidth / divisor / 32) * 32 !== work.request.canvasWidth || Math.ceil(sourceInput.canvasHeight / divisor / 32) * 32 !== work.request.canvasHeight))
+                throw new Error("Use the resolution of the starting video's original latents.");
             }
             if (captured.sceneType === "long-shot") {
               const current = live.generationJobs.find((job) => job.id === work.sceneId);
@@ -590,7 +594,8 @@ export class WorkQueue {
           const plan = await resolveSlopfabPlan(work.request, work.config, next.folderPath);
           if (work.cancelled) continue;
           work.outputFrames = plan.alignedFrames;
-          this.patch(work.id, { status: "generating", detail: work.music ? "Generating music" : `Generating ${work.image ? "image" : `${plan.alignedFrames} frames`} at ${plan.canvasWidth} × ${plan.canvasHeight}` });
+          this.patch(work.id, { status: "generating", detail: work.upscaleSource ? `Upscaling to ${plan.canvasWidth} × ${plan.canvasHeight}` : work.music ? "Generating music" : `Generating ${work.image ? "image" : `${plan.alignedFrames} frames`} at ${plan.canvasWidth} × ${plan.canvasHeight}`,
+            ...(work.upscaleSource ? { settings: { ...next.settings, frames: plan.alignedFrames, canvasWidth: plan.canvasWidth, canvasHeight: plan.canvasHeight } } : {}) });
           this.updateScene(work, { status: "generating", stage: "preparing" }, false);
           await enqueueSlopfabGeneration(work.request, work.config, next.folderPath);
           work.submitted = true;
@@ -672,7 +677,7 @@ export class WorkQueue {
   private cancelled(work: PendingWork, detail = "Generation cancelled before it started.") {
     this.timing.clear(work.id);
     this.patch(work.id, { status: "cancelled", detail, cancelling: false, completionAt: null });
-    this.updateScene(work, { status: "cancelled", stage: "failed", error: detail });
+    this.updateScene(work, work.upscaleSource ? { status: "completed", stage: "completed", progress: 1, error: detail } : { status: "cancelled", stage: "failed", error: detail });
     void work.session.save().catch(() => undefined);
     work.finish();
   }
@@ -685,7 +690,7 @@ export class WorkQueue {
     const detail = describeDiagnosticError(reason);
     this.timing.clear(work.id);
     this.patch(work.id, { status: "failed", detail: work.refmod ? "Refmod export failed" : "Generation failed", error: detail, completionAt: null, cancelling: false });
-    this.updateScene(work, { status: "failed", stage: "failed", error: detail });
+    this.updateScene(work, work.upscaleSource ? { status: "completed", stage: "completed", progress: 1, error: detail } : { status: "failed", stage: "failed", error: detail });
     writeDiagnostic("error", "work-queue", "generation.failed", detail, { workId: work.id, sceneId: work.sceneId, folderPath: work.session.record.folderPath });
     void work.session.save().catch(() => undefined);
     work.finish();
@@ -817,7 +822,7 @@ export class WorkQueue {
       if (work.cancelled) { this.cancelled(work); return; }
       const assetId = generationAssetId(work.sceneId);
       const totalFrames = saved.durationMs ? Math.round(saved.durationMs * GENERATION_FRAME_RATE / 1000) : work.outputFrames ?? work.request.frames;
-      const sceneSegments = work.request.latentBridge
+      const sceneSegments = work.upscaleSource ? work.upscaleSource.media.sceneSegments : work.request.latentBridge
         ? bridgedSceneSegments(work.sceneId, generationLatentPath(work.id), totalFrames, work.request.frames, work.request.latentBridge, work.bridgeSegments)
         : joinedSceneSegments(work.sceneId, generationLatentPath(work.id), totalFrames,
         Math.ceil(work.request.frames / 17) * 17, work.request.previousSceneId ? {
@@ -828,7 +833,9 @@ export class WorkQueue {
       const media = { kind: "generated" as const, relativePath: saved.relativePath, sourcePath: null, mimeType: "video/mp4", hasAudio: saved.hasAudio ?? null, width: saved.width ?? work.request.canvasWidth, height: saved.height ?? work.request.canvasHeight, durationMs: saved.durationMs ?? Math.round(totalFrames / GENERATION_FRAME_RATE * 1000), sceneSegments };
       const version = { id: work.id, createdAt: new Date().toISOString(), scene: work.sceneInput!,
         media: { ...media, id: assetId, name: work.sceneInput!.title, createdAt: new Date().toISOString() },
-        generationSnapshot: work.snapshot, latentRelativePath: generationLatentPath(work.id) };
+        generationSnapshot: work.snapshot, latentRelativePath: generationLatentPath(work.id),
+        ...(work.upscaleSource ? { originalLatentRelativePath: work.upscaleSource.originalLatentRelativePath ?? work.upscaleSource.latentRelativePath,
+          upscaleFactor: work.request.latentUpscaleSource!.scale } : {}) };
       work.session.update(sceneResultUpdate(work.sceneId, version, saved.note));
       try {
         await work.session.save();

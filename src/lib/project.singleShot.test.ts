@@ -79,5 +79,5 @@ it("uses the starting video's ending latents and rejects cycles, missing sources
   expect(continuationBlocker(next, [next, { ...source, sceneType: "prompt" }])).toBeNull();
   expect(continuationBlocker(next, [next, { ...source, continuationSceneId: next.id }])).toMatch(/cycle/);
   expect(continuationBlocker({ ...source, continuationSceneId: source.id }, [source])).toMatch(/cycle/);
-  expect(continuationBlocker(next, [next, { ...source, latentUpscale: true }])).toMatch(/Latent upscale/);
+  expect(continuationBlocker(next, [next, { ...source, latentUpscale: true }])).toBeNull();
 });

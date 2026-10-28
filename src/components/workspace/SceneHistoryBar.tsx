@@ -34,10 +34,11 @@ export function SceneHistoryBar({ job, assets, folderPath, onSelect, onMakePrima
           onSelect: () => onRemove?.(job, version.id) }], { "aria-label": `Generation ${index + 1} actions` });
       return <button key={version.id} type="button" className="scene-history__take" disabled={busy || !onSelect}
         aria-label={`Generation ${index + 1}${primary ? " (Primary)" : ""} of ${job.title}`} aria-pressed={history.selectedId === version.id}
-        data-tooltip={`Generation ${index + 1}${primary ? " - Primary" : ""} - ${new Date(version.createdAt).toLocaleString()}`}
+        data-tooltip={`Generation ${index + 1}${primary ? " - Primary" : ""}${version.upscaleFactor ? ` - Upscaled ${version.upscaleFactor}x (${version.media.width} × ${version.media.height})` : ""} - ${new Date(version.createdAt).toLocaleString()}`}
         onClick={() => onSelect?.(job, version.id)} onContextMenu={open} onKeyDown={event => { if (event.key === "ContextMenu" || event.key === "F10" && event.shiftKey) { event.preventDefault(); open(event); } }}>
         <span className="scene-history__picture"><TakePoster folderPath={folderPath} media={version.media} /></span>
         <span>{primary ? "Primary" : `Take ${index + 1}`}</span>
+        {version.upscaleFactor && <span>{version.upscaleFactor}x upscale</span>}
       </button>;
     })}
     {(history.draft || !history.versions.length) && <button type="button" className="scene-history__take scene-history__draft" disabled={busy || !onSelect}

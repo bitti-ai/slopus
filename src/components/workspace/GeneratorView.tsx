@@ -1,4 +1,7 @@
 import { generatorOptions } from "../generatorOptions";
+import { sceneUpscaleSubmission, selectedUpscaleTake } from "../../lib/sceneUpscale";
+import { Flyout } from "../ui";
+import { ChevronDown14 } from "../ui/icons";
 import { duplicateScene, makeSceneGenerationPrimary, removeSceneGeneration, saveSceneDrafts, selectSceneGeneration } from "../../lib/sceneHistory";
 import { sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "../../lib/sceneGeneration";
 import { longShotBlocker, longShotDependencies, longShotPosition } from "../../lib/longShot";
@@ -93,6 +96,9 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
   const root = useRef<HTMLDivElement>(null);
   const titleInput = useRef<HTMLInputElement>(null);
   const [showDebugPrompt, setShowDebugPrompt] = useState(false);
+  const [generationActionsOpen, setGenerationActionsOpen] = useState(false);
+  const generationActionsButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => setGenerationActionsOpen(false), [selection.jobId, selection.shotId]);
   const debugEnabled = useSyncExternalStore(subscribeDebugOptions, loadDebugOptionsEnabled);
   const [startFrameError, setStartFrameError] = useState<string | null>(null);
 
@@ -465,6 +471,11 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
   const selectedCancellable = selected?.status === "queued" || selected?.status === "generating";
   const selectedCancelling = Boolean(selected && cancellingJobIds.has(selected.id));
   const selectedBlocker = selected && !selectedCancellable ? generationBlocker(selected) : null;
+  const upscaleTake = selected && selectedUpscaleTake(selected, config);
+  const upscaleBlocker = !upscaleTake?.latentRelativePath ? "Select a generated Take with saved latents."
+    : selected && sceneGenerationPending(selected) ? "Wait for this scene to finish."
+    : selectedTemplate.modelType && selectedTemplate.modelType !== "minimax-h3" ? "Saved latent upscaling requires MiniMax H3."
+    : !isTauri() ? "Upscaling requires the desktop app." : null;
 
   /* --- Keyboard ------------------------------------------------------------
      Scoped to the Generator, so the same keys can mean something else on the
@@ -711,9 +722,10 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
           aria-haspopup="dialog"
           onClick={() => setShowDebugPrompt(true)}
         >Debug prompt</button>}
+        <div className={`scene-generation-controls${!openShot && !selectedCancellable ? " scene-generation-controls--split" : ""}`}>
         <button
           type="button"
-          className="primary-button"
+          className="primary-button scene-generate-button"
           data-tooltip={selectedCancellable ? `Cancel ${selected.title}` : selectedBlocker ?? `Generate ${selected.title}`}
           disabled={selectedCancellable ? selectedCancelling : Boolean(selectedBlocker)}
           onClick={() => generateScene(selected)}
@@ -721,6 +733,19 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
           {selectedCancellable ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}
           {selectedCancellable ? selectedCancelling ? "Cancelling…" : "Cancel" : "Generate"}
         </button>
+        {!openShot && !selectedCancellable && <button ref={generationActionsButton} type="button" className="primary-button scene-generation-options"
+          aria-label="Scene generation actions" aria-haspopup="dialog" aria-expanded={generationActionsOpen}
+          onClick={() => setGenerationActionsOpen(!generationActionsOpen)}><ChevronDown14 aria-hidden="true" /></button>}
+        </div>
+        <Flyout open={generationActionsOpen && !openShot && !selectedCancellable} anchor={generationActionsButton} onClose={() => setGenerationActionsOpen(false)}
+          placement="top-end" width={240} aria-label="Scene generation actions" className="scene-generation-actions">
+          {[1.5, 2, 4].map(scale => <button key={scale} type="button" className="primary-button" disabled={Boolean(upscaleBlocker)} data-tooltip={upscaleBlocker ?? "Create a new Take from the selected Take's saved latents"}
+            onClick={() => {
+              setGenerationActionsOpen(false);
+              try { onGenerate?.([sceneUpscaleSubmission(selected, config, scale, selectedTemplate)]); }
+              catch (reason) { setRuntimeError(reason instanceof Error ? reason.message : String(reason)); }
+            }}>Upscale {scale}x</button>)}
+        </Flyout>
       </div>
     </aside>}
 

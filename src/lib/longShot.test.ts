@@ -43,7 +43,7 @@ it("allows queued Long Shot anchors while retaining readiness and compatibility 
   source.status = "failed";
   expect(longShotBlocker(bridge, config, true, true)).toContain("Generate");
   source.status = "generating"; source.latentUpscale = true;
-  expect(longShotBlocker(bridge, config, true, true)).toContain("Latent upscale");
+  expect(longShotBlocker(bridge, config, true, true)).toBeNull();
 });
 
 it("continues the last scene from the joined archive and invalidates it when a following anchor is added", () => {

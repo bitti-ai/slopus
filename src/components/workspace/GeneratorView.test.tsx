@@ -33,6 +33,36 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it("offers upscale actions above Generate and dismisses them without submitting", () => {
+  const state = setup();
+  const open = () => fireEvent.click(screen.getByRole("button", { name: "Scene generation actions" }));
+  open();
+  const dialog = screen.getByRole("dialog", { name: "Scene generation actions" });
+  for (const scale of [1.5, 2, 4]) expect(within(dialog).getByRole("button", { name: `Upscale ${scale}x` })).toBeDisabled();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Scene generation actions" })).toBeNull();
+  open();
+  fireEvent.pointerDown(document.body);
+  expect(screen.queryByRole("dialog", { name: "Scene generation actions" })).toBeNull();
+  expect(state.latest().generationJobs.every(job => job.status === "draft")).toBe(true);
+});
+
+it("submits the selected Take to upscale and closes the action popup", () => {
+  Object.assign(window, { __TAURI_INTERNALS__: {} });
+  try {
+    let config = project();
+    const job = config.generationJobs[0];
+    config = completeSceneGeneration(config, job.id, { id: "take", scene: sceneInput(job), createdAt: config.createdAt, latentRelativePath: "latents/take.safetensors",
+      media: { id: `asset-${job.id}`, kind: "generated", mimeType: "video/mp4", name: job.title, relativePath: "media/take.mp4", createdAt: config.createdAt } });
+    const generate = vi.fn();
+    render(<GeneratorView config={config} folderPath="C:/project" onChange={() => {}} onOpenTimeline={() => {}} onGenerate={generate} />);
+    fireEvent.click(screen.getByRole("button", { name: "Scene generation actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Upscale 2x" }));
+    expect(generate).toHaveBeenCalledWith([expect.objectContaining({ upscaleSource: expect.objectContaining({ id: "take" }), request: expect.objectContaining({ latentUpscaleSource: { path: "latents/take.safetensors", scale: 2 } }) })]);
+    expect(screen.queryByRole("dialog", { name: "Scene generation actions" })).toBeNull();
+  } finally { delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__; }
+});
+
 it("excludes MOSS from the video picker even when it is the saved default", () => {
   const moss = { ...mossImageTemplate(), sources: {}, paths: { transformer: "moss", textEncoder: "qwen", videoVae: "flux", tokenizer: "tokenizer.json", audioVae: "" } };
   const video = createGeneratorTemplate("Video model");
@@ -805,16 +835,13 @@ describe("Generator scene controls", () => {
     expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["queued", "queued"]);
   });
 
-  it.each([[false, false], [false, true], [true, false], [true, true]])("saves generation controls with separate audio steps %s and latent upscale %s", async (separateAudio, latentUpscale) => {
+  it.each([[false, false], [false, true], [true, false], [true, true]])("saves audio controls %s without applying legacy latent upscale %s", async (separateAudio, latentUpscale) => {
     const initial = project();
     initial.settings = { ...initial.settings, resolution: "416p", frameRate: 60 };
+    initial.generationJobs[0].latentUpscale = latentUpscale;
     const state = setup(initial);
     const generation = screen.getByRole("region", { name: "Generation" });
-    const upscale = within(generation).getByRole("switch", { name: "Latent upscale" });
-    expect(upscale).not.toBeChecked();
-    fireEvent.click(upscale);
-    if (!latentUpscale) fireEvent.click(upscale);
-    expect(parseProjectConfig(JSON.parse(JSON.stringify(state.latest()))).generationJobs[0].latentUpscale).toBe(latentUpscale);
+    expect(within(generation).queryByRole("switch", { name: "Latent upscale" })).toBeNull();
     expect(within(generation).getByRole("spinbutton", { name: "Generation step count" })).toHaveValue(20);
     expect(within(generation).getByRole("spinbutton", { name: "Generation seed" })).toHaveValue(-1);
 
@@ -840,7 +867,7 @@ describe("Generator scene controls", () => {
     fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
     await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
     expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!).audioSteps).toBe(separateAudio ? 17 : undefined);
-    expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!).latentUpscale).toBe(latentUpscale ? true : undefined);
+    expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!).latentUpscale).toBeUndefined();
     expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!)).toEqual(expect.objectContaining({
       steps: 28,
       videoSigmaShift: 8.5,

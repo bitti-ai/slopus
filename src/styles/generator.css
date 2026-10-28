@@ -1044,3 +1044,14 @@
 .scene-history__picture { display: grid; place-items: center; width: 100%; aspect-ratio: 16 / 9; background: var(--stage-bg); border-radius: var(--radius-sm); overflow: hidden; }
 .scene-history__picture img { width: 100%; height: 100%; object-fit: contain; }
 .scene-history__draft .scene-history__picture { background: var(--fill-subtle-hover); }
+
+.scene-generation-controls { display: flex; min-width: 0; }
+.scene-generation-controls > .scene-generate-button { flex: 1; }
+.scene-generation-controls--split { border: 1px solid var(--button-primary-stroke); border-bottom-color: var(--button-primary-stroke-bottom); border-radius: var(--radius-sm); background: var(--button-primary-bg); }
+.scene-generation-controls--split > .primary-button { min-height: calc(var(--control-md) - 2px); border: 0; background: transparent; }
+.scene-generation-controls--split > .scene-generate-button { border-radius: calc(var(--radius-sm) - 1px) 0 0 calc(var(--radius-sm) - 1px); }
+.scene-generation-controls--split > .scene-generation-options { position: relative; flex: 0 0 var(--control-md); padding: 0; border-radius: 0 calc(var(--radius-sm) - 1px) calc(var(--radius-sm) - 1px) 0; }
+.scene-generation-options::before { content: ""; position: absolute; left: 0; top: 25%; bottom: 25%; width: 1px; background: currentColor; opacity: .22; }
+.scene-generation-controls--split > .primary-button:hover:not(:disabled), .scene-generation-controls--split > .primary-button[aria-expanded="true"] { background: var(--button-primary-hover); }
+.scene-generation-controls--split > .primary-button:active:not(:disabled) { background: var(--button-primary-active); }
+.scene-generation-actions { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); }
