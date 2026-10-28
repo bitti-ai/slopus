@@ -151,7 +151,9 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
       <aside className="music-inspector" aria-label="Video settings">
         {selected && <ItemHeader color="var(--clip-generated)" icon={<Film16 />}
           name={<h2 className="generator-panel__name"><input ref={titleInput} className="ui-item-header__input" aria-label="Video title" aria-keyshortcuts="F2" maxLength={200} value={selected.title} onChange={(event) => edit({ title: event.target.value || "New video" })} /></h2>}
-          meta={`${videoScenes(selected, config).length} scenes · ${videoScenes(selected, config).reduce((seconds, scene) => seconds + sceneDurationSeconds(scene), 0).toFixed(1)} s`} />}
+          meta={`${videoScenes(selected, config).length} scenes · ${videoScenes(selected, config).reduce((seconds, scene) => seconds + sceneDurationSeconds(scene), 0).toFixed(1)} s`}
+          actions={<button type="button" className="icon-button" aria-label={`Remove video ${selected.title}`} data-tooltip="Remove video"
+            disabled={videoScenes(selected, config).some(sceneGenerationPending)} onClick={() => { void remove(selected); }}><Delete16 aria-hidden="true" /></button>} />}
         <div className="music-inspector__fields">{selected ? <>
         <PropSection title="Video">
           <div className="music-prompt"><span>Shared prompt</span><PromptTextField aria-label="Video prompt" rows={5} value={selected.prompt} references={citableReferences(config.references).map((reference) => ({ id: reference.id, name: reference.name, mediaTypes: referenceMediaTypes(reference), detail: referenceTypeLabel(reference) }))} placeholder="Visual style and references for every scene…" onChange={(prompt) => edit({ prompt: prompt.slice(0, 30000) })} /></div>

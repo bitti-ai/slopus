@@ -103,11 +103,12 @@ it("restores the open video after leaving the tab, respects Back and lets scene 
   switchTab(); switchTab(); expect(screen.getByLabelText("Scenes editor")).toHaveTextContent("b");
 });
 
-it("removes folders without deleting their videos and removes video scenes without removing timeline media", async () => {
+it.each(["menu", "header"])("removes folders without deleting their videos and removes video scenes from the %s without removing timeline media", async (action) => {
   const config = project(); config.videoFolders = [{ id: "folder", name: "Collection" }]; config.videos = [{ ...newVideo("folder"), title: "Film", sceneIds: ["a"] }]; config.generationJobs = [createDraftGenerationJob("A", { id: "a" })];
   const view = mount(config); fireEvent.contextMenu(screen.getByRole("button", { name: "Open Collection" })); fireEvent.click(screen.getByRole("menuitem", { name: "Remove folder" }));
   expect(view.config().videoFolders).toHaveLength(0); expect(screen.getByRole("button", { name: "Select Film" })).toBeInTheDocument();
-  fireEvent.contextMenu(screen.getByRole("button", { name: "Select Film" })); fireEvent.click(screen.getByRole("menuitem", { name: "Remove video" }));
+  if (action === "header") fireEvent.click(screen.getByRole("button", { name: "Remove video Film" }));
+  else { fireEvent.contextMenu(screen.getByRole("button", { name: "Select Film" })); fireEvent.click(screen.getByRole("menuitem", { name: "Remove video" })); }
   await waitFor(() => expect(view.config().videos).toHaveLength(0)); expect(view.config().generationJobs).toHaveLength(0); expect(view.config().timeline).toEqual(config.timeline);
 });
 
