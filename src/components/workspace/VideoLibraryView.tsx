@@ -7,8 +7,8 @@ import { referenceMediaTypes } from "../../lib/referenceSelection";
 import { mergeVideoScenes, newVideo, resolveVideoSource, songScenes, videoLibrary, videoScenes, videoSettings } from "../../lib/videoLibrary";
 import { newMusicFolder } from "../../lib/music";
 import { askNative } from "../../lib/nativeShell";
-import { CommandBarButton, ComboBox, ProgressRing, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
-import { Add16, Delete16, Edit16, Film32, FolderAdd16, FolderOpen48, GridView16, ListView16, OpenExternal16, Play16 } from "../ui/icons";
+import { CommandBar, CommandBarButton, ComboBox, ProgressRing, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
+import { Add16, Delete16, Edit16, Film32, FolderAdd16, FolderOpen48, GridView16, GridView16Filled, ListView16, ListView16Filled, OpenExternal16, Play16 } from "../ui/icons";
 import { GeneratorView } from "./GeneratorView";
 import { VideoPlayback, videoPlaylist } from "./VideoPlayback";
 import { VideoPoster } from "./VideoPoster";
@@ -101,11 +101,13 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
       onChange={(next, key) => onChange(mergeVideoScenes(latest.current, open.id, next), key)} />
   </div>;
   return <div className="video-library-view" style={pane.style}>
-    <div className="music-toolbar" role="toolbar" aria-label="Video library actions">
+    <CommandBar className="generator-command" aria-label="Video library actions" end={<>
+      <CommandBarButton icon={view === "grid" ? <GridView16Filled /> : <GridView16 />} label="Grid view" pressed={view === "grid"} onClick={() => { setView("grid"); localStorage.setItem("slopus.video.view", "grid"); }} />
+      <CommandBarButton icon={view === "list" ? <ListView16Filled /> : <ListView16 />} label="List view" pressed={view === "list"} onClick={() => { setView("list"); localStorage.setItem("slopus.video.view", "list"); }} />
+    </>}>
       <CommandBarButton icon={<Add16 />} label="New video" showLabel onClick={add} />
       <CommandBarButton icon={<FolderAdd16 />} label="New folder" showLabel onClick={() => { setFolderName(""); setCreatingFolder(true); }} />
-      <div className="music-toolbar__views" role="group" aria-label="Video view">{(["grid", "list"] as const).map((mode) => <button type="button" className="icon-button" key={mode} aria-label={`${mode === "grid" ? "Grid" : "List"} view`} aria-pressed={view === mode} onClick={() => { setView(mode); localStorage.setItem("slopus.video.view", mode); }}>{mode === "grid" ? <GridView16 /> : <ListView16 />}</button>)}</div>
-    </div>
+    </CommandBar>
     <div className="video-library-body">
       <div className="video-library-stage">
         <div className="music-library" aria-label="Video library" tabIndex={0} onContextMenu={(event) => { if (!(event.target as HTMLElement).closest("input, textarea")) menu.open(event, newItems()); }}>
