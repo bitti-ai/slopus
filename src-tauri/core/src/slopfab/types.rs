@@ -55,6 +55,8 @@ pub struct LatentBridgeRequest {
 #[serde(rename_all = "camelCase")]
 pub struct GenerationRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latent_upscale_source: Option<LatentUpscaleSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub single_shot: Option<SingleShotRequest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub music: Option<super::music::MusicSettings>,
@@ -122,6 +124,13 @@ pub struct GenerationRequest {
     pub continuation_path: Option<PathBuf>,
     #[serde(skip)]
     pub save_latents_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LatentUpscaleSource {
+    pub path: String,
+    pub scale: f32,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

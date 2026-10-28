@@ -59,6 +59,12 @@ pub(crate) fn prepare_continuation_path(
     request.continuation_path = None;
     request.bridge_left_path = None;
     request.bridge_right_path = None;
+    if let Some(source) = &mut request.latent_upscale_source {
+        let root = ProjectRoot::open(folder_path.ok_or("A project folder is required to upscale a Take.")?)?;
+        let path = root.existing(&source.path)?;
+        if !path.is_file() { return Err("Saved latents must be a file inside this project.".into()); }
+        source.path = path.to_string_lossy().into_owned();
+    }
     if let Some(bridge) = &request.latent_bridge {
         let root = ProjectRoot::open(folder_path.ok_or("A project folder is required for Long Shot.")?)?;
         let resolve = |relative: &Option<String>| -> Result<PathBuf, String> {

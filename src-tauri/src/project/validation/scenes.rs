@@ -257,6 +257,8 @@ fn validate_history(job: &mut GenerationJob) -> Result<(), String> {
         check_iso_datetime("Scene generation media createdAt", &media.created_at)?;
         media.relative_path = Some(normalize_project_path(media.relative_path.as_deref().ok_or("Scene generation video path is missing.")?)?);
         version.latent_relative_path = version.latent_relative_path.as_deref().map(normalize_project_path).transpose()?;
+        version.original_latent_relative_path = version.original_latent_relative_path.as_deref().map(normalize_project_path).transpose()?;
+        if version.upscale_factor.is_some_and(|factor| ![1.5, 2.0, 4.0].contains(&factor)) { return Err("Invalid Take upscale factor.".into()); }
         if let Some(segments) = &mut media.scene_segments {
             let mut end = 0u64;
             for segment in segments {
@@ -301,7 +303,7 @@ mod history_tests {
         job.generator_template_id = Some("generator-original".into());
         job.generation_history = Some(SceneGenerationHistory {
             versions: vec![SceneGenerationVersion { id: "take-one".into(), created_at: job.created_at.clone(), scene: input.clone(),
-                media: config.assets.iter().find(|a| a.kind == "generated").unwrap().clone(), generation_snapshot: Some("saved-inputs".into()), latent_relative_path: Some("latents/one.safetensors".into()) }],
+                media: config.assets.iter().find(|a| a.kind == "generated").unwrap().clone(), generation_snapshot: Some("saved-inputs".into()), latent_relative_path: Some("latents/one.safetensors".into()), original_latent_relative_path: None, upscale_factor: None }],
             primary_id: Some("take-one".into()), selected_id: None, draft: Some(input),
         });
         config
@@ -310,6 +312,8 @@ mod history_tests {
     fn scene_history_and_draft_round_trip_without_a_four_take_schema_limit() {
         let mut config = project_with_history();
         let history = config.generation_jobs[0].generation_history.as_mut().unwrap();
+        history.versions[0].original_latent_relative_path = Some("latents/original.safetensors".into());
+        history.versions[0].upscale_factor = Some(1.5);
         let version = history.versions[0].clone();
         for i in 2..=6 { let mut take = version.clone(); take.id = format!("take-{i}"); history.versions.push(take); }
         validate(&mut config).unwrap();
@@ -321,11 +325,13 @@ mod history_tests {
     }
     #[test]
     fn history_rejects_unsafe_paths_invalid_settings_and_nested_history() {
-        for kind in ["path", "settings", "nested", "selection", "duplicate"] {
+        for kind in ["path", "settings", "nested", "selection", "duplicate", "original", "scale"] {
             let mut config = project_with_history();
             let history = config.generation_jobs[0].generation_history.as_mut().unwrap();
             match kind {
                 "path" => history.versions[0].media.relative_path = Some("../outside.mp4".into()),
+                "original" => history.versions[0].original_latent_relative_path = Some("../outside.safetensors".into()),
+                "scale" => history.versions[0].upscale_factor = Some(100.0),
                 "settings" => history.versions[0].scene["steps"] = serde_json::json!(-1),
                 "nested" => history.versions[0].scene["generationHistory"] = serde_json::json!({}),
                 "selection" => history.selected_id = Some("missing".into()),

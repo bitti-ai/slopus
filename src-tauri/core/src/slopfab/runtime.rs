@@ -126,7 +126,7 @@ impl SlopfabRuntime {
         settings: &BTreeMap<String, ProviderSetting>,
     ) -> Result<(), String> {
         let configuration = Configuration::from_settings(settings);
-        request.steps = configuration.generation_steps(request.steps)?;
+        if request.latent_upscale_source.is_none() { request.steps = configuration.generation_steps(request.steps)?; }
         diagnostics::info(
             "slopfab",
             "generation.enqueue_requested",

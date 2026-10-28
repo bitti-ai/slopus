@@ -27,6 +27,11 @@ pub fn resolve_plan(
     let configuration = Configuration::from_settings(settings);
     let api = ffi::Api::load(&configuration.dll_path)?;
     api.version()?;
+    if request.latent_upscale_source.is_some() {
+        configuration.validate_inputs(request)?;
+        api.require_saved_latent_upscale()?;
+        return super::latent_upscale::plan(request);
+    }
     let platform = configuration.platform(detect_platform(&api));
     let handle = RequestHandle::new(&api)?;
     configure_request(
@@ -57,6 +62,16 @@ pub fn resolve_plan(
 }
 
 pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Result<(), String> {
+    if let Some(source) = &request.latent_upscale_source {
+        if ![1.5, 2.0, 4.0].contains(&source.scale) || source.path.is_empty() || source.path.contains('\0')
+            || request.still_image || request.music.is_some() || request.single_shot.is_some() || request.latent_upscale
+            || request.image_edit.is_some() || request.latent_bridge.is_some() || request.continuation_path.is_some()
+            || request.continuation_relative_path.is_some() || request.video_transition.is_some()
+            || request.reference_count() != 0 {
+            return Err("Upscaling requires saved video latents and a scale of 1.5, 2 or 4.".into());
+        }
+        return Ok(());
+    }
     if let Some(single) = &request.single_shot {
         if request.music.is_some() || request.still_image || request.image_edit.is_some() || request.video_transition.is_some() || request.latent_bridge.is_some()
             || request.frames < 48 || single.ending_prompt.trim().is_empty() || single.ending_prompt.contains('\0') || single.ending_prompt.len() > 1024 * 1024

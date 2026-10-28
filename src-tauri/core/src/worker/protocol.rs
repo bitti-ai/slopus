@@ -26,7 +26,7 @@ pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 // v19 carries Single Shot ending-first generation; older workers would ignore it.
 // v20 carries source-initialized continuation; older workers would ignore it.
 // v21 keeps Single Shot's middle fresh; v20 workers default to a repeated source prior.
-pub const PROTOCOL_VERSION: u32 = 21;
+pub const PROTOCOL_VERSION: u32 = 22;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,7 +186,10 @@ pub fn visit_paths(
     if let Some(slopfab) = settings.get_mut("slopfab") {
         // The engine library always comes from the machine that runs it.
         slopfab.options.remove("dllPath");
-        if !request.latent_upscale { slopfab.options.remove("latentUpscaler"); }
+        if !request.latent_upscale && request.latent_upscale_source.is_none() { slopfab.options.remove("latentUpscaler"); }
+        if request.latent_upscale_source.is_some() {
+            for name in ["transformer", "textEncoder", "tokenizer", "promptEmbedding", "loras"] { slopfab.options.remove(name); }
+        }
         for name in MODEL_OPTIONS {
             if let Some(ProviderOption::String(value)) = slopfab.options.get_mut(name) {
                 if !value.trim().is_empty() {
@@ -213,6 +216,7 @@ pub fn visit_paths(
             *value = serde_json::to_string(&loras).map_err(|error| error.to_string())?;
         }
     }
+    if let Some(source) = &mut request.latent_upscale_source { visit(PathKind::Input, &mut source.path)?; }
     for path in &mut request.reference_paths {
         visit(PathKind::Input, path)?;
     }
@@ -323,6 +327,22 @@ mod tests {
     }
 
     #[test]
+    fn saved_latent_upscale_transfers_archive_and_decoder_weights_only() {
+        let mut request: GenerationRequest = serde_json::from_value(serde_json::json!({"jobId":"upscale", "prompt":"", "frames":124, "steps":8, "seed":42, "canvasWidth":736, "canvasHeight":416,
+            "latentUpscaleSource": {"path":"C:/project/latents/take.safetensors", "scale":1.5}})).unwrap();
+        let mut settings = settings(&[("transformer", "unused"), ("textEncoder", "unused"), ("tokenizer", "unused"), ("loras", "invalid"),
+            ("latentUpscaler", "upscaler"), ("videoVae", "video"), ("audioVae", "audio")]);
+        let mut seen = Vec::new();
+        visit_paths(&mut request, &mut settings, |kind, path| { seen.push((kind, path.clone())); *path = file_token(seen.len() - 1); Ok(()) }).unwrap();
+        assert_eq!(seen.len(), 4);
+        assert_eq!(seen.last().unwrap().0, PathKind::Input);
+        assert!(!seen.iter().any(|(_, path)| path == "unused"));
+        let mut restored: GenerationRequest = serde_json::from_slice(&serde_json::to_vec(&request).unwrap()).unwrap();
+        visit_paths(&mut restored, &mut settings, |_, path| { *path = format!("/worker/{}", parse_file_token(path).unwrap()); Ok(()) }).unwrap();
+        assert_eq!(restored.latent_upscale_source.unwrap().path, "/worker/3");
+    }
+
+    #[test]
     fn generation_effects_roundtrip_without_machine_specific_paths() {
         let effects = serde_json::from_str(include_str!("../../../../fixtures/generation-effects.json")).unwrap();
         let mut request = GenerationRequest { negative_prompt: Some("watermark".into()), generation_effects: Some(effects), guidance_scale: Some(4.5), ..Default::default() };
@@ -346,7 +366,7 @@ mod tests {
         let single = restored.single_shot.unwrap();
         assert_eq!(single.ending_prompt, "The subject waves goodbye");
         assert!(single.ending_path.is_none());
-        assert_eq!(PROTOCOL_VERSION, 21);
+        assert_eq!(PROTOCOL_VERSION, 22);
     }
 
     #[test]

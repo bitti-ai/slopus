@@ -241,6 +241,10 @@ pub(crate) struct SceneGenerationHistory {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SceneGenerationVersion {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) original_latent_relative_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) upscale_factor: Option<f64>,
     pub(crate) id: String,
     pub(crate) created_at: String,
     pub(crate) scene: serde_json::Value,

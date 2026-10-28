@@ -76,10 +76,13 @@ type SetMotionCache =
 type SetImageEditPath = unsafe extern "C" fn(*mut Request, *const c_char, i32, i32, i32, i32, f32, i32) -> i32;
 type SetImageEditRgb = unsafe extern "C" fn(*mut Request, *const u8, usize, i32, i32, usize, i32, i32, i32, i32, f32, i32) -> i32;
 type ExportRefmod = unsafe extern "C" fn(*const Request, *const c_char, *const c_char, *const c_char, i32) -> i32;
+type UpscaleDecode = unsafe extern "C" fn(*const c_char, *const c_char, f32, *const c_char, *const c_char, i32, ProgressFn, *mut c_void, *mut *mut Generation) -> i32;
 
 type SetImageGuidance = unsafe extern "C" fn(*mut Request, f32, *const c_char, *const i32, i32) -> i32;
 
 pub struct Api {
+    upscale_decode: Option<UpscaleDecode>,
+    save_generation_latents: Option<unsafe extern "C" fn(*const Generation, *const c_char) -> i32>,
     set_music_settings: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_vulkan_arithmetic: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_image_guidance: Option<SetImageGuidance>,
@@ -331,6 +334,8 @@ impl Api {
                     "slopfab_describe_plan",
                     unsafe extern "C" fn(*const Request, *mut *mut c_char) -> i32
                 ),
+                upscale_decode: library.get::<UpscaleDecode>(b"slopfab_latent_upscale_decode_file_start\0").ok().map(|f| *f),
+                save_generation_latents: library.get::<unsafe extern "C" fn(*const Generation, *const c_char) -> i32>(b"slopfab_generation_save_latents\0").ok().map(|f| *f),
                 generation_start: symbol!(
                     "slopfab_generation_start",
                     unsafe extern "C" fn(
@@ -746,6 +751,27 @@ impl Api {
         let mut value = ptr::null_mut();
         self.error(unsafe { (self.generation_start)(request, callback, userdata, &mut value) })?;
         Ok(value)
+    }
+    pub fn require_saved_latent_upscale(&self) -> Result<(), String> {
+        if self.upscale_decode.is_none() || self.save_generation_latents.is_none() {
+            return Err("Update SlopFab to C API 1.43 or later for saved latent upscaling.".into());
+        }
+        Ok(())
+    }
+    pub fn upscale_decode(&self, source: &str, checkpoint: &Path, scale: f32, video: &Path, audio: &Path, backend: i32, callback: ProgressFn, userdata: *mut c_void) -> Result<*mut Generation, String> {
+        self.require_saved_latent_upscale()?;
+        let strings = [source.to_owned(), checkpoint.to_string_lossy().into_owned(), video.to_string_lossy().into_owned(), audio.to_string_lossy().into_owned()]
+            .map(|s| CString::new(s).map_err(|_| "Model and latent paths cannot contain null characters.".to_owned()));
+        let [source, checkpoint, video, audio] = strings;
+        let (source, checkpoint, video, audio) = (source?, checkpoint?, video?, audio?);
+        let mut value = ptr::null_mut();
+        self.error(unsafe { self.upscale_decode.unwrap()(source.as_ptr(), checkpoint.as_ptr(), scale, video.as_ptr(), audio.as_ptr(), backend, callback, userdata, &mut value) })?;
+        Ok(value)
+    }
+    pub fn save_generation_latents(&self, generation: *mut Generation, path: &Path) -> Result<(), String> {
+        let save = self.save_generation_latents.ok_or("The runtime cannot save enlarged latents.")?;
+        let path = CString::new(path.to_string_lossy().as_bytes()).map_err(|_| "Invalid latent output path.")?;
+        self.error(unsafe { save(generation, path.as_ptr()) })
     }
     pub fn cancel(&self, generation: *mut Generation) {
         unsafe { (self.generation_cancel)(generation) }

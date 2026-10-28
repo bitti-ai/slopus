@@ -123,6 +123,13 @@ impl Configuration {
     }
 
     pub(super) fn validate_inputs(&self, request: &GenerationRequest) -> Result<(), String> {
+        if request.latent_upscale_source.is_some() {
+            if self.model_type != "minimax-h3" { return Err("Saved latent upscaling requires MiniMax H3.".into()); }
+            for (label, path) in [("latent upscaler", self.latent_upscaler.as_ref()), ("video VAE", self.models[3].2.as_ref()), ("audio VAE", self.models[4].2.as_ref())] {
+                if !path.is_some_and(|path| path.is_file()) { return Err(format!("Download the {label} weights before upscaling.")); }
+            }
+            return Ok(());
+        }
         if request.single_shot.is_some() && (self.model_type != "minimax-h3" || self.animate) {
             return Err("Single Shot requires a MiniMax H3 prompt generator.".into());
         }

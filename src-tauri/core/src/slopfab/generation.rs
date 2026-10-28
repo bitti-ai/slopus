@@ -26,6 +26,7 @@ impl rendered::FrameSource for FrameSource {
 pub(super) fn run_generation(
     item: &QueueItem,
 ) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
+    if item.request.latent_upscale_source.is_some() { return run_latent_upscale(item); }
     if item.request.single_shot.is_some() {
         ffi::Api::load(&item.configuration.dll_path)?.require_end_anchor()?;
         return run_single_shot(item, run_single_generation);
@@ -264,6 +265,33 @@ fn run_single_generation(
     }
     let source = Box::new(FrameSource { generation });
     collect_output(item, output, source, timing_profile)
+}
+
+fn run_latent_upscale(item: &QueueItem) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
+    let _models = super::MODEL_ACCESS.read().map_err(|_| "Model access lock failed.")?;
+    if item.cancel.load(Ordering::Acquire) { return Err("Upscaling cancelled.".into()); }
+    let config = &item.configuration;
+    config.validate_inputs(&item.request)?;
+    let plan = super::latent_upscale::plan(&item.request)?;
+    let api = ffi::Api::load(&config.dll_path)?;
+    let platform = config.platform(detect_platform(&api));
+    let timing_profile = format!("{}|savedLatentUpscale", config.timing_profile(&api.version()?, platform));
+    let source = item.request.latent_upscale_source.as_ref().unwrap();
+    let context = CallbackContext { events: item.events.clone(), job_id: item.request.job_id.clone(), frames: plan.aligned_frames,
+        canvas_width: plan.canvas_width, canvas_height: plan.canvas_height, reference_count: 0, timing_profile: timing_profile.clone(), planned_steps: 0 };
+    let mut generation = ffi::GenerationHandle::upscale(&api, &source.path, config.latent_upscaler.as_ref().unwrap(), source.scale,
+        config.models[3].2.as_ref().unwrap(), config.models[4].2.as_ref().unwrap(), platform.backend(), progress_sink(context))?;
+    loop {
+        if item.cancel.load(Ordering::Acquire) { generation.cancel(); }
+        if generation.wait(100)? { break; }
+    }
+    let generation = generation.finish()?;
+    if item.cancel.load(Ordering::Acquire) { return Err("Upscaling cancelled.".into()); }
+    let destination = item.request.save_latents_path.as_ref().ok_or("Missing destination for enlarged latents.")?;
+    if destination.exists() { return Err("Latents already exist. Start a new upscale to preserve them.".into()); }
+    generation.save_latents(destination)?;
+    let output = generation.output()?;
+    collect_output(item, output, Box::new(FrameSource { generation }), timing_profile)
 }
 
 fn collect_output(item: &QueueItem, output: ffi::Output, source: Box<dyn rendered::FrameSource>, timing_profile: String) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {

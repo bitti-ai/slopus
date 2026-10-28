@@ -3,6 +3,47 @@ use crate::slopfab::{config::Configuration, events::NativeEvent, references::Ref
 use std::sync::{Arc, Mutex, atomic::AtomicBool};
 
 #[test]
+#[ignore = "requires local H3 VAE/upscaler weights and a GPU; set SLOPUS_UPSCALE_WEIGHTS"]
+fn saved_latent_upscale_gpu_smoke() {
+    use std::io::Write;
+    use crate::settings::{ProviderOption, ProviderSetting};
+    let root = std::path::PathBuf::from(std::env::var("SLOPUS_UPSCALE_WEIGHTS").unwrap());
+    let folder = tempfile::tempdir().unwrap();
+    let source = folder.path().join("source.safetensors");
+    let output = folder.path().join("upscaled.safetensors");
+    let video_bytes = 7 * 2 * 96 * 4;
+    let audio_bytes = 37 * 2 * 32 * 4;
+    let header = serde_json::json!({"__metadata__":{"slopfab_latents":"h3-av-v1", "fps":"24", "sampled":"1", "frames":"22", "width":"64", "height":"32"},
+        "video_rows":{"dtype":"F32", "shape":[14,96], "data_offsets":[0,video_bytes]},
+        "audio_rows":{"dtype":"F32", "shape":[74,32], "data_offsets":[video_bytes,video_bytes+audio_bytes]}}).to_string();
+    let mut file = std::fs::File::create(&source).unwrap();
+    file.write_all(&(header.len() as u64).to_le_bytes()).unwrap();
+    file.write_all(header.as_bytes()).unwrap();
+    file.write_all(&vec![0; video_bytes + audio_bytes]).unwrap();
+    drop(file);
+    let original = std::fs::read(&source).unwrap();
+    let mut options = std::collections::BTreeMap::new();
+    for (key, name) in [("latentUpscaler", "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors"),
+        ("videoVae", "vae/minimax_h3_video_vae_fp16.safetensors"), ("audioVae", "vae/minimax_h3_audio_vae_fp32.safetensors")] {
+        options.insert(key.into(), ProviderOption::String(root.join(name).to_string_lossy().into_owned()));
+    }
+    let dll = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(crate::slopfab::DLL_FILE_NAME);
+    options.insert("dllPath".into(), ProviderOption::String(dll.to_string_lossy().into_owned()));
+    let settings = std::collections::BTreeMap::from([("slopfab".into(), ProviderSetting { enabled: true, model: None, options })]);
+    let request = GenerationRequest { job_id: "upscale-smoke".into(),
+        latent_upscale_source: Some(crate::slopfab::LatentUpscaleSource { path: source.to_string_lossy().into_owned(), scale: 2.0 }),
+        save_latents_path: Some(output.clone()), ..Default::default() };
+    let item = QueueItem { request, configuration: Configuration::from_settings(&settings), references: ReferenceVideos::default(),
+        events: Arc::new(|_| {}), cancel: Arc::new(AtomicBool::new(false)) };
+    let (metadata, rendered) = run_generation(&item).unwrap();
+    assert_eq!((metadata.width, metadata.height, metadata.frames, metadata.steps_computed), (128, 64, 22, 0));
+    assert_eq!(rendered.frame(0).unwrap().unwrap().len(), 128 * 64 * 4);
+    assert!(!rendered.audio_bytes().is_empty());
+    assert!(output.is_file());
+    assert_eq!(std::fs::read(source).unwrap(), original);
+}
+
+#[test]
 #[ignore = "requires local music weights and a GPU; set SLOPUS_MUSIC_WEIGHTS"]
 fn music_gpu_smoke() {
     use crate::settings::{ProviderOption, ProviderSetting};

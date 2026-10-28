@@ -19,6 +19,7 @@ pub struct Api {
     path: PathBuf,
 }
 impl Api {
+    pub fn require_saved_latent_upscale(&self) -> Result<(), String> { self.inner.require_saved_latent_upscale() }
     pub fn load(path: &Path) -> Result<Self, String> {
         let inner = raw::Api::load(path)?;
         inner.version()?;

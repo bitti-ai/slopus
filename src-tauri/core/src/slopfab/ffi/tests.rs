@@ -1,6 +1,12 @@
 use super::*;
 
 #[test]
+fn bundled_runtime_exposes_saved_latent_upscale_and_decode() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(crate::slopfab::DLL_FILE_NAME);
+    Api::load(&path).unwrap().require_saved_latent_upscale().unwrap();
+}
+
+#[test]
 fn continuation_lock_overlap_can_be_enabled_and_disabled() {
     // Exercise the bundled runtime, including when a running app holds an older staged DLL.
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))

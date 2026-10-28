@@ -24,6 +24,12 @@ pub struct GenerationHandle {
 }
 
 impl GenerationHandle {
+    pub fn upscale(api: &Api, source: &str, checkpoint: &std::path::Path, scale: f32, video: &std::path::Path, audio: &std::path::Path, backend: i32, sink: ProgressSink) -> Result<Self, String> {
+        let mut callback = Box::new(Callback(sink));
+        let userdata = (&mut *callback as *mut Callback).cast();
+        let pointer = api.inner.upscale_decode(source, checkpoint, scale, video, audio, backend, Some(progress_callback), userdata)?;
+        Ok(Self { api: api.clone(), pointer: NonNull::new(pointer).ok_or("SlopFab returned an empty upscale handle.")?, _callback: Some(callback), terminal: false, succeeded: false })
+    }
     pub(super) fn start(
         request: RequestHandle,
         sink: Option<ProgressSink>,
@@ -125,6 +131,9 @@ pub struct Output {
 }
 
 impl FinishedGeneration {
+    pub fn save_latents(&self, path: &std::path::Path) -> Result<(), String> {
+        self.0.api.inner.save_generation_latents(self.0.pointer.as_ptr(), path)
+    }
     pub fn video_decode_timings(&self) -> Result<Option<super::VideoDecodeTimings>, String> {
         self.0.api.inner.video_decode_timings(self.0.pointer.as_ptr())
     }
