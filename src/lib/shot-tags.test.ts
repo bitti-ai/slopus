@@ -136,7 +136,7 @@ describe("compiling tags into the MiniMax H3 prompt", () => {
       "integrated_multimodal_description: [Shot 1] Live-action, cinematic, extreme close-up, low angle, macro lens, "
       + "hands shaping wet clay on a spinning wheel. Camera movement: push in, slow speed, small amplitude. "
       + "Lighting: soft light, practical light. Time of day: golden hour. Mood: intimate. Motion: slow motion.",
-      "overall_soundscape: N/A",
+      "overall_soundscape: The ambient sound and physical action sounds are those the scene and actions described above naturally produce. Nothing beyond what that description already establishes is added.",
       "non_diegetic_music: N/A",
     ].join("\n\n"));
   });

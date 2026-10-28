@@ -25,7 +25,6 @@ Changes since 0.3.2.
 ## Fixes and improvements
 
 - Videos can override project Look, aspect ratio and resolution; scenes inherit their Video's settings.
-- Empty Sound prompts now produce `overall_soundscape: N/A`; supplied prompts are used directly.
 - First & Last Frame prompts follow MiniMax's I2VA, L2VA and FL2VA formats, with ending anchors timed to the final shot.
 - Fixed AppImage launcher permissions for users other than the package builder.
 

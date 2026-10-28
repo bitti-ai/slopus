@@ -63,9 +63,6 @@ it("includes only enabled soundtracks with independent audio numbering", () => {
   expect(prompt).toContain("<Audio 1> is the enabled soundtrack of <Video 2>");
   expect(prompt).toContain("[video editing + reference generation + audio reuse]");
   expect(prompt).not.toContain("<Audio 2>");
-  expect(prompt).toContain("overall_soundscape:\nN/A\n\n");
-  const withSound = compileGenerationJobPrompt({ ...scene, soundscape: "Footsteps, then a bell." }, [motion2, reference("hero", "image")]);
-  expect(withSound).toContain("overall_soundscape:\nFootsteps, then a bell.\n\n");
 });
 
 it("blocks missing, unusable and wrongly typed references but accepts blank action text", () => {
