@@ -1,6 +1,6 @@
 # Scene types
 
-Videos contain ordered Scenes, which contain Shots. The Video library supports folders, grid/list views and sequential card or popout playback. Open a Video to edit its scenes; each scene remains separate in Timeline. Existing projects open with their scenes grouped in a default Video.
+Videos contain ordered Scenes, which contain Shots. The Video library supports folders, grid/list views and sequential card or popout playback. Click a Video to select its settings; double-click or choose **Edit Scenes** in the right panel or context menu to edit its scenes. Each scene remains separate in Timeline. Existing projects open with their scenes grouped in a default Video.
 
 Video settings provide a shared prompt with reference chips, background music and a reference video. Each scene receives the reference range at its cumulative start time: a 10-second first scene uses 0–10 seconds, and the next starts at 10 seconds. Imported/generated media uses the complete asset; reference entries use their saved trim range. Reordering or resizing scenes updates these ranges for the next generation. A source that ends too early blocks generation.
 

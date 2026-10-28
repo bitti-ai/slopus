@@ -44,7 +44,9 @@ it("creates nested folders and videos, moves cards to a folder, and opens only t
   const video = view.config().videos!.find((video) => video.title === "New video")!;
   expect(video.folderId).toBe(view.config().videoFolders![0].id);
   fireEvent.change(screen.getByRole("textbox", { name: "Video title" }), { target: { value: "Track one" } });
-  fireEvent.click(screen.getByRole("button", { name: "Open Track one" }));
+  fireEvent.click(screen.getByRole("button", { name: "Select Track one" }));
+  expect(screen.queryByLabelText("Scenes editor")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Edit Scenes" }));
   expect(screen.getByTestId("all-scenes")).toHaveTextContent("1"); fireEvent.click(screen.getByRole("button", { name: "Add scene" }));
   expect(view.config().videos!.find((item) => item.id === video.id)?.sceneIds).toEqual(["added"]);
   expect(view.config().generationJobs.map((scene) => scene.id)).toEqual(["legacy", "added"]);
@@ -54,7 +56,7 @@ it("creates nested folders and videos, moves cards to a folder, and opens only t
   fireEvent.drop(screen.getByRole("button", { name: "Open Album" }).closest('[role="listitem"]')!, { dataTransfer });
   expect(view.config().videos!.find((item) => item.id === "video-default")?.folderId).toBe(video.folderId);
   fireEvent.click(screen.getByRole("button", { name: "List view" })); fireEvent.click(screen.getByRole("button", { name: "Open Album" }));
-  expect(screen.getByRole("button", { name: "Open Track one" })).toBeInTheDocument(); expect(screen.getByRole("button", { name: "Open Library" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Select Track one" })).toBeInTheDocument(); expect(screen.getByRole("button", { name: "Select Library" })).toBeInTheDocument();
 });
 
 it("creates a whole-song scene sequence and opens the owner for a timeline navigation", () => {
@@ -83,14 +85,14 @@ it("restores the open video after leaving the tab, respects Back and lets scene 
   render(<Harness />);
   const switchTab = () => fireEvent.click(screen.getByRole("button", { name: "Switch tab" }));
   fireEvent.click(screen.getByRole("button", { name: "Open Collection" }));
-  fireEvent.click(screen.getByRole("button", { name: "Open First" }));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Select First" }));
   switchTab(); expect(screen.queryByLabelText("Scenes editor")).not.toBeInTheDocument(); switchTab();
   expect(screen.getByLabelText("Scenes editor")).toHaveTextContent("a");
   fireEvent.click(screen.getByRole("button", { name: "Back to Video" }));
-  expect(screen.getByRole("button", { name: "Open First" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Select First" })).toBeInTheDocument();
   switchTab(); switchTab(); expect(screen.queryByLabelText("Scenes editor")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Open Collection" }));
-  fireEvent.click(screen.getByRole("button", { name: "Open First" }));
+  fireEvent.doubleClick(screen.getByRole("button", { name: "Select First" }));
   switchTab(); fireEvent.click(screen.getByRole("button", { name: "Open scene B" }));
   expect(screen.getByLabelText("Scenes editor")).toHaveTextContent("b");
   switchTab(); switchTab(); expect(screen.getByLabelText("Scenes editor")).toHaveTextContent("b");
@@ -99,8 +101,8 @@ it("restores the open video after leaving the tab, respects Back and lets scene 
 it("removes folders without deleting their videos and removes video scenes without removing timeline media", async () => {
   const config = project(); config.videoFolders = [{ id: "folder", name: "Collection" }]; config.videos = [{ ...newVideo("folder"), title: "Film", sceneIds: ["a"] }]; config.generationJobs = [createDraftGenerationJob("A", { id: "a" })];
   const view = mount(config); fireEvent.contextMenu(screen.getByRole("button", { name: "Open Collection" })); fireEvent.click(screen.getByRole("menuitem", { name: "Remove folder" }));
-  expect(view.config().videoFolders).toHaveLength(0); expect(screen.getByRole("button", { name: "Open Film" })).toBeInTheDocument();
-  fireEvent.contextMenu(screen.getByRole("button", { name: "Open Film" })); fireEvent.click(screen.getByRole("menuitem", { name: "Remove video" }));
+  expect(view.config().videoFolders).toHaveLength(0); expect(screen.getByRole("button", { name: "Select Film" })).toBeInTheDocument();
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Select Film" })); fireEvent.click(screen.getByRole("menuitem", { name: "Remove video" }));
   await waitFor(() => expect(view.config().videos).toHaveLength(0)); expect(view.config().generationJobs).toHaveLength(0); expect(view.config().timeline).toEqual(config.timeline);
 });
 
@@ -164,6 +166,29 @@ it("uses the first playback frame as the poster and keeps playback buttons separ
   expect(within(inline).getByRole('button', {name: 'Pause Film'})).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'Pop out Film'})); expect(screen.getByRole('dialog')).toBeInTheDocument(); expect(screen.queryByLabelText('Scenes editor')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'Close video preview'}));
-  fireEvent.click(screen.getByRole('button',{name:'Open Film'}).closest('[role="listitem"]')!); expect(screen.getByLabelText('Scenes editor')).toBeInTheDocument();
+  const card = screen.getByRole('button',{name:'Select Film'}).closest('[role="listitem"]')!;
+  fireEvent.click(card); expect(screen.queryByLabelText('Scenes editor')).not.toBeInTheDocument();
+  fireEvent.doubleClick(card); expect(screen.getByLabelText('Scenes editor')).toBeInTheDocument();
   expect(view.config().timeline).toEqual(config.timeline);
+});
+
+it.each(["Grid", "List"])("selects video settings and opens scenes from the context menu in %s view", (mode) => {
+  const config = project();
+  config.videos = [{ ...newVideo(null), title: "First", sceneIds: ["a"] }, { ...newVideo(null), title: "Second", sceneIds: ["b"] }];
+  config.generationJobs = ["a", "b"].map((id) => createDraftGenerationJob(id, { id }));
+  mount(config);
+  fireEvent.click(screen.getByRole("button", { name: `${mode} view` }));
+  const second = screen.getByRole("button", { name: "Select Second" });
+  fireEvent.click(second);
+  expect(second).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("textbox", { name: "Video title" })).toHaveValue("Second");
+  expect(screen.queryByLabelText("Scenes editor")).not.toBeInTheDocument();
+  const edit = within(screen.getByRole("complementary", { name: "Video settings" })).getByRole("button", { name: "Edit Scenes" });
+  expect(edit).toHaveClass("primary-button");
+  expect(edit.parentElement).toHaveClass("inspector-actions");
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Select First" }));
+  expect(screen.getByRole("textbox", { name: "Video title" })).toHaveValue("First");
+  expect(screen.queryByRole("menuitem", { name: /Open scenes|Video settings/i })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Edit Scenes" }));
+  expect(screen.getByLabelText("Scenes editor")).toHaveTextContent("a");
 });

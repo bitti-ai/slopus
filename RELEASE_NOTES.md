@@ -28,7 +28,7 @@ Changes since 0.3.2.
 
 - Retired Long Shot from scene choices; use Bridge to connect videos. Existing Long Shot scenes remain compatible.
 
-- Video cards match Shot sizing, show the opening playback frame and open scenes on click; playback shares Timeline's prepared players. Returning to the Video tab restores the open video.
+- Video cards match Shot sizing and show the opening playback frame. Click to select settings; double-click or choose Edit Scenes to open scenes. Playback shares Timeline's prepared players, and returning to Video restores the open video.
 - Video card and popout playback preserve full rendered scene ranges and keep decoders running through background updates.
 - Application Back returns from scenes to Video and from image versions to their parent bar.
 - Editing generated music creates a separate draft; cards distinguish drafts from playable songs.

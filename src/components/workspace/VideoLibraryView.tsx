@@ -6,7 +6,7 @@ import { mergeVideoScenes, newVideo, resolveVideoSource, songScenes, videoLibrar
 import { newMusicFolder } from "../../lib/music";
 import { askNative } from "../../lib/nativeShell";
 import { CommandBarButton, ComboBox, ProgressRing, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
-import { Add16, Delete16, Film32, FolderAdd16, FolderOpen48, GridView16, ListView16, OpenExternal16, Play16 } from "../ui/icons";
+import { Add16, Delete16, Edit16, Film32, FolderAdd16, FolderOpen48, GridView16, ListView16, OpenExternal16, Play16 } from "../ui/icons";
 import { GeneratorView } from "./GeneratorView";
 import { VideoPlayback, videoPlaylist } from "./VideoPlayback";
 import { VideoPoster } from "./VideoPoster";
@@ -121,9 +121,10 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
               const busy = pending.length > 0;
               const progress = running.reduce((sum, scene) => sum + scene.progress, 0) / Math.max(1, running.length) * 100;
               return <div key={video.id} role="listitem" style={{ "--video-card-aspect": aspect } as CSSProperties} className={`music-song video-card${busy ? " video-card--busy" : ""}${selected?.id === video.id ? " music-song--selected" : ""}${playable ? "" : " music-song--draft"}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData(VIDEO_DRAG, JSON.stringify({ projectId: config.id, videoId: video.id })); }}
-                onClick={(event) => { if (!(event.target as Element).closest("button, .video-card__player")) openVideo(video); }}
-                onContextMenu={(event) => { setSelectedId(video.id); menu.open(event, [{ label: "Open scenes", onSelect: () => openVideo(video) }, { label: "Video settings", onSelect: () => setSelectedId(video.id) }, ...newItems(), { separator: true }, { label: "Remove video", icon: <Delete16 />, disabled: busy, danger: true, onSelect: () => { void remove(video); } }]); }}>
-                <button type="button" className="music-song__select" aria-label={`Open ${video.title}`} onFocus={() => setSelectedId(video.id)} onClick={() => openVideo(video)}>
+                onClick={(event) => { if (!(event.target as Element).closest("button, .video-card__player")) setSelectedId(video.id); }}
+                onDoubleClick={(event) => { if (!(event.target as Element).closest("button, .video-card__player")) openVideo(video); }}
+                onContextMenu={(event) => { setSelectedId(video.id); menu.open(event, [{ label: "Edit Scenes", onSelect: () => openVideo(video) }, ...newItems(), { separator: true }, { label: "Remove video", icon: <Delete16 />, disabled: busy, danger: true, onSelect: () => { void remove(video); } }]); }}>
+                <button type="button" className="music-song__select" aria-label={`Select ${video.title}`} aria-pressed={selected?.id === video.id} onFocus={() => setSelectedId(video.id)} onClick={() => setSelectedId(video.id)} onDoubleClick={() => openVideo(video)}>
                   <span className="music-song__art"><VideoPoster folderPath={folderPath} relativePath={first?.asset.relativePath} seconds={first?.start ?? 0} revision={props.generationCompletionTimes?.[first?.sceneId ?? ""] ?? first?.asset.createdAt} title={video.title} /></span><span className="music-song__info"><strong>{video.title}</strong><span>{scenes.length} scenes · {scenes.reduce((seconds, scene) => seconds + sceneDurationSeconds(scene), 0).toFixed(1)} s</span><span>{busy ? "Generating" : playable ? `${playable} / ${scenes.length} scenes ready` : "Draft"}</span></span>
                 </button>
                 {busy && <ProgressRing className="video-card__progress" size={20} value={progress > 0 ? progress : undefined} aria-label={`${video.title} generation progress`} />}
@@ -154,7 +155,9 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
         <PropSection title="Scenes">
           <p className="video-reference-help">{videoScenes(selected, config).map((scene, index, all) => { const start = all.slice(0, index).reduce((sum, item) => sum + sceneDurationSeconds(item), 0); return <span className="video-reference-range" key={scene.id}>{scene.title}: {start.toFixed(1)}–{(start + sceneDurationSeconds(scene)).toFixed(1)} s</span>; })}</p>
         </PropSection>
-      </> : <p className="music-inspector__empty">Select a video to edit its settings.</p>}</div></aside>
+      </> : <p className="music-inspector__empty">Select a video to edit its settings.</p>}</div>
+        {selected && <div className="inspector-actions"><button type="button" className="primary-button" onClick={() => openVideo(selected)}><Edit16 aria-hidden="true" />Edit Scenes</button></div>}
+      </aside>
     </div>
     {menu.element}
   </div>;
