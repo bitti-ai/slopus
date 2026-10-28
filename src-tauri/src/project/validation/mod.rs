@@ -1,5 +1,6 @@
 //! The order is part of the persisted document compatibility contract.
 mod values;
+pub(crate) use values::{is_shot_tag_id, is_supported_aspect_ratio, is_supported_resolution};
 #[cfg(test)]
 pub(crate) use values::is_iso_datetime;
 mod assets;

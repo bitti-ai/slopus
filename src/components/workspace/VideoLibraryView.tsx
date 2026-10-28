@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type ComponentProps, type CSSProperties, type DragEvent } from "react";
-import { referenceTypeLabel, sceneDurationSeconds, sceneGenerationPending, type ProjectConfig, type ProjectVideo, type VideoSource } from "../../lib/project";
+import { PROJECT_RESOLUTIONS, referenceTypeLabel, sceneDurationSeconds, sceneGenerationPending, type AspectRatio, type Resolution, type ProjectConfig, type ProjectVideo, type VideoSource } from "../../lib/project";
+import { outputDimensions } from "../../lib/export";
+import { SHOT_TAG_GROUPS } from "../../lib/shot-tags";
 import { citableReferences } from "./SceneEditor";
 import { referenceMediaTypes } from "../../lib/referenceSelection";
-import { mergeVideoScenes, newVideo, resolveVideoSource, songScenes, videoLibrary, videoScenes } from "../../lib/videoLibrary";
+import { mergeVideoScenes, newVideo, resolveVideoSource, songScenes, videoLibrary, videoScenes, videoSettings } from "../../lib/videoLibrary";
 import { newMusicFolder } from "../../lib/music";
 import { askNative } from "../../lib/nativeShell";
 import { CommandBarButton, ComboBox, ProgressRing, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
@@ -14,6 +16,7 @@ import { PromptTextField } from "./PromptTextField";
 import { useBackNavigation, type BackNavigationChange } from "./useBackNavigation";
 
 const VIDEO_DRAG = "application/x-slopus-video";
+const LOOKS = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")!.options;
 const sourceValue = (source: VideoSource | null | undefined) => source ? `${source.kind}:${source.id}` : "";
 const parseSource = (value: string): VideoSource | null => value ? { kind: value.startsWith("asset:") ? "asset" : "reference", id: value.slice(value.indexOf(":") + 1) } : null;
 
@@ -32,6 +35,8 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
   const currentFolder = folders.find((folder) => folder.id === folderId), currentFolderId = currentFolder?.id ?? null;
   const visible = videos.filter((video) => (video.folderId ?? null) === currentFolderId);
   const selected = visible.find((video) => video.id === selectedId) ?? visible[0];
+  const selectedSettings = videoSettings(selected, config);
+  const resolutionLabel = (resolution: Resolution) => { const size = outputDimensions(resolution, selectedSettings.aspectRatio); return `${size.width} × ${size.height}`; };
   const open = videos.find((video) => video.id === openId);
   useBackNavigation(props.onBackNavigationChange, open ? "Back to Video" : null, () => setOpenId(undefined));
   useEffect(() => { props.onOpenVideoChange?.(open?.id); }, [open?.id, props.onOpenVideoChange]);
@@ -115,7 +120,7 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
             </div>)}
             {visible.map((video) => {
               const scenes = videoScenes(video, config), playlist = videoPlaylist(video, config), playable = playlist.length, first = playlist[0];
-              const [width, height] = config.settings.aspectRatio.split(":").map(Number);
+              const [width, height] = videoSettings(video, config).aspectRatio.split(":").map(Number);
               const aspect = first?.asset.width && first.asset.height ? first.asset.width / first.asset.height : width / height;
               const pending = scenes.filter(sceneGenerationPending), running = pending.filter((scene) => scene.status !== "queued");
               const busy = pending.length > 0;
@@ -141,6 +146,20 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
       <aside className="music-inspector" aria-label="Video settings"><div className="music-inspector__fields">{selected ? <>
         <PropSection title="Video"><PropRow label="Title"><input className="text-field" aria-label="Video title" maxLength={200} value={selected.title} onChange={(event) => edit({ title: event.target.value || "New video" })} /></PropRow>
           <div className="music-prompt"><span>Shared prompt</span><PromptTextField aria-label="Video prompt" rows={5} value={selected.prompt} references={citableReferences(config.references).map((reference) => ({ id: reference.id, name: reference.name, mediaTypes: referenceMediaTypes(reference), detail: referenceTypeLabel(reference) }))} placeholder="Visual style and references for every scene…" onChange={(prompt) => edit({ prompt: prompt.slice(0, 30000) })} /></div>
+        </PropSection>
+        <PropSection title="Settings">
+          <PropRow label="Look"><ComboBox aria-label="Video Look" value={selected.defaultLook ?? ""} options={[
+            { value: "", label: `Project default (${LOOKS.find((look) => look.id === config.settings.defaultLook)?.label ?? config.settings.defaultLook ?? "None"})` },
+            ...LOOKS.map((look) => ({ value: look.id, label: look.label })),
+          ]} onChange={(value) => edit({ defaultLook: value || null })} /></PropRow>
+          <PropRow label="Aspect ratio"><ComboBox aria-label="Video aspect ratio" value={selected.aspectRatio ?? ""} options={[
+            { value: "", label: `Project default (${config.settings.aspectRatio})` },
+            ...(["16:9", "9:16", "1:1", "4:5"] as const).map((value) => ({ value, label: value })),
+          ]} onChange={(value) => edit({ aspectRatio: value ? value as AspectRatio : null })} /></PropRow>
+          <PropRow label="Resolution"><ComboBox aria-label="Video resolution" value={selected.resolution ?? ""} options={[
+            { value: "", label: `Project default (${resolutionLabel(config.settings.resolution)})` },
+            ...[...new Set([...PROJECT_RESOLUTIONS, selectedSettings.resolution])].map((value) => ({ value, label: resolutionLabel(value) })),
+          ]} onChange={(value) => edit({ resolution: value ? value as Resolution : null })} /></PropRow>
         </PropSection>
         <PropSection title="References">
           <PropRow label="Music"><ComboBox aria-label="Background music" value={sourceValue(selected.musicSource)} options={sourceOptions("audio")} placeholder="Reference unavailable" onChange={(value) => edit({ musicSource: parseSource(value) })} /></PropRow>

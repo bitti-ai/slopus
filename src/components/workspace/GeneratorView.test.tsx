@@ -574,6 +574,23 @@ async function finishFirst(state: ReturnType<typeof setup>) {
 }
 
 describe("Generator scene controls", () => {
+  it("uses Video defaults in the inspector, debug prompt and generation request", async () => {
+    const initial = project();
+    initial.settings.defaultLook = "claymation";
+    initial.videos = [{ id: "film", title: "Film", sceneIds: initial.generationJobs.map((job) => job.id), prompt: "", createdAt: initial.createdAt,
+      defaultLook: "watercolor", aspectRatio: "9:16", resolution: "544p" }];
+    const state = setup(initial);
+    expect(screen.getByText("Using Video Look: Watercolor.")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "The look of this scene" })).toHaveTextContent("Video default");
+    act(() => saveDebugOptionsEnabled(true));
+    fireEvent.click(screen.getByRole("button", { name: "Debug prompt" }));
+    expect(screen.getByRole("dialog", { name: "Debug prompt" })).toHaveTextContent("Watercolor");
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Debug prompt" }), { key: "Escape" });
+    fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
+    expect(JSON.parse(state.latest().generationJobs[0].generationSnapshot!)).toMatchObject({ canvasWidth: 544, canvasHeight: 960, prompt: expect.stringContaining("Watercolor") });
+    expect(state.latest().settings).toEqual(initial.settings);
+  });
   it.each([["", "Watercolor"], ["claymation", "Claymation"]])("compiles scene Look %s with the project's default", async (sceneLook, expected) => {
     const initial = project();
     initial.settings.defaultLook = "watercolor";
@@ -650,7 +667,7 @@ describe("Generator scene controls", () => {
     await waitFor(() => expect(state.latest().generationJobs[0].generationSnapshot).toEqual(expect.any(String)));
     const snapshot = JSON.parse(state.latest().generationJobs[0].generationSnapshot!);
     expect(snapshot.referencePaths).toEqual(["C:\\\\project\\references\\opening.jpg"]);
-    expect(snapshot.prompt).toContain("<Picture 1> is the first frame of the video.");
+    expect(snapshot.prompt).toContain("<Picture 1> (from [Shot 1]) is fully referenced.");
   });
 
   it("sends a last-frame image and clears it independently of the start frame", () => {
@@ -662,7 +679,7 @@ describe("Generator scene controls", () => {
     expect(state.latest().generationJobs[0].endFrameReferenceId).toBe("closing");
     fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));
     const snapshot = JSON.parse(state.latest().generationJobs[0].generationSnapshot!);
-    expect(snapshot.prompt).toContain("<Picture 1> is the last frame of the video.");
+    expect(snapshot.prompt).toContain("<Picture 1> (from [Shot 2]) aligns with the 6.58-second mark of the target video.");
     expect(snapshot.referencePaths[0]).toContain("closing.png");
     chooseReference("Last frame for this scene", "None");
     expect(state.latest().generationJobs[0].endFrameReferenceId).toBeUndefined();

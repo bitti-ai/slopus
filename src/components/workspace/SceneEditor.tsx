@@ -314,9 +314,10 @@ const SCENE_TYPE_DESCRIPTIONS: Record<SceneType, string> = {
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. Simple label + control
  *  pairs are inspector rows; the free-text fields stay full width. */
-export function SceneInspector({ job, shots, references, folderPath = "", scenes = [], neighborScenes = scenes, defaultSteps, effectiveSteps, template, defaultLook, disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = sceneTypeFor(job) }: {
+export function SceneInspector({ job, shots, references, folderPath = "", scenes = [], neighborScenes = scenes, defaultSteps, effectiveSteps, template, defaultLook, defaultLookSource = "project", disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = sceneTypeFor(job) }: {
   sceneType?: SceneType;
   defaultLook?: string | null;
+  defaultLookSource?: "project" | "Video";
   job: GenerationJob;
   shots: SceneShot[];
   references: ProjectReference[];
@@ -472,7 +473,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
               value={chosen}
               disabled={disabled}
               aria-label="The look of this scene"
-              options={[{ value: "", label: "None" }, ...look.options.map((option) => ({ value: option.id, label: option.label }))]}
+              options={[{ value: "", label: defaultLookSource === "Video" ? "Video default" : "None" }, ...look.options.map((option) => ({ value: option.id, label: option.label }))]}
               onChange={(value) => {
                 onShots(shots.map((shot, index) => {
                   const settings = { ...(shot.settings ?? {}) };
@@ -483,7 +484,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
               }}
             />
           </PropRow>}
-          {!animate && !chosen && defaultLook && <p className="prop-caption">Using project Look: {look.options.find((option) => option.id === defaultLook)?.label ?? defaultLook}.</p>}
+          {!animate && !chosen && defaultLook && <p className="prop-caption">Using {defaultLookSource} Look: {look.options.find((option) => option.id === defaultLook)?.label ?? defaultLook}.</p>}
           {(sceneType === "first-last-frame" || animate) && <>
             <PropRow label={animate ? "Repainted frame" : "Start frame"} htmlFor={`${id}-start`} tooltip={animate ? "A frame of the driving video with the character repainted. Keep its pose, framing, background and lighting." : undefined}>
               <ReferenceSelector

@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { createDraftGenerationJob, createProjectConfig, generationAssetId, parseProjectConfig, sceneDurationSeconds, type ProjectAsset } from "./project";
-import { mergeVideoScenes, newVideo, resolveVideoSource, songScenes, videoGuidedScene, videoLibrary, videoSceneOffset } from "./videoLibrary";
+import { mergeVideoScenes, newVideo, resolveVideoSource, songScenes, videoGuidedScene, videoLibrary, videoSceneOffset, sceneVideoSettings } from "./videoLibrary";
 import { sceneGenerationRequest, sendBlocker } from "./sceneGeneration";
 import { videoPlaylist } from "../components/workspace/VideoPlayback";
 import { longShotBlocker, longShotInputs } from "./longShot";
@@ -11,6 +11,37 @@ import { previewPlayerKeys } from "./timelinePreview";
 const project = () => createProjectConfig({ name: "Videos", prompt: "", resolution: "416p", aspectRatio: "16:9", targetDurationSeconds: 30 });
 const scene = (id: string, seconds = 10) => createDraftGenerationJob("A dancer moves", { id, sceneType: "prompt", durationSeconds: seconds });
 const asset = (id: string, kind: ProjectAsset["kind"] = "audio", durationMs = 30000): ProjectAsset => ({ id, kind, name: id, relativePath: `media/${id}.${kind === "audio" ? "wav" : "mp4"}`, mimeType: kind === "audio" ? "audio/wav" : "video/mp4", durationMs, createdAt: "2026-10-27T00:00:00.000Z" });
+
+it("inherits project settings dynamically and applies Video overrides without changing other Videos", () => {
+  const config = project(), first = scene("first"), second = scene("second");
+  config.generationJobs = [first, second];
+  config.settings.defaultLook = "watercolor";
+  config.videos = [{ ...newVideo(null), sceneIds: [first.id] }, { ...newVideo(null), sceneIds: [second.id] }];
+  expect(sceneVideoSettings(first, config)).toEqual(config.settings);
+  config.settings.resolution = "544p";
+  expect(sceneVideoSettings(first, config).resolution).toBe("544p");
+  Object.assign(config.videos[0], { defaultLook: "claymation", aspectRatio: "9:16", resolution: "768p" });
+  const restored = parseProjectConfig(JSON.parse(JSON.stringify(config))), before = structuredClone(restored);
+  const request = sceneGenerationRequest(first, restored, "D:/Project", 8);
+  expect(request).toMatchObject({ canvasWidth: 768, canvasHeight: 1376 });
+  expect(request.prompt).toContain("Claymation");
+  const other = sceneGenerationRequest(second, restored, "D:/Project", 8);
+  expect(other).toMatchObject({ canvasWidth: 960, canvasHeight: 544 });
+  expect(other.prompt).toContain("Watercolor");
+  expect(videoPlaybackConfig(restored.videos![0], restored).settings).toMatchObject({ aspectRatio: "9:16", resolution: "768p" });
+  expect(restored).toEqual(before);
+  Object.assign(restored.videos![0], { defaultLook: null, aspectRatio: null, resolution: null });
+  expect(sceneVideoSettings(first, restored)).toEqual(restored.settings);
+});
+
+it("preserves scene Look overrides and uses the Video Look for Single Shot ending generation", () => {
+  const config = project(), job = { ...scene("first"), sceneType: "single-shot" as const, endingPrompt: "The dancer bows." };
+  config.generationJobs = [job];
+  config.videos = [{ ...newVideo(null), sceneIds: [job.id], defaultLook: "watercolor" }];
+  expect(sceneGenerationRequest(job, config, "D:/Project", 8).singleShot?.endingPrompt).toContain("Watercolor");
+  job.shots = [{ id: "one", startSeconds: 0, action: "A dancer moves", settings: { visualStyle: ["claymation"] } }];
+  expect(sceneGenerationRequest(job, config, "D:/Project", 8).prompt).toContain("Claymation");
+});
 
 it("keeps Long Shot neighbors within their Video but permits explicit continuation across Videos", () => {
   const config = project(); config.generationJobs = ["a", "other", "b", "c"].map((id) => ({ ...scene(id), sceneType: "long-shot" as const, latentRelativePath: `latents/${id}.safetensors` }));

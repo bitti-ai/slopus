@@ -18,6 +18,12 @@ pub(crate) struct ProjectVideo {
     pub music_source: Option<VideoSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_source: Option<VideoSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_look: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aspect_ratio: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<String>,
     pub created_at: String,
 }
 
@@ -42,6 +48,11 @@ pub(crate) fn validate(config: &mut super::ProjectConfig) -> Result<(), String> 
         if video.id.is_empty() || !ids.insert(video.id.as_str()) || video.title.trim().is_empty() || video.title.chars().count() > 200
             || video.prompt.chars().count() > 30000 { return Err("Invalid Video settings.".into()); }
         if video.folder_id.as_deref().is_some_and(|id| !folders.contains_key(id)) { return Err("Video folder is missing.".into()); }
+        if video.default_look.as_deref().is_some_and(|value| !super::validation::is_shot_tag_id(value))
+            || video.aspect_ratio.as_deref().is_some_and(|value| !super::validation::is_supported_aspect_ratio(value))
+            || video.resolution.as_deref().is_some_and(|value| !super::validation::is_supported_resolution(value)) {
+            return Err("Invalid Video generation settings.".into());
+        }
         for source in [&video.music_source, &video.video_source].into_iter().flatten() {
             if source.id.is_empty() || !matches!(source.kind.as_str(), "asset" | "reference") { return Err("Invalid Video reference source.".into()); }
         }
@@ -67,12 +78,21 @@ mod tests {
         let timeline = serde_json::to_value(&config.timeline).unwrap();
         config.videos = vec![ProjectVideo { id: "film".into(), title: "Film".into(), folder_id: None,
             scene_ids: vec![scene_id.clone(), "removed-scene".into()], prompt: "Neon".into(),
-            music_source: Some(VideoSource { kind: "asset".into(), id: "song".into() }), video_source: None, created_at: config.created_at.clone() }];
+            music_source: Some(VideoSource { kind: "asset".into(), id: "song".into() }), video_source: None,
+            default_look: Some("watercolor".into()), aspect_ratio: Some("9:16".into()), resolution: Some("544p".into()), created_at: config.created_at.clone() }];
         validate(&mut config).unwrap();
         assert_eq!(config.videos[0].scene_ids, [scene_id]);
         let restored: super::super::ProjectConfig = serde_json::from_value(serde_json::to_value(&config).unwrap()).unwrap();
         assert_eq!(restored.videos, config.videos);
         assert_eq!(serde_json::to_value(&restored.timeline).unwrap(), timeline);
+        let saved = config.videos[0].clone();
+        for field in ["defaultLook", "aspectRatio", "resolution"] {
+            let mut value = serde_json::to_value(&saved).unwrap();
+            value[field] = "bad value".into();
+            config.videos[0] = serde_json::from_value(value).unwrap();
+            assert!(validate(&mut config).unwrap_err().contains("generation settings"));
+        }
+        config.videos[0] = saved;
         config.videos.push(ProjectVideo { id: "other".into(), ..config.videos[0].clone() });
         assert!(validate(&mut config).unwrap_err().contains("only one Video"));
     }

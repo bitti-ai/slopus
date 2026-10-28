@@ -9,7 +9,7 @@ import {
   usableReferenceImages, compileScenePromptSegments, type GenerationJob, type ProjectConfig, type ProjectReference, type SceneType,
 } from "./project";
 import type { SlopfabGenerationRequest } from "./runtime";
-import { videoGuidedScene } from "./videoLibrary";
+import { sceneVideoSettings, videoGuidedScene } from "./videoLibrary";
 import { generationSigmaShifts, templateSupportsVideo, type GeneratorTemplate } from "./settings";
 
 export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig, folderPath: string, defaultGenerationSteps: number, template?: GeneratorTemplate): SlopfabGenerationRequest {
@@ -21,20 +21,21 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
   // array index 0 must be the asset the prompt calls <Picture 1>.
   const inputs = { ...sceneFrameInputs(job, config), ...longShotContinuationInputs(job, config)?.request };
   const bound = inputs.references;
-  const canvas = generationDimensions(config.settings.resolution, config.settings.aspectRatio);
+  const settings = sceneVideoSettings(job, config);
+  const canvas = generationDimensions(settings.resolution, settings.aspectRatio);
   const longShot = longShotInputs(job, config);
   return {
     jobId: job.id,
     ...(job.sceneType === "single-shot" ? { singleShot: { endingPrompt: job.endingPrompt?.trim()
-      ? compileScenePromptSegments({ shots: [{ id: `${job.id}-ending`, startSeconds: 0, action: job.endingPrompt }], soundscape: job.soundscape, music: job.music }, bound, config.settings.defaultLook).map((segment) => segment.value).join("")
-      : compileGenerationJobPrompt(inputs.job, bound, config.settings.defaultLook) } } : {}),
+      ? compileScenePromptSegments({ shots: [{ id: `${job.id}-ending`, startSeconds: 0, action: job.endingPrompt }], soundscape: job.soundscape, music: job.music }, bound, settings.defaultLook).map((segment) => segment.value).join("")
+      : compileGenerationJobPrompt(inputs.job, bound, settings.defaultLook) } } : {}),
     ...(longShot ? { latentBridge: longShot.bridge } : {}),
     ...(job.sceneType === "extend" || job.sceneType === "bridge" ? { videoTransition: job.sceneType } : {}),
     // Recompiled from current state so edits to a bound reference or a
     // retimed shot reach the engine, rather than sending a prompt frozen at
     // draft-creation time. This is the main prompt shown in the compiled-prompt
     // panel; Single Shot captures its separate ending prompt above.
-    prompt: job.sceneType === "animate" ? "" : compileGenerationJobPrompt(inputs.job, bound, config.settings.defaultLook),
+    prompt: job.sceneType === "animate" ? "" : compileGenerationJobPrompt(inputs.job, bound, settings.defaultLook),
     ...(inputs.previousSceneId ? { previousSceneId: inputs.previousSceneId } : {}),
     ...(inputs.continuationRelativePath ? { continuationRelativePath: inputs.continuationRelativePath } : {}),
     ...(inputs.previousSceneId ? { continuationOverlapFrames: inputs.continuationOverlapFrames,

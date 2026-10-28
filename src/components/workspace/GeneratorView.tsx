@@ -27,7 +27,7 @@ import { purgeTimelineThumbnails } from "../../lib/timelineThumbnails";
 import { defaultGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateSupportsVideo, templateUsable } from "../../lib/settings";
 import { refreshDownloadedWeights } from "../../lib/weightDownloads";
 import { DebugPromptDialog } from "./DebugPromptDialog";
-import { videoGuidedScene } from "../../lib/videoLibrary";
+import { sceneVideoSettings, videoGuidedScene } from "../../lib/videoLibrary";
 
 interface GeneratorViewProps {
   toolbarStart?: ReactNode;
@@ -154,6 +154,8 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
   /* A scene can be deleted, and a shot can be removed, from under the panel.
      Falling back to the first scene beats a panel pointing at nothing. */
   const selected = jobs.find((job) => job.id === selection.jobId) ?? jobs[0];
+  const inheritedSettings = selected ? sceneVideoSettings(selected, config) : config.settings;
+  const parentVideo = selected && config.videos?.find((video) => video.sceneIds.includes(selected.id));
   const animate = selected ? sceneTypeFor(selected) === "animate" : false;
   const selectedShots = useMemo(() => (selected ? sceneShots(selected) : []), [selected]);
   const shotIndex = selectedShots.findIndex((shot) => shot.id === selection.shotId);
@@ -684,7 +686,8 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
               template={selectedTemplate}
               defaultSteps={defaultGenerationSteps}
               effectiveSteps={generationStepsForTemplate(sceneGenerationSteps(selected, defaultGenerationSteps), selectedTemplate)}
-              defaultLook={config.settings.defaultLook}
+              defaultLook={inheritedSettings.defaultLook}
+              defaultLookSource={parentVideo ? "Video" : "project"}
               disabled={false}
               references={config.references}
               folderPath={folderPath}
@@ -723,7 +726,7 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
 
     {debugEnabled && showDebugPrompt && selected && !openShot && <DebugPromptDialog
       sceneTitle={selected.title}
-      segments={compileGenerationJobSegments(frameInputs?.job ?? selected, boundRefs, config.settings.defaultLook)}
+      segments={compileGenerationJobSegments(frameInputs?.job ?? selected, boundRefs, inheritedSettings.defaultLook)}
       onClose={() => setShowDebugPrompt(false)}
     />}
   </div>;

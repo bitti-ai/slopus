@@ -17,6 +17,16 @@ export function videoScenes(video: ProjectVideo, config: ProjectConfig): Generat
 export function newVideo(folderId: string | null): ProjectVideo {
   return { id: `video-${crypto.randomUUID()}`, title: "New video", folderId, sceneIds: [], prompt: "", createdAt: new Date().toISOString() };
 }
+/** Missing overrides stay linked to project settings, including older Videos. */
+export function videoSettings(video: ProjectVideo | undefined, config: ProjectConfig): ProjectConfig["settings"] {
+  return { ...config.settings,
+    defaultLook: video?.defaultLook ?? config.settings.defaultLook,
+    aspectRatio: video?.aspectRatio ?? config.settings.aspectRatio,
+    resolution: video?.resolution ?? config.settings.resolution };
+}
+export function sceneVideoSettings(job: GenerationJob, config: ProjectConfig): ProjectConfig["settings"] {
+  return videoSettings(videoLibrary(config).find((video) => video.sceneIds.includes(job.id)), config);
+}
 export function resolveVideoSource(source: VideoSource | null | undefined, config: ProjectConfig, kind: "audio" | "video") {
   if (!source) return undefined;
   if (source.kind === "asset") {

@@ -699,6 +699,8 @@ export const projectVideoSchema = z.object({
   id: idSchema, title: z.string().min(1).max(200), folderId: idSchema.nullish(),
   sceneIds: z.array(idSchema).default([]), prompt: z.string().max(30000).default(""),
   musicSource: videoSourceSchema.nullish(), videoSource: videoSourceSchema.nullish(),
+  defaultLook: z.string().regex(SHOT_TAG_ID_PATTERN).nullish(),
+  aspectRatio: aspectRatioSchema.nullish(), resolution: resolutionSchema.nullish(),
   createdAt: isoDateSchema,
 });
 export type ProjectVideo = z.infer<typeof projectVideoSchema>;

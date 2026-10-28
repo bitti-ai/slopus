@@ -1,7 +1,7 @@
 import { generationAssetId, sceneDurationSeconds, type ProjectConfig, type ProjectVideo, type TimelineClip } from "./project";
 import { scenePreviewAsset, scenePreviewJob } from "./sceneHistory";
 import { continuationPlaybackTracks, sceneMediaDurationMs } from "./continuationMedia";
-import { videoScenes } from "./videoLibrary";
+import { videoScenes, videoSettings } from "./videoLibrary";
 
 /** A temporary timeline for the Video library. Never edits the project's timeline. */
 export function videoPlaybackConfig(video: ProjectVideo, config: ProjectConfig): ProjectConfig {
@@ -23,7 +23,7 @@ export function videoPlaybackConfig(video: ProjectVideo, config: ProjectConfig):
     startMs += durationMs;
   }
   const memberIds = new Set(video.sceneIds);
-  return { ...config, assets: [...assets.values()],
+  return { ...config, settings: videoSettings(video, config), assets: [...assets.values()],
     generationJobs: config.generationJobs.map((scene) => memberIds.has(scene.id) ? scenePreviewJob(scene, config.assets) : scene),
     timeline: { tracks: [{ id: "video-preview", kind: "video", name: video.title, locked: false, muted: false, clips }] } };
 }
