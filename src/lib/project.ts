@@ -1168,6 +1168,8 @@ const addedStop = (text: string): PromptSegment[] => (endSentence(text) === text
  *  to show the same bytes for both. */
 export interface ScenePrompt {
   shots: readonly SceneShot[];
+  /** Effective generated duration, including H3's temporal frame alignment. */
+  durationSeconds?: number;
   backdropColor?: BackdropColor;
   poseVideoReferenceId?: string | null;
   videoTransition?: "extend" | "bridge";
@@ -1359,7 +1361,10 @@ export function compileGenerationJobSegments(job: GenerationJob, references: Pro
   if (job.sceneType === "extend" || job.sceneType === "bridge") return compileScenePromptSegments({
     shots: sceneShots(job), videoTransition: job.sceneType, soundscape: job.soundscape, music: job.music,
   }, sceneGenerationReferences(job, references), defaultLook);
-  return compileScenePromptSegments({ shots: sceneShots(job), startFrameReferenceId: job.startFrameReferenceId, endFrameReferenceId: job.endFrameReferenceId, soundscape: job.soundscape, music: job.music }, references, defaultLook);
+  const frames = Math.round(sceneDurationSeconds(job) * GENERATION_FRAME_RATE);
+  const durationSeconds = Math.max(22, Math.ceil((frames - 5) / 17) * 17 + 5) / GENERATION_FRAME_RATE;
+  const boundReferences = sceneTypeFor(job) === "first-last-frame" ? sceneGenerationReferences(job, references) : references;
+  return compileScenePromptSegments({ shots: sceneShots(job), durationSeconds, startFrameReferenceId: job.startFrameReferenceId, endFrameReferenceId: job.endFrameReferenceId, soundscape: job.soundscape, music: job.music }, boundReferences, defaultLook);
 }
 
 export function poseBlocker(job: GenerationJob, references: ProjectReference[]): string | null {
@@ -1488,6 +1493,23 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   const subjectNumber = new Map(usable.map((reference, index) => [reference.id, index + 1]));
   const sounds = usableAudioReferences(references);
   const audioNumber = referenceAudioNumbers(references, !scene.videoTransition);
+  const imageReferenceIds = usableImageReferences(references).flatMap((reference) =>
+    referenceImages(reference).map(() => reference.id));
+  const pictureNumbers = new Map<string, number[]>();
+  imageReferenceIds.forEach((referenceId, index) => pictureNumbers.set(referenceId, [...(pictureNumbers.get(referenceId) ?? []), index + 1]));
+  const startPicture = startFrame ? pictureNumbers.get(startFrame.id)?.[0] ?? null : null;
+  const endPicture = endFrame ? pictureNumbers.get(endFrame.id)?.[0] ?? null : null;
+  const finalShot = shots.length;
+  const finalTime = (scene.durationSeconds ?? DEFAULT_SCENE_SECONDS).toFixed(2);
+  // Base guide §2.1: exactly one alignment instruction, before any core fields.
+  const alignment = startPicture && endPicture
+    ? `How the reference pictures align with the target video — Picture ${startPicture} (from Shot 1) aligns with the 0.00-second mark of the target video; Picture ${endPicture} (from Shot ${finalShot}) aligns with the ${finalTime}-second mark of the target video.`
+    : startPicture
+      ? `For the target video, at 0.00 seconds into the target video, <Picture ${startPicture}> (from [Shot 1]) is fully referenced.`
+      : endPicture
+        ? `How the reference pictures align with the target video — <Picture ${endPicture}> (from [Shot ${finalShot}]) aligns with the ${finalTime}-second mark of the target video.`
+        : null;
+  const alignmentSegments = alignment ? [frame(`${alignment}\n\n`)] : [];
 
   const compiled: CompiledShot[] = shots.map((shot, index) => {
     const body: PromptSegment[] = [];
@@ -1497,7 +1519,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
       if (part.kind === "text") {
         // Reference chips can touch the following word in the editor. Keep
         // inserted spacing attributed to Slopus, leaving user text intact.
-        if (/(?:<Subject \d+>|<Audio \d+>)$/.test(text) && /^[\p{L}\p{N}]/u.test(part.value)) {
+        if (/(?:<Subject \d+>|<Audio \d+>|<Picture \d+>)$/.test(text) && /^[\p{L}\p{N}]/u.test(part.value)) {
           body.push(frame(" "));
           text += " ";
         }
@@ -1505,9 +1527,13 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
         text += part.value;
         continue;
       }
-      // A token whose reference is gone, undescribed or tagged as sound only
-      // has no <Subject N> to become. It is left out rather than guessed at,
-      // and the editor says so in words above the field — see `danglingTokens`.
+      // Frame anchors keep their picture identity rather than becoming subjects.
+      const anchor = part.value === startFrame?.id ? startPicture : part.value === endFrame?.id ? endPicture : null;
+      if (anchor) {
+        body.push(frame(`<Picture ${anchor}>`));
+        text += `<Picture ${anchor}>`;
+        continue;
+      }
       const sound = audioNumber.get(part.value);
       if (sound) {
         body.push(frame(`<Audio ${sound}>`));
@@ -1591,23 +1617,33 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
   const soundSegment = sound ? own(sound) : frame(DEFAULT_SOUNDSCAPE);
   const musicSegment = music ? own(music) : frame(DEFAULT_MUSIC);
   const backdropShot = scene.backdropColor ? [frame(` ${backdropShotDirection(scene.backdropColor)}`)] : [];
+  const openingDirection = (shot: CompiledShot): PromptSegment[] => shot.index !== 0 ? []
+    : startPicture ? [frame(`Begin in the subject positions, appearance, composition and setting of <Picture ${startPicture}>. Develop the described action continuously from this opening state. `)]
+      : endPicture ? [frame(`Begin from a plausible earlier state compatible with <Picture ${endPicture}> and the described action; this picture is the ending, not the opening. `)] : [];
+  const closingDirection = (shot: CompiledShot): PromptSegment[] => endPicture && shot.index === finalShot - 1
+    ? [frame(` Gradually converge through the described action to the subject positions, object states, camera framing and composition of <Picture ${endPicture}> at ${finalTime} seconds, the end of [Shot ${finalShot}].`)] : [];
 
-  if (usable.length === 0 && sounds.length === 0 && !startFrame && !endFrame) {
-    // T2VA — base guide §2.2 field list and order.
+  if (usable.length === 0 && sounds.length === 0) {
+    // T2VA / I2VA / FL2VA / L2VA share the base guide's three core fields.
     return [
+      ...alignmentSegments,
       frame("integrated_multimodal_description: "),
       ...(scene.backdropColor ? [frame(`${backdropDirection(scene.backdropColor)} `)] : []),
       ...compiled.flatMap((shot) => [
         frame(shot.index === 0 ? marker(shot) : ` ${marker(shot)}`),
-        ...(shot.index === 0 ? [styleSegment, frame(", ")] : []),
+        ...(shot.index === 0 ? (startPicture || endPicture) && !styleFromTag
+          ? [frame(`Use the visual style established by <Picture ${startPicture ?? endPicture}>. `)]
+          : [styleSegment, frame(", ")] : []),
+        ...openingDirection(shot),
         // §4.1 order inside the shot: size, angle and lens sit in front of the
         // subject and its action.
         ...(shot.tags.framing.length > 0 ? [tagged(shot.tags.framing.join(", ")), frame(", ")] : []),
         ...shot.body,
-        ...(scene.backdropColor ? addedStop(shot.text) : stop(shot)),
+        ...(scene.backdropColor || (endPicture && shot.index === finalShot - 1) ? addedStop(shot.text) : stop(shot)),
         ...tail(shot),
         ...backdropShot,
         ...dialogue(shot, shot.text.length > 0 || shot.tags.clauses.length > 0),
+        ...closingDirection(shot),
       ]),
       frame("\n\noverall_soundscape: "),
       soundSegment,
@@ -1616,11 +1652,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     ].filter((segment) => segment.value.length > 0);
   }
 
-  const imageReferenceIds = usableImageReferences(references).flatMap((reference) =>
-    referenceImages(reference).map(() => reference.id));
-  const pictureNumbers = new Map<string, number[]>();
   const videoNumbers = new Map(usableVideoReferences(references).map((reference, index) => [reference.id, index + 1]));
-  imageReferenceIds.forEach((referenceId, index) => pictureNumbers.set(referenceId, [...(pictureNumbers.get(referenceId) ?? []), index + 1]));
   const listOf = (values: string[]): string => values.length === 1
     ? values[0]
     : `${values.slice(0, -1).join(", ")} and ${values[values.length - 1]}`;
@@ -1670,8 +1702,6 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
     return detail ? [frame(`${lead}${label}: `), own(detail), ...addedStop(detail)] : [frame(`${lead}${label} is a reference audio clip.`)];
   });
   const definitions = [...subjectDefinitions, ...audioDefinitions];
-  const startPicture = startFrame ? pictureNumbers.get(startFrame.id)?.[0] ?? null : null;
-  const endPicture = endFrame ? pictureNumbers.get(endFrame.id)?.[0] ?? null : null;
   const startDefinition = startPicture
     ? [frame(`<Picture ${startPicture}> is the first frame of the video.${definitions.length > 0 || endPicture ? "\n" : ""}`)]
     : [];
@@ -1751,6 +1781,7 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
       : "Begin immediately after the final frame of <Video 1>. Follow the text direction below, developing continuous action that reaches the subject positions, motion, lighting and camera framing immediately before the opening frame of <Video 2>. Output only the new connecting segment; do not replay either source clip.\n")] : []),
     ...compiled.flatMap((shot) => [
       frame(shot.index === 0 ? marker(shot) : `\n${marker(shot)}`),
+      ...openingDirection(shot),
       // Framing leads the sentence here, so it takes the capital.
       ...(shot.tags.framing.length > 0 ? [tagged(capitalize(shot.tags.framing.join(", "))), frame(", ")] : []),
       ...shot.body,
@@ -1764,10 +1795,12 @@ export function compileScenePromptSegments(scene: ScenePrompt, references: Proje
       ...dialogue(shot, shot.text.length > 0 || featured[shot.index].length > 0 || shot.tags.clauses.length > 0),
       ...(shot.index === 0 && startPicture ? [frame(` The opening frame matches <Picture ${startPicture}>.`)] : []),
       ...(shot.index === compiled.length - 1 && endPicture ? [frame(` The closing frame matches <Picture ${endPicture}>.`)] : []),
+      ...closingDirection(shot),
     ]),
   ];
 
   return [
+    ...alignmentSegments,
     frame("subject_definitions:\n"),
     ...(scene.videoTransition ? [frame("<Video 1> is the starting source video; its final frames provide the temporal latent anchor for the new segment.\n"),
       ...(scene.videoTransition === "bridge" ? [frame("<Video 2> is the ending source video; its opening frames provide the temporal latent anchor for the end of the new segment.\n")] : [])] : []),

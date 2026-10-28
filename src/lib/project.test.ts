@@ -564,7 +564,7 @@ describe("project schema", () => {
     expect(compileGenerationJobPrompt(endOnly, sceneGenerationReferences(endOnly, references))).toContain("<Picture 1> is the last frame of the video.");
     const same = { ...job, shots: [{ id: "shot", startSeconds: 0, action: "The subject turns." }], endFrameReferenceId: "start", referenceIds: [] };
     expect(usableReferenceImages(sceneGenerationReferences(same, references))).toHaveLength(1);
-    expect(compileGenerationJobPrompt(same, sceneGenerationReferences(same, references))).toContain("<Picture 1> is the last frame of the video.");
+    expect(compileGenerationJobPrompt(same, sceneGenerationReferences(same, references))).toContain("Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 1 (from Shot 1) aligns with the");
   });
 
   it("resolves scene continuity from board order and the current latent archive", () => {
