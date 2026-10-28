@@ -172,6 +172,13 @@ it("uses the first playback frame as the poster and keeps playback buttons separ
   expect(within(inline).getByRole('button', {name: 'Pause Film'})).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'Pop out Film'})); expect(screen.getByRole('dialog')).toBeInTheDocument(); expect(screen.queryByLabelText('Scenes editor')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'Close video preview'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Play Film'}));
+  fireEvent.click(screen.getByRole('button', {name: 'List view'}));
+  expect(screen.queryByRole('button', {name: /^(Play|Pause|Replay|Pop out) Film$/})).not.toBeInTheDocument();
+  expect(view.container.querySelector('.video-card__player')).toBeNull();
+  fireEvent.click(screen.getByRole('button', {name: 'Grid view'}));
+  expect(screen.getByRole('button', {name: 'Play Film'})).toBeInTheDocument();
+  expect(screen.getByRole('button', {name: 'Pop out Film'})).toBeInTheDocument();
   const card = screen.getByRole('button',{name:'Select Film'}).closest('[role="listitem"]')!;
   fireEvent.click(card); expect(screen.queryByLabelText('Scenes editor')).not.toBeInTheDocument();
   fireEvent.doubleClick(card); expect(screen.getByLabelText('Scenes editor')).toBeInTheDocument();

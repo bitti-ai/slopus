@@ -106,7 +106,7 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
   return <div ref={root} className="video-library-view" style={pane.style}>
     <CommandBar className="generator-command" aria-label="Video library actions" end={<>
       <CommandBarButton icon={view === "grid" ? <GridView16Filled /> : <GridView16 />} label="Grid view" pressed={view === "grid"} onClick={() => { setView("grid"); localStorage.setItem("slopus.video.view", "grid"); }} />
-      <CommandBarButton icon={view === "list" ? <ListView16Filled /> : <ListView16 />} label="List view" pressed={view === "list"} onClick={() => { setView("list"); localStorage.setItem("slopus.video.view", "list"); }} />
+      <CommandBarButton icon={view === "list" ? <ListView16Filled /> : <ListView16 />} label="List view" pressed={view === "list"} onClick={() => { setView("list"); setPlayback(undefined); localStorage.setItem("slopus.video.view", "list"); }} />
     </>}>
       <CommandBarButton icon={<Add16 />} label="New video" showLabel onClick={add} />
       <CommandBarButton icon={<FolderAdd16 />} label="New folder" showLabel onClick={() => { setFolderName(""); setCreatingFolder(true); }} />
@@ -138,7 +138,7 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
                   <span className="music-song__art"><VideoPoster folderPath={folderPath} relativePath={first?.asset.relativePath} seconds={first?.start ?? 0} revision={props.generationCompletionTimes?.[first?.sceneId ?? ""] ?? first?.asset.createdAt} title={video.title} /></span><span className="music-song__info"><strong>{video.title}</strong><span>{scenes.length} scenes · {scenes.reduce((seconds, scene) => seconds + sceneDurationSeconds(scene), 0).toFixed(1)} s</span><span>{busy ? "Generating" : playable ? `${playable} / ${scenes.length} scenes ready` : "Draft"}</span></span>
                 </button>
                 {busy && <ProgressRing className="video-card__progress" size={20} value={progress > 0 ? progress : undefined} aria-label={`${video.title} generation progress`} />}
-                {playable > 0 && !(playing?.id === video.id && !playback?.popout) && <div className="video-card__controls"><button type="button" aria-label={`Play ${video.title}`} onClick={() => setPlayback({ id: video.id, popout: false })}><Play16 /></button><button type="button" aria-label={`Pop out ${video.title}`} onClick={() => setPlayback({ id: video.id, popout: true })}><OpenExternal16 /></button></div>}
+                {view === "grid" && playable > 0 && !(playing?.id === video.id && !playback?.popout) && <div className="video-card__controls"><button type="button" aria-label={`Play ${video.title}`} onClick={() => setPlayback({ id: video.id, popout: false })}><Play16 /></button><button type="button" aria-label={`Pop out ${video.title}`} onClick={() => setPlayback({ id: video.id, popout: true })}><OpenExternal16 /></button></div>}
                 {playing?.id === video.id && !playback?.popout && <VideoPlayback key={video.id} video={video} config={config} folderPath={folderPath} popout={false} onClose={() => setPlayback(undefined)} onPopout={() => setPlayback({ id: video.id, popout: true })} />}
               </div>;
             })}
