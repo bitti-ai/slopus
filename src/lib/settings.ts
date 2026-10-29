@@ -13,6 +13,7 @@
  * silently drops that path.
  */
 import { isSigmaShift, type SigmaShifts } from "./sampling";
+import { normalizeH3Library, resolveH3Components, type H3Components } from "./h3Components";
 import { generatorModel } from "./generatorModels";
 export { generatorModel, GENERATOR_MODELS } from "./generatorModels";
 import { latentUpscalerPath } from "./upscalers";
@@ -97,6 +98,8 @@ export interface GeneratorTemplate extends SigmaShifts {
   motionCache?: boolean;
   mode?: "prompt" | "animate";
   paths: EngineSettings;
+  videoVaeId?: string;
+  audioVaeId?: string;
   sources?: Partial<Record<EnginePathId, WeightSource[]>>;
   loras?: TemplateLora[];
   additionalSafetensors?: AdditionalSafetensor[];
@@ -221,6 +224,7 @@ export interface GeneratorTemplateSettings {
   templates: GeneratorTemplate[];
   defaultTemplateId: string;
   catalogVersion?: number;
+  h3Components?: H3Components;
 }
 
 const copyPaths = (paths: EngineSettings): EngineSettings => ({ ...paths });
@@ -368,15 +372,15 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
   };
 }
 
-const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => ({
+const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => normalizeTemplateSettings({
   templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates()],
   defaultTemplateId: "default",
   catalogVersion: 17,
-});
+})!;
 
-const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | null => {
+const normalizeTemplateSettings = (value: unknown, shareComponents = true): GeneratorTemplateSettings | null => {
   if (!value || typeof value !== "object") return null;
-  const record = value as { templates?: unknown; defaultTemplateId?: unknown; catalogVersion?: unknown };
+  const record = value as { templates?: unknown; defaultTemplateId?: unknown; catalogVersion?: unknown; h3Components?: unknown };
   if (!Array.isArray(record.templates)) return null;
   const ids = new Set<string>();
   const templates = record.templates.flatMap((item): GeneratorTemplate[] => {
@@ -420,6 +424,8 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
           ...(typeof file.downloadedPath === "string" && file.downloadedPath.trim() && !isDownloadUrl(file.downloadedPath) ? { downloadedPath: file.downloadedPath } : {}) }];
       }) : [];
     return [{ id, name, modelType, defaultSteps, attention, paths, sources,
+      ...(typeof candidate.videoVaeId === "string" ? { videoVaeId: candidate.videoVaeId } : {}),
+      ...(typeof candidate.audioVaeId === "string" ? { audioVaeId: candidate.audioVaeId } : {}),
       ...(typeof candidate.editingModel === "boolean" ? { editingModel: candidate.editingModel } : {}),
       ...(isSigmaShift(candidate.videoSigmaShift) ? { videoSigmaShift: candidate.videoSigmaShift } : {}),
       ...(isSigmaShift(candidate.audioSigmaShift) ? { audioSigmaShift: candidate.audioSigmaShift } : {}),
@@ -430,10 +436,12 @@ const normalizeTemplateSettings = (value: unknown): GeneratorTemplateSettings | 
   });
   if (templates.length === 0) return null;
   const requestedDefault = typeof record.defaultTemplateId === "string" ? record.defaultTemplateId : "";
+  const shared = shareComponents ? normalizeH3Library(templates, record.h3Components, requestedDefault)
+    : { templates, ...(record.h3Components ? { h3Components: record.h3Components as H3Components } : {}) };
   return {
-    templates,
-    defaultTemplateId: templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
-      ?? templates.find(templateUsable)?.id ?? "",
+    ...shared,
+    defaultTemplateId: shared.templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
+      ?? shared.templates.find(templateUsable)?.id ?? "",
     catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
@@ -445,7 +453,7 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
   try {
     const stored = migratedStorageItem(GENERATOR_TEMPLATES_KEY, LEGACY_GENERATOR_TEMPLATES_KEY);
     if (stored) {
-      let normalized = normalizeTemplateSettings(JSON.parse(stored));
+      let normalized = normalizeTemplateSettings(JSON.parse(stored), false);
       if (normalized) {
         if ((normalized.catalogVersion ?? 0) < 2) {
           const bundled = minimaxOriginalTemplate();
@@ -483,7 +491,7 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
             existing.sources!.textEncoder = retained;
           }
           // A replaced local encoder may now need downloading and cannot remain the default.
-          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 3 })!;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 3 }, false)!;
         }
         if ((normalized.catalogVersion ?? 0) < 4) {
           const original = normalized.templates.find((template) => template.id === "minimax-h3-original");
@@ -503,13 +511,13 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           if (singularity && !singularity.loras?.some(({ loraId }) => loraId === TURBO_LORA.id)) {
             singularity.loras = [...(singularity.loras ?? []), { loraId: TURBO_LORA.id, enabled: true, strength: 1 }];
           }
-          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 6 })!;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 6 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         if ((normalized.catalogVersion ?? 0) < 7) {
           const template = viggleAnimateTemplate();
           if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
-          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 7 })!;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 7 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         if ((normalized.catalogVersion ?? 0) < 8) {
@@ -517,7 +525,7 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           if (animate && !animate.additionalSafetensors?.some((file) => file.role === "promptEmbedding")) {
             animate.additionalSafetensors = [...(animate.additionalSafetensors ?? []), ...viggleAnimateTemplate().additionalSafetensors!];
           }
-          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 8 })!;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 8 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         if ((normalized.catalogVersion ?? 0) < 9) {
@@ -545,13 +553,13 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
             }
             if (fast.defaultSteps === 6) fast.defaultSteps = bundled.defaultSteps;
           }
-          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 9 })!;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 9 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         if ((normalized.catalogVersion ?? 0) < 10) {
           const template = mossImageTemplate();
           if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
-          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 10 })!;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 10 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         if ((normalized.catalogVersion ?? 0) < 11) {
@@ -571,7 +579,7 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
               return { ...updated, url: bundled.paths.transformer };
             });
           }
-          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 11 })!;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 11 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         if ((normalized.catalogVersion ?? 0) < 12) {
@@ -596,7 +604,7 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
             }
             if (sources.length || retained.length) fast.sources = { ...fast.sources, transformer: retained };
           }
-          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 12 })!;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 12 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         if ((normalized.catalogVersion ?? 0) < 13) {
@@ -613,24 +621,24 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
               return { ...updated, url: MINIMAX_FL2VA_W4A8_URL };
             });
           }
-          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 13 })!;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 13 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         if ((normalized.catalogVersion ?? 0) < 14) {
           const template = fiboImageTemplate();
           if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
-          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 14 })!;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 14 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         if ((normalized.catalogVersion ?? 0) < 15) {
           const template = fiboBaseTemplate();
           if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
-          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 15 })!;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 15 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         if ((normalized.catalogVersion ?? 0) < 16) {
           for (const template of musicTemplates()) if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
-          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 16 })!;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 16 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         if ((normalized.catalogVersion ?? 0) < 17) {
@@ -643,10 +651,12 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
               || sources.some((source) => source.url === bf16.url)) return template;
             return { ...template, sources: { ...template.sources, transformer: [bf16, ...sources] } };
           });
-          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 17 })!;
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 17 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
-        return normalized;
+        const shared = normalizeTemplateSettings(normalized)!;
+        if (!normalized.h3Components) localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(shared));
+        return shared;
       }
     }
     const legacy = migratedStorageItem(ENGINE_KEY, LEGACY_ENGINE_KEY);
@@ -657,7 +667,7 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
 }
 
 export function saveGeneratorTemplateSettings(settings: GeneratorTemplateSettings, options: { strict?: boolean } = {}): void {
-  const normalized = normalizeTemplateSettings(settings) ?? initialTemplateSettings();
+  const normalized = normalizeTemplateSettings(settings, (settings.catalogVersion ?? 17) >= 17) ?? initialTemplateSettings();
   try {
     localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
   } catch (error) {
@@ -705,6 +715,19 @@ export function saveEngineSettings(settings: EngineSettings): void {
  *  an unset field falls through to whatever the project (or the Rust default)
  *  already had rather than overwriting it with "". */
 export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false, sources = defaultGeneratorTemplate().sources, shifts: SigmaShifts & { modelType?: string; editingModel?: boolean } = defaultGeneratorTemplate()): ProviderSetting {
+  // Resolve again at submission: a queued generator may predate a default encoder change.
+  if (shifts.modelType === MINIMAX_H3_MODEL_TYPE) {
+    const library = loadGeneratorTemplateSettings().h3Components!;
+    const resolved = resolveH3Components({ id: "", name: "", defaultSteps: 20, attention, ...shifts,
+      modelType: MINIMAX_H3_MODEL_TYPE, mode, paths: settings, sources } as GeneratorTemplate, library);
+    // Legacy callers may supply only paths; named VAE links are resolved by the settings loader.
+    settings = { ...settings, textEncoder: resolved.paths.textEncoder, tokenizer: resolved.paths.tokenizer,
+      ...("videoVaeId" in shifts ? { videoVae: resolved.paths.videoVae } : {}),
+      ...("audioVaeId" in shifts ? { audioVae: resolved.paths.audioVae } : {}) };
+    sources = { ...sources, textEncoder: resolved.sources?.textEncoder, tokenizer: resolved.sources?.tokenizer,
+      ...("videoVaeId" in shifts ? { videoVae: resolved.sources?.videoVae } : {}),
+      ...("audioVaeId" in shifts ? { audioVae: resolved.sources?.audioVae } : {}) };
+  }
   // A LAN worker receives URLs for weights it should download itself.
   const remote = remoteWorkerSelected();
   const options: ProviderSetting["options"] = { ...(base?.options ?? {}), attention, inferenceBackend: loadInferenceBackend() };

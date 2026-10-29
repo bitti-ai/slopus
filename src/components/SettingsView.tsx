@@ -3,6 +3,7 @@ import { DEFAULT_VIDEO_SIGMA_SHIFT, DEFAULT_AUDIO_SIGMA_SHIFT, MIN_SIGMA_SHIFT, 
 import { AdditionalSafetensorsEditor } from "./AdditionalSafetensorsEditor";
 import { GeneratorSharing } from "./GeneratorSharing";
 import { OtherWeightsSettings } from "./OtherWeightsSettings";
+import { H3ComponentSettings } from "./H3ComponentSettings";
 import { AgentDock } from "./workspace/AgentDock";
 import { useAgentPane } from "../lib/useAgentPane";
 import { useShortcut } from "../lib/commands";
@@ -450,7 +451,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     probe({ ...EMPTY_ENGINE_SETTINGS });
   };
 
-  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "editingModel" | "modelType" | "name" | "defaultSteps" | "videoSigmaShift" | "audioSigmaShift" | "attention" | "motionCache" | "loras" | "mode" | "additionalSafetensors">>) => {
+  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "videoVaeId" | "audioVaeId" | "editingModel" | "modelType" | "name" | "defaultSteps" | "videoSigmaShift" | "audioSigmaShift" | "attention" | "motionCache" | "loras" | "mode" | "additionalSafetensors">>) => {
     setTemplateSettings((current) => {
       const next = {
         ...current,
@@ -625,7 +626,16 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     </SettingsGroup>
 
     <SettingsGroup heading="Model files">
-      {generatorPathFields(selectedTemplate).map(pathCard)}
+      {generatorPathFields(selectedTemplate).filter(({ id }) => selectedTemplate.modelType !== "minimax-h3" || id === "transformer").map(pathCard)}
+      {selectedTemplate.modelType === "minimax-h3" && (["video", "audio"] as const).map((type) => {
+        const key = type === "video" ? "videoVaeId" : "audioVaeId";
+        const label = type === "video" ? "Video VAE" : "Audio VAE";
+        return <SettingsCard key={type} icon={<ModelFile20 />} header={label}>
+          <ComboBox aria-label={label} value={selectedTemplate[key] ?? ""}
+            options={templateSettings.h3Components!.templates.filter((entry) => entry.type === type).map((entry) => ({ value: entry.id, label: entry.name }))}
+            onChange={(id) => updateTemplate({ [key]: id })} />
+        </SettingsCard>;
+      })}
     </SettingsGroup>
 
     <AdditionalSafetensorsEditor key={selectedTemplate.id} value={selectedTemplate.additionalSafetensors ?? []} disabled={Boolean(downloading)} animate={selectedTemplate.mode === "animate"} onChange={(additionalSafetensors) => updateTemplate({ additionalSafetensors })} />
@@ -682,6 +692,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
         })}
       </div>
     </SettingsGroup>)}
+    {modelPage === "minimax-h3" && <H3ComponentSettings settings={templateSettings} desktop={desktop} />}
     <LoraLibrary key={modelPage} modelType={modelPage} onAdd={() => setEditingLoraId(`lora-${crypto.randomUUID()}`)} onEdit={setEditingLoraId} />
     </>}
   </>;

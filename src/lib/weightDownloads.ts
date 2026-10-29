@@ -7,10 +7,12 @@ import { chooseWeightSource, ENGINE_PATH_FIELDS, generatorPathFields, isDownload
   type EnginePathId, type GeneratorTemplate, type WeightGpu, type WeightSource } from "./settings";
 
 export type { WeightGpu } from "./settings";
+import { h3ComponentForField, type H3ComponentTemplate } from "./h3Components";
 export { chooseWeightSource };
 export interface DownloadState {
   templateId: string;
   otherWeightId?: string;
+  h3ComponentId?: string;
   currentFile?: string;
   loraId?: string;
   currentLoraId?: string;
@@ -44,7 +46,7 @@ let queued: readonly DownloadState[] = [];
 export const getQueuedWeightDownloads = () => queued;
 const publishQueue = () => { queued = pending.map((job) => job.state); subscribers.forEach((listener) => listener()); };
 
-function enqueueDownload(initial: Pick<DownloadState, "templateId" | "name" | "loraId" | "otherWeightId">, run: () => Promise<void>): Promise<void> {
+function enqueueDownload(initial: Pick<DownloadState, "templateId" | "name" | "loraId" | "otherWeightId" | "h3ComponentId">, run: () => Promise<void>): Promise<void> {
   const existing = [running, ...pending].find((job) => job?.state.templateId === initial.templateId);
   if (existing) return existing.done;
   let resolve!: () => void, reject!: (reason: unknown) => void;
@@ -91,12 +93,95 @@ export function updateWeightPath(template: GeneratorTemplate, field: EnginePathI
   return { ...template, paths: { ...template.paths, [field]: value }, sources };
 }
 
+function saveH3Download(before: H3ComponentTemplate, tokenizer: boolean, url: string, path: string) {
+  const current = loadGeneratorTemplateSettings();
+  const library = current.h3Components!;
+  saveGeneratorTemplateSettings({ ...current, h3Components: { ...library, templates: library.templates.map((entry) => {
+    if (entry.id !== before.id) return entry;
+    if (tokenizer) return entry.tokenizer === before.tokenizer ? { ...entry, tokenizer: path } : entry;
+    if (!entry.sources.some((source) => source.url === url)) return entry;
+    return { ...entry, path: entry.path === before.path ? path : entry.path,
+      sources: entry.sources.map((source) => source.url === url ? { ...source, downloadedPath: path } : source) };
+  }) } });
+}
+
+async function refreshH3Components() {
+  const before = loadGeneratorTemplateSettings().h3Components!;
+  const paths = [...new Set(before.templates.flatMap((entry) => [
+    ...(entry.path && !isDownloadUrl(entry.path) ? [entry.path] : []),
+    ...entry.sources.flatMap((source) => source.downloadedPath ? [source.downloadedPath] : []),
+  ]))];
+  const urls = [...new Set(before.templates.flatMap((entry) => entry.sources.map((source) => source.url)))];
+  const [exists, found, devices] = await Promise.all([
+    paths.length ? invoke<Record<string, boolean>>("check_weight_files", { paths }) : Promise.resolve({} as Record<string, boolean>),
+    urls.length ? invoke<Record<string, string>>("find_downloaded_weights", { urls }) : Promise.resolve({} as Record<string, string>),
+    invoke<WeightGpu[]>("weight_download_hardware"),
+  ]);
+  const current = loadGeneratorTemplateSettings();
+  const library = current.h3Components!;
+  let changed = false;
+  const templates = library.templates.map((entry) => {
+    if (!before.templates.some((old) => old.id === entry.id && JSON.stringify(old) === JSON.stringify(entry))) return entry;
+    const sources = entry.sources.map((source) => ({ ...source,
+      downloadedPath: source.downloadedPath && exists?.[source.downloadedPath] !== false ? source.downloadedPath : found?.[source.url] }));
+    let path = entry.path;
+    if (!path || isDownloadUrl(path) || exists?.[path] === false) {
+      const source = chooseWeightSource(sources, devices ?? []);
+      path = source?.downloadedPath ?? source?.url ?? path;
+    }
+    const next = { ...entry, sources, path };
+    if (JSON.stringify(next) !== JSON.stringify(entry)) changed = true;
+    return next;
+  });
+  if (changed) saveGeneratorTemplateSettings({ ...current, h3Components: { ...library, templates } });
+}
+
+export function downloadH3Component(id: string): Promise<void> {
+  if (!isTauri()) return Promise.resolve();
+  const component = loadGeneratorTemplateSettings().h3Components?.templates.find((entry) => entry.id === id);
+  return enqueueDownload({ templateId: `h3:${id}`, h3ComponentId: id, name: component?.name }, async () => {
+    publish({ templateId: `h3:${id}`, h3ComponentId: id, name: component?.name, field: null,
+      downloaded: 0, total: null, completed: 0, files: 0, error: null, active: true });
+    let unlisten: (() => void) | undefined;
+    try {
+      await refreshH3Components();
+      const entry = loadGeneratorTemplateSettings().h3Components!.templates.find((item) => item.id === id);
+      if (!entry) throw new Error("This template was removed.");
+      const devices = await invoke<WeightGpu[]>("weight_download_hardware");
+      const source = chooseWeightSource(entry.sources, devices ?? []);
+      const downloads: { source: WeightSource; tokenizer: boolean }[] = [];
+      if (!entry.path || isDownloadUrl(entry.path)) {
+        if (!source) throw new Error("No download source matches this GPU and its memory.");
+        downloads.push({ source, tokenizer: false });
+      }
+      if (entry.tokenizer && isDownloadUrl(entry.tokenizer)) downloads.push({ source: { url: entry.tokenizer, gpuModel: "", minVramGb: 0 }, tokenizer: true });
+      publish({ ...state!, files: downloads.length });
+      unlisten = await listen<{ requestId: string; downloaded: number; total: number | null }>("weight-download-progress", ({ payload }) => {
+        if (payload.requestId === requestId && state?.active) publish({ ...state, downloaded: payload.downloaded, total: payload.total });
+      });
+      for (const { source, tokenizer } of downloads) {
+        if (cancelled) throw new Error("Download cancelled.");
+        requestId = crypto.randomUUID();
+        publish({ ...state!, field: tokenizer ? "tokenizer" : entry.type === "video" ? "videoVae" : entry.type === "audio" ? "audioVae" : "textEncoder", downloaded: 0, total: null });
+        const path = source.downloadedPath ?? await invoke<string>("download_weight", { requestId, url: source.url });
+        if (!path || isDownloadUrl(path)) throw new Error("The download did not return a local file.");
+        saveH3Download(entry, tokenizer, source.url, path);
+        publish({ ...state!, completed: state!.completed + 1 });
+      }
+      publish({ ...state!, active: false, field: null });
+    } catch (reason) {
+      publish({ ...state!, active: false, error: reason instanceof Error ? reason.message : String(reason) });
+    } finally { requestId = null; unlisten?.(); }
+  });
+}
+
 let refreshPending: Promise<void> | null = null;
 export function refreshDownloadedWeights(): Promise<void> {
   if (!isTauri()) return Promise.resolve();
   if (refreshPending) return refreshPending;
   refreshPending = (async () => {
     await refreshDownloadedLoras();
+    await refreshH3Components();
     const before = loadGeneratorTemplateSettings();
     const paths = [...new Set(before.templates.flatMap((template) => [
       ...generatorPathFields(template).flatMap(({ id }) => (template.sources?.[id] ?? []).flatMap((source) => source.downloadedPath ? [source.downloadedPath] : [])),
@@ -171,7 +256,7 @@ async function runTemplateDownload(templateId: string): Promise<void> {
       if (!sources.length) return [];
       const source = chooseWeightSource(sources, devices ?? []);
       if (!source) throw new Error(`No ${ENGINE_PATH_FIELDS.find((field) => field.id === id)?.label} download matches this GPU and its memory.`);
-      return [{ field: id, source, originalPath: template.paths[id] }];
+      return [{ field: id, source, originalPath: template.paths[id], component: h3ComponentForField(template, id, loadGeneratorTemplateSettings().h3Components!) }];
     });
     const loraDownloads = downloadableTemplateLoras(template.loras);
     const additionalDownloads = (template.additionalSafetensors ?? []).filter((file) => !file.downloadedPath);
@@ -179,12 +264,13 @@ async function runTemplateDownload(templateId: string): Promise<void> {
     unlisten = await listen<{ requestId: string; downloaded: number; total: number | null }>("weight-download-progress", ({ payload }) => {
       if (payload.requestId === requestId && state?.active) publish({ ...state, downloaded: payload.downloaded, total: payload.total });
     });
-    for (const { field, source, originalPath } of downloads) {
+    for (const { field, source, originalPath, component } of downloads) {
       if (cancelled) throw new Error("Download cancelled.");
       requestId = crypto.randomUUID();
       publish({ ...state!, field, downloaded: 0, total: null });
       const path = source.downloadedPath ?? await invoke<string>("download_weight", { requestId, url: source.url });
       if (!path || isDownloadUrl(path)) throw new Error("The download did not return a local file.");
+      if (component) saveH3Download(component, field === "tokenizer", source.url, path);
       const current = loadGeneratorTemplateSettings();
       const templates = current.templates.map((template) => {
         if (template.id !== templateId) return template;
@@ -298,6 +384,7 @@ async function runLoraDownload(loraId: string): Promise<void> {
 }
 
 export function retryWeightDownload(): Promise<void> {
+  if (state?.h3ComponentId) return downloadH3Component(state.h3ComponentId);
   if (state?.otherWeightId) return downloadOtherWeights(state.otherWeightId);
   if (state?.preparePath && state.loraId) return prepareLora({ id: state.loraId, name: state.name ?? "LoRA", path: state.preparePath }, state.allowDownload)
     .catch(() => undefined); // The shared status retains the error for another retry.
@@ -382,7 +469,7 @@ export async function removeTemplateWeights(templateId: string): Promise<void> {
   const template = loadGeneratorTemplateSettings().templates.find((template) => template.id === templateId);
   if (!template) return;
   const paths = [...new Set([
-    ...generatorPathFields(template).flatMap(({ id }) => (template.sources?.[id] ?? []).flatMap((source) => source.downloadedPath ? [source.downloadedPath] : [])),
+    ...generatorPathFields(template).filter(({ id }) => template.modelType !== "minimax-h3" || id === "transformer").flatMap(({ id }) => (template.sources?.[id] ?? []).flatMap((source) => source.downloadedPath ? [source.downloadedPath] : [])),
     ...(template.additionalSafetensors ?? []).flatMap((file) => file.downloadedPath ? [file.downloadedPath] : []),
   ])];
   try {
@@ -393,6 +480,7 @@ export async function removeTemplateWeights(templateId: string): Promise<void> {
       const restored = { ...template, paths: { ...template.paths }, sources: { ...template.sources } };
       restored.additionalSafetensors = template.additionalSafetensors?.map((file) => paths.includes(file.downloadedPath ?? "") ? { ...file, downloadedPath: undefined } : file);
       for (const { id } of generatorPathFields(template)) {
+        if (template.modelType === "minimax-h3" && id !== "transformer") continue;
         const sources = template.sources?.[id];
         if (!sources?.length) continue;
         restored.paths[id] = (sources.find((source) => source.downloadedPath === template.paths[id]) ?? sources[0]).url;
