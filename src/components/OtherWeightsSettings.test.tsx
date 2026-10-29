@@ -6,11 +6,28 @@ import { invoke } from "@tauri-apps/api/core";
 import { OtherWeightsSettings } from "./OtherWeightsSettings";
 import { OTHER_WEIGHT_TEMPLATES, localOtherWeightPaths, otherWeightPaths, refreshOtherWeights, upscaleConfig, latentUpscalerPath } from "../lib/upscalers";
 import { chooseEnginePath } from "../lib/runtime";
+import { TAEH3_URL } from "../lib/upscalers";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 vi.mock("../lib/persistence", () => ({ isTauri: () => true }));
 vi.mock("../lib/runtime", () => ({ chooseEnginePath: vi.fn() }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.clearAllMocks(); });
+
+it("downloads the pinned TAEH3 checkpoint as a separate optional weight", async () => {
+  vi.mocked(invoke).mockImplementation(async (name) => {
+    if (name === "find_downloaded_weights") return {} as never;
+    if (name === "download_weight") return "C:/weights/taeh3.safetensors" as never;
+    return undefined as never;
+  });
+  render(<OtherWeightsSettings desktop />);
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith("find_downloaded_weights", expect.anything()));
+  const card = screen.getByText("TAEH3 generation previews").closest(".ui-settings-card") as HTMLElement;
+  fireEvent.click(within(card).getByRole("button", { name: "Download" }));
+  await waitFor(() => expect(within(card).getByRole("button", { name: "Downloaded" })).toBeDisabled());
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: TAEH3_URL }));
+  expect(otherWeightPaths()[TAEH3_URL]).toBe("C:/weights/taeh3.safetensors");
+  expect(within(card).getByText("Preview VAE available")).toBeInTheDocument();
+});
 
 it("downloads the SeedVR2 model and VAE as one template and remembers both paths", async () => {
   vi.mocked(invoke).mockImplementation(async (name, args) => {
@@ -52,6 +69,7 @@ it.each(OTHER_WEIGHT_TEMPLATES.flatMap((template) => [false, true].map((remote) 
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   await refreshOtherWeights();
   if (template.id === "latent-upscale") expect(latentUpscalerPath()).toBe("D:/custom/model.safetensors");
+  else if (template.id === "taeh3") expect(otherWeightPaths()[template.files[0].url]).toBe("D:/custom/model.safetensors");
   else expect(upscaleConfig(template.id)).toEqual({ method: template.id, modelPath: "D:/custom/model.safetensors",
     ...(template.id === "seedvr2" ? { vaePath: "D:/custom/vae.safetensors" } : {}) });
   fireEvent.click(screen.getByRole("button", { name: `Edit ${template.name} weights` }));

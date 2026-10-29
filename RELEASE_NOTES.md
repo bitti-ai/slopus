@@ -4,6 +4,8 @@ Changes since 0.3.2.
 
 ## What's new
 
+- **TAEH3 preview weights.** Added the MiniMax H3 tiny VAE under Other weights and a saved generation-preview preference in Settings.
+
 - **Pika H3 Flex.** Added FL2VA and Ref2VA LoRA downloads with Pika's fixed six-step re-noising recipe and video/audio sigma shifts of 12/3.
 
 - **MiniMax H3 dependencies.** Added named Video and Audio VAE templates, including Sol H3 VAE, and a shared default Text Encoder. Generators link to VAEs and automatically download missing dependencies; existing custom paths and downloads are preserved.

@@ -3,6 +3,7 @@ import { DEFAULT_VIDEO_SIGMA_SHIFT, DEFAULT_AUDIO_SIGMA_SHIFT, MIN_SIGMA_SHIFT, 
 import { AdditionalSafetensorsEditor } from "./AdditionalSafetensorsEditor";
 import { GeneratorSharing } from "./GeneratorSharing";
 import { OtherWeightsSettings } from "./OtherWeightsSettings";
+import { GenerationPreviewSetting } from "./GenerationPreviewSetting";
 import { H3ComponentSettings } from "./H3ComponentSettings";
 import { AgentDock } from "./workspace/AgentDock";
 import { useAgentPane } from "../lib/useAgentPane";
@@ -656,6 +657,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     {downloadStatus}
     {modelPage === null ? <>
       <ReferenceIconSetting templates={templateSettings} />
+      <GenerationPreviewSetting />
       <div className="settings-card-list" role="list" aria-label="Generator models">
         {[...new Set([...GENERATOR_MODELS.map(({ value }) => value), ...templateSettings.templates.map(({ modelType }) => modelType)]), "other"].map((model) =>
           <OpenableCard key={model} icon={model === "other" ? <ModelFile20 /> : generatorModel(model).musicGeneration ? <Audio22 /> : !generatorModel(model).videoGeneration ? <Image20 /> : <Video20 />} header={modelPageLabel(model)}

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { middleEllipsis, SettingsView } from "./SettingsView";
 import { createGeneratorTemplate, mossImageTemplate, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings } from "../lib/settings";
 import { loadReferenceIconGeneratorId } from "../lib/referenceIconSettings";
+import { loadGenerationPreviewsEnabled } from "../lib/generationPreviewSettings";
 import { loadLoras, saveLoras } from "../lib/loras";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -46,6 +47,18 @@ const enterPath = (label: string, value: string) => {
 };
 
 describe("the settings page", () => {
+  it("persists the generation previews switch across settings visits", () => {
+    const view = open(null);
+    expect(toggle("Enable generation previews").getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle("Enable generation previews"));
+    expect(loadGenerationPreviewsEnabled()).toBe(false);
+    view.unmount();
+    open(null);
+    expect(toggle("Enable generation previews").getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle("Enable generation previews"));
+    expect(loadGenerationPreviewsEnabled()).toBe(true);
+  });
+
   it("opens a focused page with a navigation pane and a Back action", () => {
     const onClose = vi.fn();
     render(<SettingsView onClose={onClose} />);

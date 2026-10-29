@@ -9,6 +9,7 @@ export const UPSCALERS = [
   { value: "seedvr2", label: "SeedVR2" },
 ] as const;
 export const LATENT_UPSCALER_URL = "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors";
+export const TAEH3_URL = "https://raw.githubusercontent.com/madebyollin/taehv/62f7591f59dfbb4c3c02b7a621d180a9eeaba26c/safetensors/taeh3.safetensors";
 export const OTHER_WEIGHT_TEMPLATES = [
   { id: "realesrgan", name: "Real-ESRGAN", files: [
     { id: "model", name: "RealESRGAN x4plus", url: "https://huggingface.co/Comfy-Org/Real-ESRGAN_repackaged/resolve/main/RealESRGAN_x4plus.safetensors" },
@@ -19,6 +20,9 @@ export const OTHER_WEIGHT_TEMPLATES = [
   ] },
   { id: "latent-upscale", name: "Latent upscale", files: [
     { id: "model", name: "MiniMax H3 latent upscaler", url: LATENT_UPSCALER_URL },
+  ] },
+  { id: "taeh3", name: "TAEH3 generation previews", files: [
+    { id: "model", name: "TAEH3 preview VAE", url: TAEH3_URL },
   ] },
 ] as const;
 const KEY = "slopus.other-weights.v1";

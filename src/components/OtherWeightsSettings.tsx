@@ -26,7 +26,7 @@ export function OtherWeightsSettings({ desktop }: { desktop: boolean }) {
       const waiting = queued.find((item) => item.otherWeightId === template.id);
       return <OpenableCard key={template.id} icon={<Image20 />} header={template.name}
         openLabel={`Edit ${template.name} weights`} onOpen={() => setEditing(template.id)}
-        description={waiting ? "Queued for download" : active ? `Downloading ${download.currentFile ?? template.name}` : ready ? template.id === "latent-upscale" ? "Ready for scene generation" : "Ready for image and video export" : template.files.map((file) => file.name).join(" · ")}
+        description={waiting ? "Queued for download" : active ? `Downloading ${download.currentFile ?? template.name}` : ready ? template.id === "taeh3" ? "Preview VAE available" : template.id === "latent-upscale" ? "Ready for scene generation" : "Ready for image and video export" : template.files.map((file) => file.name).join(" · ")}
         actions={<>
         {waiting ? <button type="button" onClick={() => cancelQueuedWeightDownload(waiting.templateId)}>Cancel</button>
           : active ? <><ProgressBar value={weightDownloadProgress(download)} aria-label={`Downloading ${template.name} weights`} />
@@ -82,6 +82,7 @@ function OtherWeightEditor({ template, desktop, busy, onDone }: {
         <button className="secondary-button" type="button" disabled={!desktop} aria-label={`Browse for ${file.name}`} onClick={() => void browse(file)}>Browse…</button>
       </span></label>)}
       {template.id === "latent-upscale" && <p>Upscale saved scene Takes from the Generate menu. Workers receive local files or download the standard weights.</p>}
+      {template.id === "taeh3" && <p>A lightweight MiniMax H3 VAE for generation previews. Final videos use the Video VAE selected in the generator.</p>}
       {template.id === "seedvr2" && <p>SeedVR2 runs locally or on the selected worker. Workers receive local files and download any weights without a local path.</p>}
       {error && <InfoBar severity="error" message={error} />}
     </fieldset>
