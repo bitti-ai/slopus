@@ -382,6 +382,7 @@ describe("the settings screen", () => {
     editDefaultGenerator();
     expect(screen.queryByRole("button", { name: "More options for Tokenizer" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Advanced Options" }));
     fireEvent.click(screen.getByRole("button", { name: "Edit Qwen3 VL 32B MiniMax H3 text encoder" }));
     expect(screen.getByLabelText("Text encoder tokenizer")).toBeTruthy();
   });

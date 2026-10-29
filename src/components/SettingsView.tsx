@@ -324,11 +324,13 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
   const queuedDownloads = useSyncExternalStore(subscribeWeightDownloads, getQueuedWeightDownloads);
   const downloadPercent = downloadState ? weightDownloadProgress(downloadState) : 0;
   const [modelPage, setModelPage] = useState<string | null>(null);
+  const [h3AdvancedPage, setH3AdvancedPage] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editingLoraId, setEditingLoraId] = useState<string | null>(null);
   useEffect(() => {
     if (!navigation) return;
     setTab("engine");
+    setH3AdvancedPage(false);
     const template = loadGeneratorTemplateSettings().templates.find((template) => template.id === navigation.templateId);
     const lora = loadLoras().find((entry) => entry.id === navigation.loraId);
     setModelPage(navigation.otherWeightId ? "other" : template?.modelType ?? (lora ? lora.modelType ?? "minimax-h3" : null));
@@ -408,8 +410,9 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
   /* A new page opens at its top; a sub-page takes focus on its title (or on
      the name of a generator that was just created), and going back returns
      focus to the card that opened it. */
-  useEffect(() => { if (body.current) body.current.scrollTop = 0; }, [tab, editingTemplateId, modelPage]);
+  useEffect(() => { if (body.current) body.current.scrollTop = 0; }, [tab, editingTemplateId, modelPage, h3AdvancedPage]);
   useEffect(() => {
+    if (h3AdvancedPage) { subpageHeading.current?.focus(); return; }
     if (editingTemplateId) {
       if (focusName.current) { focusName.current = false; nameField.current?.focus(); nameField.current?.select(); }
       else subpageHeading.current?.focus();
@@ -420,11 +423,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     const opener = ref && [...(body.current?.querySelectorAll<HTMLElement>("[data-open-ref]") ?? [])].find((element) => element.dataset.openRef === ref);
     if (opener) opener.focus();
     else if (modelPage) subpageHeading.current?.focus();
-  }, [editingTemplateId, modelPage]);
+  }, [editingTemplateId, modelPage, h3AdvancedPage]);
 
-  const openTemplate = (id: string) => { returnFocus.current = `template:${id}`; setModelPage(templateSettings.templates.find((template) => template.id === id)!.modelType); setEditingTemplateId(id); };
+  const openTemplate = (id: string) => { returnFocus.current = `template:${id}`; setH3AdvancedPage(false); setModelPage(templateSettings.templates.find((template) => template.id === id)!.modelType); setEditingTemplateId(id); };
   const leaveTemplate = () => { setModelPage(editingTemplate?.modelType ?? modelPage); setEditingTemplateId(null); };
-  const leaveModel = () => { returnFocus.current = `model:${editingTemplate?.modelType ?? modelPage}`; setEditingTemplateId(null); setModelPage(null); };
+  const leaveModel = () => { returnFocus.current = `model:${editingTemplate?.modelType ?? modelPage}`; setH3AdvancedPage(false); setEditingTemplateId(null); setModelPage(null); };
+  const leaveAdvanced = () => { returnFocus.current = "h3-advanced"; setH3AdvancedPage(false); };
 
   const browse = async (field: EnginePathField) => {
     setError(null);
@@ -503,11 +507,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
   const missing = generatorPathFields(selectedTemplate).filter((field) => field.required && pathState(field, settings[field.id], status) !== "found");
   const selectTab = (id: TabId) => {
     setTab(id);
+    setH3AdvancedPage(false);
     setEditingTemplateId(null);
     setEditingLoraId(null);
     setModelPage(null);
   };
-  const back = () => { if (editingTemplateId) leaveTemplate(); else if (tab === "engine" && modelPage) leaveModel(); else onClose(); };
+  const back = () => { if (h3AdvancedPage) leaveAdvanced(); else if (editingTemplateId) leaveTemplate(); else if (tab === "engine" && modelPage) leaveModel(); else onClose(); };
 
   const downloadStatus = downloadState && <DownloadStatus state={downloadState} onError={setError}
     templateName={templateSettings.templates.find((template) => template.id === downloadState.templateId)?.name} />;
@@ -663,7 +668,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
           <OpenableCard key={model} icon={model === "other" ? <ModelFile20 /> : generatorModel(model).musicGeneration ? <Audio22 /> : !generatorModel(model).videoGeneration ? <Image20 /> : <Video20 />} header={modelPageLabel(model)}
             openLabel={modelPageLabel(model)} openRef={`model:${model}`} description={model === "other" ? "Other weights" : "Generators and LoRAs"} onOpen={() => setModelPage(model)} />)}
       </div>
-    </> : modelPage === "other" ? <OtherWeightsSettings desktop={desktop} /> : <>
+    </> : modelPage === "other" ? <OtherWeightsSettings desktop={desktop} /> : h3AdvancedPage ? <H3ComponentSettings settings={templateSettings} desktop={desktop} /> : <>
     {generatorSections.filter((section) => section.id === "generators" || section.templates.length > 0).map((section) => <SettingsGroup key={section.id} heading={section.title}>
       {section.id === "generators" && <GeneratorSharing templates={[]}>{({ importButton }) => <SettingsCard icon={<Add20 />} header="Add a generator" description="Choose the generator used by default, or open one to edit its model setup">
         {importButton}
@@ -694,8 +699,10 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
         })}
       </div>
     </SettingsGroup>)}
-    {modelPage === "minimax-h3" && <H3ComponentSettings settings={templateSettings} desktop={desktop} />}
     <LoraLibrary key={modelPage} modelType={modelPage} onAdd={() => setEditingLoraId(`lora-${crypto.randomUUID()}`)} onEdit={setEditingLoraId} />
+    {modelPage === "minimax-h3" && <div className="settings-page__actions">
+      <button type="button" className="secondary-button" data-open-ref="h3-advanced" onClick={() => setH3AdvancedPage(true)}><Options20 aria-hidden="true" /> Advanced Options</button>
+    </div>}
     </>}
   </>;
 
@@ -762,7 +769,11 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
                   <button type="button" className="settings-breadcrumb__link" onClick={leaveTemplate}>{modelPageLabel(editingTemplate.modelType)}</button>
                   <ChevronRight20 aria-hidden="true" className="settings-breadcrumb__separator" />
                 </>}
-                <h1 id="settings-subpage-heading" ref={subpageHeading} tabIndex={-1} aria-current="page">{editingTemplate ? editingTemplate.name || "Untitled generator" : modelPageLabel(modelPage!)}</h1>
+                {h3AdvancedPage && <>
+                  <button type="button" className="settings-breadcrumb__link" onClick={leaveAdvanced}>MiniMax H3</button>
+                  <ChevronRight20 aria-hidden="true" className="settings-breadcrumb__separator" />
+                </>}
+                <h1 id="settings-subpage-heading" ref={subpageHeading} tabIndex={-1} aria-current="page">{h3AdvancedPage ? "Advanced Options" : editingTemplate ? editingTemplate.name || "Untitled generator" : modelPageLabel(modelPage!)}</h1>
               </nav>
             : <h1 id="settings-page-heading" className="settings-page__title">{current.label}</h1>}
 

@@ -8,20 +8,37 @@ import { loadGeneratorTemplateSettings, saveGeneratorTemplateSettings } from "..
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 beforeEach(() => localStorage.clear());
 afterEach(cleanup);
-const open = () => {
+const open = (advanced = true) => {
   render(<SettingsView onClose={() => undefined} />);
   fireEvent.click(screen.getByRole("button", { name: "MiniMax H3" }));
+  if (advanced) fireEvent.click(screen.getByRole("button", { name: "Advanced Options" }));
 };
 const pick = (label: string, name: string) => {
   fireEvent.click(screen.getByRole("combobox", { name: label }));
   fireEvent.click(screen.getByRole("option", { name }));
 };
 
-it("places VAEs and Text Encoders above LoRAs and links only matching VAE types", async () => {
-  open();
+it("opens VAEs and Text Encoders from Advanced Options after LoRAs and preserves generator links", async () => {
+  open(false);
+  expect(screen.queryByRole("heading", { name: "VAEs" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Text Encoders" })).not.toBeInTheDocument();
+  const advanced = screen.getByRole("button", { name: "Advanced Options" });
+  for (const heading of screen.getAllByRole("heading").filter((heading) => /LoRAs/i.test(heading.textContent ?? ""))) {
+    expect(heading.compareDocumentPosition(advanced) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  }
+  fireEvent.click(advanced);
+  expect(screen.getByRole("heading", { level: 1, name: "Advanced Options" })).toHaveFocus();
   const headings = screen.getAllByRole("heading").map((heading) => heading.textContent);
   expect(headings.indexOf("VAEs")).toBeLessThan(headings.indexOf("Text Encoders"));
-  expect(headings.indexOf("Text Encoders")).toBeLessThan(headings.findIndex((heading) => /LoRAs/i.test(heading ?? "")));
+  expect(headings.some((heading) => /LoRAs/i.test(heading ?? ""))).toBe(false);
+  expect(screen.queryByRole("button", { name: "Edit First/Last Frame generator" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
+  expect(screen.getByRole("button", { name: "Advanced Options" })).toHaveFocus();
+  fireEvent.click(screen.getByRole("button", { name: "Advanced Options" }));
+  fireEvent.keyDown(screen.getByRole("main", { name: "Settings" }), { key: "Escape" });
+  expect(screen.getByRole("button", { name: "Advanced Options" })).toHaveFocus();
+  fireEvent.click(screen.getByRole("button", { name: "Advanced Options" }));
+  fireEvent.click(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("button", { name: "MiniMax H3" }));
   fireEvent.click(screen.getByRole("button", { name: "Edit First/Last Frame generator" }));
   expect(screen.queryByRole("button", { name: "Browse for Text encoder weights" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Browse for Video VAE weights" })).not.toBeInTheDocument();
