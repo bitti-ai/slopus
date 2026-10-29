@@ -312,6 +312,32 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn single_shot_keystone_resolves_one_pass_and_requires_more_than_four_video_updates() {
+        use super::super::types::SingleShotRequest;
+        let source = archive(124).into_temp_path();
+        let context = archive(56).into_temp_path();
+        let source_bytes = std::fs::read(&source).unwrap();
+        let context_bytes = std::fs::read(&context).unwrap();
+        let mut request = GenerationRequest { prompt: "Walk forward".into(), frames: 48, steps: 9, seed: 1,
+            canvas_width: 64, canvas_height: 32,
+            single_shot: Some(SingleShotRequest { ending_prompt: String::new(), ending_path: None }),
+            continuation_path: Some(source.to_path_buf()), continuation_overlap_frames: Some(22),
+            continuation_from: Some("end".into()), continuation_lock_overlap: true,
+            keystone_path: Some(context.to_path_buf()), ..Default::default() };
+        let settings = BTreeMap::new();
+        let plan = resolve_plan(&request, &settings, &ReferenceVideos::default()).unwrap();
+        assert_eq!(plan.aligned_frames, 175);
+        assert_eq!(plan.model_evaluations, 8);
+        assert_eq!(std::fs::read(&source).unwrap(), source_bytes);
+        assert_eq!(std::fs::read(&context).unwrap(), context_bytes);
+        request.steps = 4;
+        assert!(resolve_plan(&request, &settings, &ReferenceVideos::default()).is_err());
+        request.steps = 9;
+        request.continuation_path = None;
+        assert!(resolve_plan(&request, &settings, &ReferenceVideos::default()).unwrap_err().contains("Previous video"));
+    }
+
+    #[test]
     fn single_shot_anchor_plan_matches_preview_with_and_without_a_starting_source() {
         use super::super::{ffi::{Api, RequestHandle}, h3::configure_request, config::Configuration,
             platform::ComputePlatform, planning::{RequestPurpose, validate_generation_controls}, types::SingleShotRequest};

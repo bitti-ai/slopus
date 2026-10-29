@@ -37,6 +37,28 @@ fn a_rendered_scene_lands_in_the_project_under_its_own_id() {
 }
 
 #[test]
+fn context_latents_are_resolved_inside_the_project_and_not_accepted_as_host_paths() {
+    let folder = project_folder();
+    let root = folder.path().to_string_lossy();
+    let destination = generated_latent_destination(&root, "context").unwrap();
+    fs::write(&destination, b"archive").unwrap();
+    let mut request: slopfab::GenerationRequest = serde_json::from_value(serde_json::json!({
+        "jobId": "next", "prompt": "Continue", "frames": 119, "steps": 9, "seed": 1,
+        "canvasWidth": 736, "canvasHeight": 416,
+        "keystoneRelativePath": "latents/context.safetensors", "keystonePath": "C:/outside.safetensors"
+    })).unwrap();
+    assert!(request.keystone_path.is_none());
+    assert!(prepare_continuation_path(&mut request, None).is_err());
+    prepare_continuation_path(&mut request, Some(&root)).unwrap();
+    assert_eq!(request.keystone_path.as_ref(), Some(&destination));
+    for invalid in ["../outside.safetensors", "C:/outside.safetensors", "latents/missing.safetensors", "latents"] {
+        request.keystone_relative_path = Some(invalid.into());
+        assert!(prepare_continuation_path(&mut request, Some(&root)).is_err());
+        assert!(request.keystone_path.is_none());
+    }
+}
+
+#[test]
 fn latent_archives_are_unique_and_confined_to_the_project() {
     let folder = project_folder();
     let root = folder.path().to_string_lossy();

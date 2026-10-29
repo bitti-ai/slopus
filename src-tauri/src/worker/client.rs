@@ -279,7 +279,7 @@ impl Workers {
         if stop.load(Ordering::Acquire) { return Err("Export cancelled.".into()); }
         if !uploads.is_empty() {
             let job = RemoteJob { request: GenerationRequest { job_id: id.into(), ..Default::default() },
-                settings: BTreeMap::new(), files: uploads, continuation: None, image_edit_source: None, bridge_left: None, bridge_right: None };
+                settings: BTreeMap::new(), files: uploads, continuation: None, keystone: None, image_edit_source: None, bridge_left: None, bridge_right: None };
             let cancel = Arc::new(AtomicBool::new(false));
             let finished = AtomicBool::new(false);
             std::thread::scope(|scope| {
@@ -968,6 +968,8 @@ pub(crate) fn build_job(request: &GenerationRequest, settings: &BTreeMap<String,
     })?;
     let continuation = request.continuation_path.take()
         .map(|path| add(PathKind::Input, &path.to_string_lossy(), &mut files)).transpose()?;
+    let keystone = request.keystone_path.take()
+        .map(|path| add(PathKind::Input, &path.to_string_lossy(), &mut files)).transpose()?;
     let image_edit_source = request.image_edit_path.take()
         .map(|path| add(PathKind::Input, &path.to_string_lossy(), &mut files)).transpose()?;
     request.save_latents_path = None;
@@ -976,7 +978,7 @@ pub(crate) fn build_job(request: &GenerationRequest, settings: &BTreeMap<String,
         .map(|path| add(PathKind::Input, &path.to_string_lossy(), &mut files)).transpose()?;
     let bridge_right = request.bridge_right_path.take()
         .map(|path| add(PathKind::Input, &path.to_string_lossy(), &mut files)).transpose()?;
-    Ok((RemoteJob { request, settings, files, continuation, image_edit_source, bridge_left, bridge_right }, sources))
+    Ok((RemoteJob { request, settings, files, continuation, keystone, image_edit_source, bridge_left, bridge_right }, sources))
 }
 
 #[cfg(test)]
@@ -1146,6 +1148,7 @@ mod tests {
             job_id: "work-1".into(),
             reference_paths: vec![image.to_string_lossy().into_owned(), image.to_string_lossy().into_owned()],
             continuation_path: Some(image.clone()),
+            keystone_path: Some(image.clone()),
             continuation_from: Some("start".into()),
             continuation_overlap_frames: Some(39),
             continuation_source_frames: Some(85),
@@ -1164,7 +1167,10 @@ mod tests {
         assert_eq!(entries.iter().map(|entry| entry.path.as_str()).collect::<Vec<_>>(), vec!["nested/merges.txt", "vocab.json"]);
         assert_eq!(job.request.reference_paths, vec![file_token(2), file_token(2)]);
         assert_eq!(job.continuation, Some(2));
+        assert_eq!(job.keystone, Some(2));
         let wire = serde_json::to_value(&job).unwrap();
+        assert!(wire["request"].get("keystonePath").is_none());
+        assert_eq!(wire["keystone"], 2);
         assert_eq!(wire["request"]["continuationFrom"], "start");
         assert_eq!(wire["request"]["continuationOverlapFrames"], 39);
         assert_eq!(wire["request"]["continuationSourceFrames"], 85);

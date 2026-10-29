@@ -132,6 +132,26 @@ fn single_shot_item() -> (QueueItem, tempfile::TempPath) {
 }
 
 #[test]
+fn single_shot_with_context_runs_one_pass_without_an_ending_anchor() {
+    let (mut item, _source) = single_shot_item();
+    let context = super::super::continuation::tests::archive(56).into_temp_path();
+    item.request.keystone_path = Some(context.to_path_buf());
+    item.request.single_shot.as_mut().unwrap().ending_prompt.clear();
+    let mut calls = 0;
+    let (metadata, _) = run_single_shot(&item, |stage| {
+        calls += 1;
+        assert_eq!(stage.request.keystone_path, item.request.keystone_path);
+        assert_eq!(stage.request.continuation_path, item.request.continuation_path);
+        assert_eq!(stage.request.save_latents_path, item.request.save_latents_path);
+        assert_eq!(stage.request.frames, 48);
+        assert!(stage.request.single_shot.as_ref().unwrap().ending_path.is_none());
+        Ok(result(1))
+    }).unwrap();
+    assert_eq!(calls, 1);
+    assert_eq!(metadata.seconds_total, 1.0);
+}
+
+#[test]
 fn single_shot_generates_ending_first_then_attaches_it_with_the_starting_source() {
     for (continued, noise) in [(false, None), (true, None), (true, Some(0.35)), (true, Some(1.0))] {
         let (mut item, source) = single_shot_item();

@@ -28,7 +28,7 @@ pub(super) fn run_generation(
 ) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
     if item.request.latent_upscale_source.is_some() { return run_latent_upscale(item); }
     if item.request.single_shot.is_some() {
-        ffi::Api::load(&item.configuration.dll_path)?.require_end_anchor()?;
+        if item.request.keystone_path.is_none() { ffi::Api::load(&item.configuration.dll_path)?.require_end_anchor()?; }
         return run_single_shot(item, run_single_generation);
     }
     run_edit_sequence(item, run_single_generation)
@@ -40,6 +40,9 @@ fn run_single_shot(
 ) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
     let single = item.request.single_shot.as_ref().ok_or("Missing Single Shot settings.")?;
     if item.cancel.load(Ordering::Acquire) { return Err("Single Shot generation cancelled.".into()); }
+    // Keystone supplies both original-clip anchors in a single continuation pass.
+    // A separately generated ending is incompatible with those anchors.
+    if item.request.keystone_path.is_some() { return generate(item); }
     let temporary = tempfile::tempdir().map_err(|error| format!("Could not prepare ending latents: {error}"))?;
     let ending_path = temporary.path().join("ending.safetensors");
     // Condition the ending on the same source as the full shot. An independent

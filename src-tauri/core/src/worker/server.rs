@@ -646,6 +646,7 @@ impl Worker {
         }
         let file = |index: Option<usize>| index.map(|index| paths.get(index).cloned().ok_or("A worker job names a file it did not send.")).transpose();
         request.continuation_path = file(job.continuation)?;
+        request.keystone_path = file(job.keystone)?;
         request.bridge_left_path = file(job.bridge_left)?;
         request.bridge_right_path = file(job.bridge_right)?;
         if request.latent_bridge.is_some() && (request.bridge_left_path.is_none() || request.bridge_right_path.is_none()) {

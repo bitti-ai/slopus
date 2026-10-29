@@ -103,6 +103,10 @@ pub struct GenerationRequest {
     pub refmods: Vec<RefmodInput>,
     #[serde(default)]
     pub continuation_relative_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keystone_relative_path: Option<String>,
+    #[serde(skip)]
+    pub keystone_path: Option<PathBuf>,
     #[serde(default)]
     pub continuation_overlap_frames: Option<i32>,
     #[serde(default)]

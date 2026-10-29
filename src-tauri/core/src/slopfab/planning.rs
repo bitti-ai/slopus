@@ -51,7 +51,7 @@ pub fn resolve_plan(
         canvas_height: if request.latent_upscale { request.canvas_height } else { plan.canvas_height },
         aligned_frames: frames,
         duration_seconds: if request.music.is_some() { plan.duration_seconds } else { plan.duration_seconds * frames as f64 / plan.aligned_frames as f64 },
-        model_evaluations: plan.num_model_evaluations * if request.single_shot.is_some() { 2 } else { request.image_edit.as_ref().map_or(1, |edit| edit.edits.len() as i32) },
+        model_evaluations: plan.num_model_evaluations * if request.single_shot.is_some() && request.keystone_path.is_none() { 2 } else { request.image_edit.as_ref().map_or(1, |edit| edit.edits.len() as i32) },
         sequence_rows_without_text: plan.sequence_rows_without_text,
         latent_frames: plan.latent_frames,
         latent_width: plan.latent_width,
@@ -72,12 +72,18 @@ pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Resul
         }
         return Ok(());
     }
+    if request.keystone_path.is_some() || request.keystone_relative_path.is_some() {
+        if request.keystone_path.is_none() || request.continuation_path.is_none() || request.single_shot.is_none()
+            || request.single_shot.as_ref().is_some_and(|single| single.ending_path.is_some()) {
+            return Err("Context video requires Single Shot, saved context latents and a Previous video, without a separate ending anchor.".into());
+        }
+    }
     if let Some(single) = &request.single_shot {
         if request.music.is_some() || request.still_image || request.image_edit.is_some() || request.video_transition.is_some() || request.latent_bridge.is_some()
-            || request.frames < 48 || single.ending_prompt.trim().is_empty() || single.ending_prompt.contains('\0') || single.ending_prompt.len() > 1024 * 1024
+            || request.frames < 48 || (request.keystone_path.is_none() && single.ending_prompt.trim().is_empty()) || single.ending_prompt.contains('\0') || single.ending_prompt.len() > 1024 * 1024
             || request.continuation_from.as_deref().is_some_and(|from| from != "end")
             || request.continuation_overlap_frames.is_some_and(|frames| frames != 22) {
-            return Err("Single Shot requires a video of at least 2 seconds, an ending prompt and optional ending latents from a starting scene.".into());
+            return Err("Single Shot requires a video of at least 2 seconds, an ending prompt or Context video, and optional ending latents from a Previous video.".into());
         }
     }
     if let Some(music) = &request.music { return music.validate(); }

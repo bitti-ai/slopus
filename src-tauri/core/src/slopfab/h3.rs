@@ -19,7 +19,7 @@ pub(super) fn configure_request(
 ) -> Result<(), String> {
     if request.music.is_some() { return super::music::configure(api, handle, request, configuration, platform); }
     configuration.validate_inputs(request)?;
-    if request.single_shot.is_some() { api.require_end_anchor()?; }
+    if request.single_shot.is_some() && request.keystone_path.is_none() { api.require_end_anchor()?; }
     let source_noise = super::continuation::source_noise(request);
     if source_noise.is_some() { api.require_continuation_source_init()?; }
     if crate::models::generator_features(&configuration.model_type).cuda_only {
@@ -162,6 +162,9 @@ pub(super) fn configure_request(
             request.continuation_overlap_frames.unwrap_or(crate::models::H3_CAPABILITIES.continuation_overlap),
         )?;
         api.set_continuation_lock_overlap(handle, lock_overlap)?;
+    }
+    if let Some(path) = &request.keystone_path {
+        api.set_keystone_file(handle, path)?;
     }
     if let Some(path) = request.single_shot.as_ref().and_then(|single| single.ending_path.as_ref()) {
         api.set_end_anchor_file(handle, path)?;

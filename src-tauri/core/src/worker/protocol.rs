@@ -26,7 +26,8 @@ pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 // v19 carries Single Shot ending-first generation; older workers would ignore it.
 // v20 carries source-initialized continuation; older workers would ignore it.
 // v21 keeps Single Shot's middle fresh; v20 workers default to a repeated source prior.
-pub const PROTOCOL_VERSION: u32 = 22;
+// v23 carries Single Shot's persistent context archive; older workers ignore Keystone.
+pub const PROTOCOL_VERSION: u32 = 23;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,6 +105,8 @@ pub struct RemoteJob {
     pub settings: BTreeMap<String, ProviderSetting>,
     pub files: Vec<FileRef>,
     pub continuation: Option<usize>,
+    #[serde(default)]
+    pub keystone: Option<usize>,
     pub bridge_left: Option<usize>,
     pub bridge_right: Option<usize>,
     pub image_edit_source: Option<usize>,
@@ -379,7 +382,7 @@ mod tests {
         let single = restored.single_shot.unwrap();
         assert_eq!(single.ending_prompt, "The subject waves goodbye");
         assert!(single.ending_path.is_none());
-        assert_eq!(PROTOCOL_VERSION, 22);
+        assert_eq!(PROTOCOL_VERSION, 23);
     }
 
     #[test]

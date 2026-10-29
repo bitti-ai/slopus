@@ -97,6 +97,8 @@ pub(crate) struct GenerationJob {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) continuation_scene_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) context_scene_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) continuation_overlap_frames: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) continuation_from: Option<String>,
@@ -178,6 +180,7 @@ impl GenerationJob {
             id: id.to_string(),
             scene_type: None,
             ending_prompt: None,
+            context_scene_id: None,
             backdrop_color: None,
             bridge_left_margin: None,
             bridge_right_margin: None,

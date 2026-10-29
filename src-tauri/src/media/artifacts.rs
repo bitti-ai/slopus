@@ -57,6 +57,7 @@ pub(crate) fn prepare_continuation_path(
     folder_path: Option<&str>,
 ) -> Result<(), String> {
     request.continuation_path = None;
+    request.keystone_path = None;
     request.bridge_left_path = None;
     request.bridge_right_path = None;
     if let Some(source) = &mut request.latent_upscale_source {
@@ -74,6 +75,12 @@ pub(crate) fn prepare_continuation_path(
         };
         request.bridge_left_path = Some(resolve(&bridge.left_relative_path)?);
         request.bridge_right_path = Some(resolve(&bridge.right_relative_path)?);
+    }
+    if let Some(relative) = &request.keystone_relative_path {
+        let root = ProjectRoot::open(folder_path.ok_or("A project folder is required for Context video.")?)?;
+        let path = root.existing(relative)?;
+        if !path.is_file() { return Err("Context video latents must be a file inside this project.".into()); }
+        request.keystone_path = Some(path);
     }
     if let Some(relative) = &request.continuation_relative_path {
         let root = ProjectRoot::open(
