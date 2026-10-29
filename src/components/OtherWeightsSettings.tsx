@@ -82,7 +82,7 @@ function OtherWeightEditor({ template, desktop, busy, onDone }: {
         <button className="secondary-button" type="button" disabled={!desktop} aria-label={`Browse for ${file.name}`} onClick={() => void browse(file)}>Browse…</button>
       </span></label>)}
       {template.id === "latent-upscale" && <p>Upscale saved scene Takes from the Generate menu. Workers receive local files or download the standard weights.</p>}
-      {template.id === "taeh3" && <p>A lightweight MiniMax H3 VAE for generation previews. Final videos use the Video VAE selected in the generator.</p>}
+      {template.id === "taeh3" && <p>A lightweight MiniMax H3 VAE for playable previews during generation. Enable Generation previews in Settings. Final videos use the Video VAE selected in the generator.</p>}
       {template.id === "seedvr2" && <p>SeedVR2 runs locally or on the selected worker. Workers receive local files and download any weights without a local path.</p>}
       {error && <InfoBar severity="error" message={error} />}
     </fieldset>

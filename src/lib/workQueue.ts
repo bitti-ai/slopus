@@ -18,6 +18,8 @@ import { projectItemPath, referenceDefinition, referenceImages, referenceRefmodI
 import { generationSigmaShiftsWithLoras, engineProviderSetting, generatorModel, templateSupportsEditing, templateSupportsOutpainting, templateSupportsImages, templateSupportsVideo, defaultGeneratorTemplate, loadGeneratorTemplateSettings, type GeneratorTemplate } from "./settings";
 import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
+import { validGenerationPreview, type GenerationPreview } from "./generationPreview";
+import { loadGenerationPreviewsEnabled, subscribeGenerationPreviews } from "./generationPreviewSettings";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
 import { isTauri, saveProject } from "./persistence";
 import { continuationBlocker, generationAssetId, generationLatentPath, GENERATION_FRAME_RATE, sceneSiblings, sceneOutputFrames, sceneGenerationSnapshot, type SceneInput, type GenerationJob, type ProjectRecord, type ProjectConfig } from "./project";
@@ -65,6 +67,7 @@ export interface WorkItem {
   completionAt: number | null;
   cancelling: boolean;
   needsSave: boolean;
+  preview?: GenerationPreview;
   settings: { frames: number; steps: number; audioSteps?: number; videoSigmaShift?: number; audioSigmaShift?: number; latentUpscale?: boolean; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
@@ -147,6 +150,7 @@ export class WorkQueue {
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish() { this.listeners.forEach((listener) => listener()); }
   private patch(id: string, patch: Partial<WorkItem>) {
+    if (patch.cancelling || (patch.status && ["completed", "failed", "cancelled"].includes(patch.status))) patch = { ...patch, preview: undefined };
     this.items = this.items.map((item) => item.id === id ? { ...item, ...patch } : item);
     this.publish();
   }
@@ -204,12 +208,19 @@ export class WorkQueue {
     if (this.connections === 1 && isTauri()) {
       let disposed = false;
       const stops: (() => void)[] = [];
+      stops.push(subscribeGenerationPreviews(() => {
+        if (!loadGenerationPreviewsEnabled()) {
+          this.items = this.items.map((item) => item.preview ? { ...item, preview: undefined } : item);
+          this.publish();
+        }
+      }));
       const subscribe = async <T,>(name: string, handler: (payload: T) => void) => {
         const stop = await listen<T>(name, ({ payload }) => { if (!disposed) handler(payload); });
         if (disposed) stop(); else stops.push(stop);
       };
       this.ready = Promise.all([
         subscribe<GenerationTimingProgress>("slopfab-progress", (event) => this.progress(event)),
+        subscribe<GenerationPreview>("slopfab-preview", (event) => this.preview(event)),
         subscribe<JobEvent>("slopfab-job", (event) => this.event(event)),
       ]).then(() => undefined);
       void this.ready.catch((reason) => writeDiagnostic("error", "work-queue", "subscription.failed", describeDiagnosticError(reason), {}));
@@ -694,6 +705,14 @@ export class WorkQueue {
     writeDiagnostic("error", "work-queue", "generation.failed", detail, { workId: work.id, sceneId: work.sceneId, folderPath: work.session.record.folderPath });
     void work.session.save().catch(() => undefined);
     work.finish();
+  }
+  private preview(event: GenerationPreview) {
+    if (!loadGenerationPreviewsEnabled() || !validGenerationPreview(event)) return;
+    const work = this.nativeWork(event.jobId);
+    const item = this.items.find((candidate) => candidate.id === work?.id);
+    if (!work || !item || work.cancelled || item.cancelling || item.kind || work.upscaleSource
+      || !["preparing", "generating"].includes(item.status)) return;
+    this.patch(work.id, { preview: event });
   }
   private progress(event: GenerationTimingProgress) {
     if (this.icons.progressEvent(event)) return;

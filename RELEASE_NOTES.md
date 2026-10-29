@@ -4,7 +4,7 @@ Changes since 0.3.2.
 
 ## What's new
 
-- **TAEH3 preview weights.** Added the MiniMax H3 tiny VAE under Other weights and a saved generation-preview preference in Settings.
+- **Generation previews.** Download TAEH3 from Other weights to play silent MiniMax H3 previews in scene cards during generation, locally or on a worker. A Settings switch controls previews; final videos use the generator's selected VAE.
 
 - **Pika H3 Flex.** Added FL2VA and Ref2VA LoRA downloads with Pika's fixed six-step re-noising recipe and video/audio sigma shifts of 12/3.
 

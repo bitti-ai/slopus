@@ -13,6 +13,18 @@ pub use device::{cuda_device_names, gpu_devices, has_cuda_device};
 pub use reference_video::ReferenceVideoHandle;
 pub enum Generation {}
 #[repr(C)]
+pub struct Preview {
+    pub rgb: *const u8,
+    pub byte_count: usize,
+    pub frames: i32,
+    pub width: i32,
+    pub height: i32,
+    pub step: i32,
+    pub fps: f64,
+}
+pub type PreviewFn = unsafe extern "C" fn(*const Preview, *mut c_void);
+type SetPreview = unsafe extern "C" fn(*mut Request, *const c_char, Option<PreviewFn>, *mut c_void) -> i32;
+#[repr(C)]
 #[derive(Debug, Clone, Copy, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VideoDecodeTimings {
@@ -81,6 +93,7 @@ type UpscaleDecode = unsafe extern "C" fn(*const c_char, *const c_char, f32, *co
 type SetImageGuidance = unsafe extern "C" fn(*mut Request, f32, *const c_char, *const i32, i32) -> i32;
 
 pub struct Api {
+    set_preview: Option<SetPreview>,
     upscale_decode: Option<UpscaleDecode>,
     save_generation_latents: Option<unsafe extern "C" fn(*const Generation, *const c_char) -> i32>,
     set_music_settings: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
@@ -148,6 +161,10 @@ pub struct Api {
 }
 
 impl Api {
+    pub fn set_preview(&self, request: *mut Request, path: &Path, callback: PreviewFn, userdata: *mut c_void) -> Result<(), String> {
+        let Some(set) = self.set_preview else { return Ok(()); };
+        self.error(unsafe { set(request, path_cstring(path)?.as_ptr(), Some(callback), userdata) })
+    }
     pub fn load(path: &Path) -> Result<Self, String> {
         // SAFETY: symbols are copied function pointers with signatures from capi.h.
         // The Library is retained in Api, so no pointer outlives the loaded module.
@@ -162,6 +179,7 @@ impl Api {
                 };
             }
             Ok(Self {
+                set_preview: library.get::<SetPreview>(b"slopfab_request_set_preview\0").ok().map(|f| *f),
                 set_video_transition: library
                     .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(
                         b"slopfab_request_set_video_transition\0",

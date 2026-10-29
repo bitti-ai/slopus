@@ -1,3 +1,4 @@
+import type { GenerationPreview } from "../../lib/generationPreview";
 import { generatorOptions } from "../generatorOptions";
 import { sceneUpscaleSubmission, selectedUpscaleTake } from "../../lib/sceneUpscale";
 import { Flyout } from "../ui";
@@ -38,6 +39,7 @@ interface GeneratorViewProps {
   config: ProjectConfig;
   folderPath: string;
   runtime?: SlopfabStatus | null;
+  generationPreviews?: Readonly<Record<string, GenerationPreview>>;
   generationCompletionTimes?: Readonly<Record<string, number>>;
   /** `key` groups rapid edits of one thing into one undo step (the workspace's session.edit). */
   onChange: (next: ProjectConfig, key?: string) => void;
@@ -68,7 +70,7 @@ const readDensity = (): BoardDensity => {
  * The panel is whatever is open — one shot, or the scene itself. Nothing is
  * edited on the board, and nothing is duplicated in the panel: there is exactly
  * one place to change any given thing. */
-export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runtime = null, generationCompletionTimes = {}, onChange, selectedJobId, onSelectedJobChange, onRuntimeChange, onGenerate, onCancelGeneration, cancellingJobIds = new Set() }: GeneratorViewProps) {
+export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runtime = null, generationPreviews = {}, generationCompletionTimes = {}, onChange, selectedJobId, onSelectedJobChange, onRuntimeChange, onGenerate, onCancelGeneration, cancellingJobIds = new Set() }: GeneratorViewProps) {
   const jobs = sceneIds ? sceneIds.flatMap((id) => { const job = config.generationJobs.find((job) => job.id === id); return job ? [job] : []; }) : config.generationJobs;
   const [selection, setSelection] = useState<GeneratorSelection>(() => ({ jobId: selectedJobId ?? jobs.find((job) => job.status === "generating")?.id ?? jobs[0]?.id ?? "", shotId: null }));
   const [templateSettings, setTemplateSettings] = useState(loadGeneratorTemplateSettings);
@@ -563,6 +565,7 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
             assets={config.assets}
             jobs={jobs}
             folderPath={folderPath}
+            generationPreviews={generationPreviews}
             generationCompletionTimes={generationCompletionTimes}
             references={config.references}
             selection={{ jobId: selected?.id ?? "", shotId: openShot?.id ?? null }}

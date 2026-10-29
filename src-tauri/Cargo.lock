@@ -3446,6 +3446,7 @@ dependencies = [
 name = "slopus-core"
 version = "0.3.2"
 dependencies = [
+ "base64 0.22.1",
  "getrandom 0.3.4",
  "image",
  "jpeg-encoder",

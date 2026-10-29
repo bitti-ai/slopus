@@ -422,6 +422,7 @@ mod tests {
             .unwrap();
         loop {
             match receive.recv_timeout(Duration::from_secs(600)).unwrap() {
+                NativeEvent::Preview(_) => {}
                 NativeEvent::Progress(event) => {
                     eprintln!("{}", serde_json::to_value(event).unwrap())
                 }

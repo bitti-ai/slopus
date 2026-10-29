@@ -173,7 +173,7 @@ pub enum PathKind {
     Input,
 }
 
-const MODEL_OPTIONS: [&str; 6] = ["transformer", "textEncoder", "videoVae", "audioVae", "promptEmbedding", "latentUpscaler"];
+const MODEL_OPTIONS: [&str; 7] = ["transformer", "textEncoder", "videoVae", "audioVae", "promptEmbedding", "latentUpscaler", "previewVae"];
 
 /// Visits every file path a generation names, in a fixed order. The client
 /// swaps local paths for tokens with it, and the worker swaps tokens back
@@ -324,6 +324,19 @@ mod tests {
                 assert_eq!(settings["slopfab"].options["latentUpscaler"], ProviderOption::String("/worker/upscaler.safetensors".into()));
             }
         }
+    }
+
+    #[test]
+    fn preview_vae_crosses_the_worker_boundary_as_a_model_file() {
+        let mut request = GenerationRequest::default();
+        let mut settings = settings(&[("previewVae", "C:/weights/taeh3.safetensors")]);
+        visit_paths(&mut request, &mut settings, |kind, path| {
+            assert_eq!(kind, PathKind::Model);
+            assert_eq!(path, "C:/weights/taeh3.safetensors");
+            *path = file_token(0);
+            Ok(())
+        }).unwrap();
+        assert_eq!(settings["slopfab"].options["previewVae"], ProviderOption::String(file_token(0)));
     }
 
     #[test]

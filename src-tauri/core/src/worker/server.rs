@@ -135,6 +135,12 @@ impl JobLog {
             return;
         }
         if let Ok(mut events) = self.events.lock() {
+            if kind == "preview" || kind == "job" && matches!(payload["state"].as_str(), Some("failed" | "cancelled" | "framesReady")) {
+                // Keep sequence cursors stable but retain only the latest preview payload.
+                for event in events.iter_mut().filter(|event| event.kind == "preview") {
+                    event.payload = serde_json::Value::Null;
+                }
+            }
             let seq = events.len() as u64 + 1;
             events.push(WireEvent { seq, kind: kind.into(), payload });
         }
@@ -683,6 +689,7 @@ impl Worker {
             Arc::new(move |event| match event {
                 slopfab::NativeEvent::Job(value) => sink.push("job", serde_json::to_value(value).unwrap_or_default()),
                 slopfab::NativeEvent::Progress(value) => sink.push("progress", serde_json::to_value(value).unwrap_or_default()),
+                slopfab::NativeEvent::Preview(value) => sink.push("preview", serde_json::to_value(value).unwrap_or_default()),
             }),
             request,
             &settings,
@@ -737,6 +744,21 @@ fn percent_decode(part: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preview_log_retains_only_latest_pixels_without_reusing_cursors() {
+        let log = JobLog { events: Mutex::default(), changed: Condvar::new(), latents: None,
+            created: Instant::now(), released: AtomicBool::new(false) };
+        log.push("preview", serde_json::json!({"frames": ["first"]}));
+        log.push("progress", serde_json::json!({"step": 1}));
+        log.push("preview", serde_json::json!({"frames": ["second"]}));
+        let events = log.after(0, Duration::ZERO);
+        assert!(events[0].payload.is_null());
+        assert_eq!(events[2].seq, 3);
+        assert_eq!(events[2].payload["frames"][0], "second");
+        log.push("job", serde_json::json!({"state": "framesReady"}));
+        assert!(log.after(2, Duration::ZERO)[0].payload.is_null());
+    }
 
     struct TrackedFrames(Arc<AtomicBool>);
 

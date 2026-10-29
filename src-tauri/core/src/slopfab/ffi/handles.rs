@@ -2,6 +2,51 @@ use super::{raw, Api, RequestHandle};
 use std::{ffi::c_void, ptr::NonNull};
 
 pub type ProgressSink = Box<dyn Fn(&super::Progress) + Send + Sync>;
+pub struct Preview<'a> {
+    pub rgb: &'a [u8], pub frames: i32, pub width: i32, pub height: i32,
+    pub step: i32, pub fps: f64,
+}
+pub type PreviewSink = Box<dyn Fn(Preview<'_>) + Send + Sync>;
+struct PreviewCallback(PreviewSink);
+unsafe extern "C" fn preview_callback(preview: *const raw::Preview, userdata: *mut c_void) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if preview.is_null() || userdata.is_null() { return; }
+        let p = unsafe { &*preview };
+        if p.rgb.is_null() || !(1..=128).contains(&p.frames) || !(1..=256).contains(&p.width)
+            || !(1..=256).contains(&p.height) || !p.fps.is_finite() || p.fps <= 0.0
+            || p.byte_count != p.frames as usize * p.width as usize * p.height as usize * 3 { return; }
+        let callback = unsafe { &*userdata.cast::<PreviewCallback>() };
+        (callback.0)(Preview { rgb: unsafe { std::slice::from_raw_parts(p.rgb, p.byte_count) },
+            frames: p.frames, width: p.width, height: p.height, step: p.step, fps: p.fps });
+    }));
+}
+
+#[cfg(test)]
+mod preview_tests {
+    use super::*;
+    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    #[test]
+    fn validates_preview_buffers_and_contains_callback_panics() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let count = calls.clone();
+        let mut callback = Box::new(PreviewCallback(Box::new(move |p| {
+            assert_eq!(p.rgb.len(), 12);
+            count.fetch_add(1, Ordering::SeqCst);
+        })));
+        let data = [128u8; 12];
+        let mut p = raw::Preview { rgb: data.as_ptr(), byte_count: data.len(), frames: 1, width: 2, height: 2, step: 0, fps: 6.0 };
+        let userdata = (&mut *callback as *mut PreviewCallback).cast();
+        unsafe { preview_callback(&p, userdata); }
+        p.byte_count = 11;
+        unsafe { preview_callback(&p, userdata); }
+        p.byte_count = 12; p.width = i32::MAX;
+        unsafe { preview_callback(&p, userdata); preview_callback(std::ptr::null(), userdata); }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        callback.0 = Box::new(|_| panic!("callback panic must not unwind through C"));
+        p.width = 2;
+        unsafe { preview_callback(&p, userdata); }
+    }
+}
 
 struct Callback(ProgressSink);
 unsafe extern "C" fn progress_callback(progress: *const raw::Progress, userdata: *mut c_void) {
@@ -19,6 +64,7 @@ pub struct GenerationHandle {
     api: Api,
     pointer: NonNull<raw::Generation>,
     _callback: Option<Box<Callback>>,
+    _preview: Option<Box<PreviewCallback>>,
     terminal: bool,
     succeeded: bool,
 }
@@ -28,12 +74,21 @@ impl GenerationHandle {
         let mut callback = Box::new(Callback(sink));
         let userdata = (&mut *callback as *mut Callback).cast();
         let pointer = api.inner.upscale_decode(source, checkpoint, scale, video, audio, backend, Some(progress_callback), userdata)?;
-        Ok(Self { api: api.clone(), pointer: NonNull::new(pointer).ok_or("SlopFab returned an empty upscale handle.")?, _callback: Some(callback), terminal: false, succeeded: false })
+        Ok(Self { api: api.clone(), pointer: NonNull::new(pointer).ok_or("SlopFab returned an empty upscale handle.")?, _callback: Some(callback), _preview: None, terminal: false, succeeded: false })
     }
     pub(super) fn start(
         request: RequestHandle,
         sink: Option<ProgressSink>,
+        preview: Option<(std::path::PathBuf, PreviewSink)>,
     ) -> Result<Self, String> {
+        let preview = preview.map(|(path, sink)| {
+            let mut callback = Box::new(PreviewCallback(sink));
+            let userdata = (&mut *callback as *mut PreviewCallback).cast();
+            if let Err(reason) = request.api.inner.set_preview(request.pointer.as_ptr(), &path, preview_callback, userdata) {
+                eprintln!("Generation previews unavailable: {reason}");
+            }
+            callback
+        });
         let mut callback = sink.map(|sink| Box::new(Callback(sink)));
         let userdata = callback.as_mut().map_or(std::ptr::null_mut(), |value| {
             (&mut **value as *mut Callback).cast()
@@ -51,6 +106,7 @@ impl GenerationHandle {
             api: request.api.clone(),
             pointer,
             _callback: callback,
+            _preview: preview,
             // slopfab_generation_start snapshots the request. Let the caller's
             // copy (including image/reference samples) drop now instead of
             // retaining it through inference and the webview's encoding pass.

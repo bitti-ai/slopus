@@ -34,6 +34,7 @@ pub(super) struct Configuration {
     pub(super) animate: bool,
     pub(super) prompt_embedding: Option<PathBuf>,
     pub(super) latent_upscaler: Option<PathBuf>,
+    pub(super) preview_vae: Option<PathBuf>,
     pub(super) models: [(i32, &'static str, Option<PathBuf>); 5],
     pub(super) loras: Result<Vec<LoraAdapter>, String>,
     pub(super) step_override: Result<Option<i32>, String>,
@@ -82,6 +83,7 @@ impl Configuration {
             ),
             prompt_embedding: option("promptEmbedding"),
             latent_upscaler: option("latentUpscaler"),
+            preview_vae: option("previewVae"),
             attention: match string_option("attention") {
                 Some("exact") => "exact",
                 Some("flash2") => "flash2",

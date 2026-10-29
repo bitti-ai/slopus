@@ -1,3 +1,5 @@
+import type { GenerationPreview } from "../../lib/generationPreview";
+import { GenerationPreviewPlayer } from "./GenerationPreviewPlayer";
 import { SceneHistoryBar } from "./SceneHistoryBar";
 import { scenePreviewJob, scenePreviewAsset } from "../../lib/sceneHistory";
 import { Copy16, Add16, ArrowDown16, ArrowUp16, ChevronDown12, ChevronRight12, Delete16, Grip16, MoveTo16, OpenExternal16, Rename16, Stop14, Stop16, Wand16 } from "../ui/icons";
@@ -70,6 +72,7 @@ export function SceneBoard({
   assets = [],
   folderPath,
   generationCompletionTimes,
+  generationPreviews = {},
   references,
   selection,
   density = "tiles",
@@ -89,6 +92,7 @@ export function SceneBoard({
   jobs: GenerationJob[];
   assets?: ProjectAsset[];
   folderPath: string;
+  generationPreviews?: Readonly<Record<string, GenerationPreview>>;
   generationCompletionTimes?: Readonly<Record<string, number>>;
   references: ProjectReference[];
   selection: GeneratorSelection;
@@ -403,6 +407,7 @@ export function SceneBoard({
           >{cancellable ? <Stop14 /> : <Wand16 />}</HeaderButton>
         </header>
 
+        {!isCollapsed && generationPreviews[job.id] && <GenerationPreviewPlayer key={generationPreviews[job.id].jobId} preview={generationPreviews[job.id]} />}
         {!isCollapsed && <div className="scene-section__content"><ol
           className={`shot-grid${shotDrop?.beforeShotId === null ? " shot-grid--drop-end" : ""}`}
           aria-label={`Shots in ${job.title}`}

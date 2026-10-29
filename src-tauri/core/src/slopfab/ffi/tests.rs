@@ -1,6 +1,21 @@
 use super::*;
 
 #[test]
+fn bundled_runtime_accepts_optional_preview_callback() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(crate::slopfab::DLL_FILE_NAME);
+    let api = Api::load(&path).unwrap();
+    // Optional symbol loading must not hide a stale bundled binary.
+    unsafe {
+        let library = libloading::Library::new(&path).unwrap();
+        assert!(library.get::<unsafe extern "C" fn()>(b"slopfab_request_set_preview\0").is_ok());
+    }
+    let request = RequestHandle::new(&api).unwrap();
+    unsafe extern "C" fn callback(_: *const raw::Preview, _: *mut std::ffi::c_void) {}
+    api.inner.set_preview(request.pointer.as_ptr(), Path::new("missing-taeh3.safetensors"), callback, std::ptr::null_mut()).unwrap();
+    assert!(api.resolve(&request).is_ok(), "optional preview weights must not block planning");
+}
+
+#[test]
 fn bundled_runtime_exposes_saved_latent_upscale_and_decode() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(crate::slopfab::DLL_FILE_NAME);
     Api::load(&path).unwrap().require_saved_latent_upscale().unwrap();

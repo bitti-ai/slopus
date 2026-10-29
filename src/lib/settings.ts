@@ -16,7 +16,8 @@ import { isSigmaShift, type SigmaShifts } from "./sampling";
 import { normalizeH3Library, resolveH3Components, type H3Components } from "./h3Components";
 import { generatorModel } from "./generatorModels";
 export { generatorModel, GENERATOR_MODELS } from "./generatorModels";
-import { latentUpscalerPath } from "./upscalers";
+import { latentUpscalerPath, otherWeightPaths, TAEH3_URL } from "./upscalers";
+import { loadGenerationPreviewsEnabled } from "./generationPreviewSettings";
 import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
 import type { ProviderId } from "./runtime";
@@ -758,6 +759,9 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   delete options.motionCache;
   delete options.workerWeightSources;
   delete options.latentUpscaler;
+  delete options.previewVae;
+  const previewVae = otherWeightPaths()[TAEH3_URL];
+  if (loadGenerationPreviewsEnabled() && (shifts.modelType ?? "minimax-h3") === "minimax-h3" && previewVae) options.previewVae = previewVae;
   const latentUpscaler = latentUpscalerPath();
   if (latentUpscaler && !generatorModel(shifts.modelType).musicGeneration) options.latentUpscaler = latentUpscaler;
   if (remote && sources) {

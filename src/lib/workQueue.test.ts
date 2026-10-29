@@ -14,6 +14,7 @@ import { generateAgentImage, generateAgentScene, generateAgentMusic } from "./ag
 import { applyImageDraftCommand } from "./imageDraftCommands";
 import { LATENT_UPSCALER_URL, saveLocalOtherWeightPaths } from "./upscalers";
 import { WorkQueue, type GenerationSubmission } from "./workQueue";
+import { saveGenerationPreviewsEnabled } from "./generationPreviewSettings";
 import { saveSceneLastFrame } from "./sceneLastFrame";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
 import { downloadTemplateWeights, getWeightDownloadState } from "./weightDownloads";
@@ -67,6 +68,34 @@ const finish = async (queue: WorkQueue, id: string) => {
   emit("slopfab-job", { jobId: id, state: "framesReady", detail: "Frames ready" });
   await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === id)?.status).toBe("completed"));
 };
+
+it("isolates live previews by native job and clears them on disable, cancel and completion", async () => {
+  const { queue, first, second } = setup();
+  const [id] = queue.enqueue(first, [submission(first)]);
+  const [other] = queue.enqueue(second, [submission(second)]);
+  await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === id)?.status).toBe("generating"));
+  const preview = { jobId: id, width: 2, height: 2, fps: 4, step: 0, frames: ["/9j/AA=="] };
+  emit("slopfab-preview", { ...preview, jobId: "unknown" });
+  expect(queue.getSnapshot().every((item) => !item.preview)).toBe(true);
+  emit("slopfab-preview", preview);
+  expect(queue.getSnapshot().find((item) => item.id === id)?.preview).toEqual(preview);
+  expect(queue.getSnapshot().find((item) => item.id === other)?.preview).toBeUndefined();
+  expect(JSON.stringify(first.getSnapshot().config)).not.toContain("/9j/AA==");
+  saveGenerationPreviewsEnabled(false);
+  emit("slopfab-preview", preview);
+  expect(queue.getSnapshot().find((item) => item.id === id)?.preview).toBeUndefined();
+  saveGenerationPreviewsEnabled(true);
+  emit("slopfab-preview", preview);
+  await finish(queue, id);
+  emit("slopfab-preview", preview);
+  expect(queue.getSnapshot().find((item) => item.id === id)?.preview).toBeUndefined();
+  await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === other)?.status).toBe("generating"));
+  emit("slopfab-preview", { ...preview, jobId: other });
+  await queue.cancel(other);
+  emit("slopfab-preview", { ...preview, jobId: other });
+  expect(queue.getSnapshot().find((item) => item.id === other)?.preview).toBeUndefined();
+  emit("slopfab-job", { jobId: other, state: "cancelled", detail: "Cancelled" });
+});
 
 it("upscales selected Takes repeatedly without diffusion, preserving source lineage and joined scene ranges", async () => {
   const { queue, first } = setup();

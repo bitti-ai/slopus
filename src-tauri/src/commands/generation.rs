@@ -264,6 +264,9 @@ pub(crate) async fn enqueue_slopfab_generation(
                         slopfab::NativeEvent::Progress(value) => {
                             let _ = app.emit("slopfab-progress", value);
                         }
+                        slopfab::NativeEvent::Preview(value) => {
+                            let _ = app.emit("slopfab-preview", value);
+                        }
                     }),
                     request,
                     &config.provider_settings,

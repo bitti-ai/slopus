@@ -5,6 +5,7 @@ mod tests;
 #[cfg(test)]
 mod lcs_tests;
 pub use handles::{FinishedGeneration, GenerationHandle, ProgressSink, Output};
+pub use handles::PreviewSink;
 pub use raw::{cuda_device_names, gpu_devices, has_cuda_device, Plan, Progress};
 pub use raw::VideoDecodeTimings;
 use std::{
@@ -320,7 +321,10 @@ impl RequestHandle {
         })
     }
     pub fn start(self, callback: Option<ProgressSink>) -> Result<GenerationHandle, String> {
-        GenerationHandle::start(self, callback)
+        GenerationHandle::start(self, callback, None)
+    }
+    pub fn start_with_preview(self, callback: Option<ProgressSink>, preview: Option<(PathBuf, PreviewSink)>) -> Result<GenerationHandle, String> {
+        GenerationHandle::start(self, callback, preview)
     }
 }
 impl Drop for RequestHandle {

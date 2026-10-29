@@ -211,6 +211,17 @@ pub struct ResolvedPlan {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PreviewEvent {
+    pub job_id: String,
+    pub step: i32,
+    pub width: i32,
+    pub height: i32,
+    pub fps: f64,
+    pub frames: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProgressEvent {
     pub(super) job_id: String,
     pub(super) stage: &'static str,

@@ -721,6 +721,10 @@ impl Workers {
             };
             for event in events {
                 after = event.seq;
+                if event.kind == "preview" {
+                    if !event.payload.is_null() { self.emit("slopfab-preview", event.payload); }
+                    continue;
+                }
                 if event.kind == "progress" {
                     self.emit("slopfab-progress", event.payload);
                     continue;
@@ -942,6 +946,11 @@ pub(crate) fn build_job(request: &GenerationRequest, settings: &BTreeMap<String,
     let mut settings: BTreeMap<String, ProviderSetting> = settings.iter()
         .filter(|(name, _)| name.as_str() == "slopfab").map(|(name, value)| (name.clone(), value.clone())).collect();
     super::variants::select(&mut settings, gpus)?;
+    if let Some(slopfab) = settings.get_mut("slopfab") {
+        if matches!(slopfab.options.get("previewVae"), Some(slopus_core::settings::ProviderOption::String(path)) if !Path::new(path).is_file()) {
+            slopfab.options.remove("previewVae");
+        }
+    }
     let mut files = Vec::new();
     let mut indices: HashMap<String, usize> = HashMap::new();
     let mut sources = HashMap::new();

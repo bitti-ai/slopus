@@ -236,7 +236,10 @@ fn run_single_generation(
         timing_profile: timing_profile.clone(),
         planned_steps: plan.num_model_evaluations,
     };
-    let mut generation = request.start(Some(progress_sink(context)))?;
+    let preview = item.configuration.preview_vae.as_ref()
+        .filter(|path| path.is_file() && item.configuration.model_type == "minimax-h3" && !item.request.still_image && item.request.music.is_none())
+        .map(|path| (path.clone(), super::events::preview_sink(item.events.clone(), item.request.job_id.clone())));
+    let mut generation = request.start_with_preview(Some(progress_sink(context)), preview)?;
     diagnostics::debug(
         "slopfab",
         "generation.api_started",
