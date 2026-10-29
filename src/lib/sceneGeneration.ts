@@ -26,7 +26,9 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
   const longShot = longShotInputs(job, config);
   return {
     jobId: job.id,
-    ...(job.sceneType === "single-shot" ? { singleShot: { endingPrompt: job.endingPrompt?.trim()
+    ...(job.sceneType === "single-shot" && job.contextSceneId ? { contextSceneId: job.contextSceneId,
+      keystoneRelativePath: config.generationJobs.find((scene) => scene.id === job.contextSceneId)?.latentRelativePath ?? undefined } : {}),
+    ...(job.sceneType === "single-shot" ? { singleShot: { endingPrompt: job.contextSceneId ? "" : job.endingPrompt?.trim()
       ? compileScenePromptSegments({ shots: [{ id: `${job.id}-ending`, startSeconds: 0, action: job.endingPrompt }], soundscape: job.soundscape, music: job.music }, bound, settings.defaultLook).map((segment) => segment.value).join("")
       : compileGenerationJobPrompt(inputs.job, bound, settings.defaultLook) } } : {}),
     ...(longShot ? { latentBridge: longShot.bridge } : {}),
@@ -77,7 +79,7 @@ export function sendBlocker(job: GenerationJob, references: ProjectReference[], 
   const shots = sceneShots(job);
   if (job.sceneType === "single-shot") {
     if (sceneDurationSeconds(job) < 2) return "Single Shot needs at least 2 seconds.";
-    if (danglingReferenceTokens([{ id: "ending", startSeconds: 0, action: job.endingPrompt ?? "" }], references).length)
+    if (!job.contextSceneId && danglingReferenceTokens([{ id: "ending", startSeconds: 0, action: job.endingPrompt ?? "" }], references).length)
       return "A reference in the ending prompt can't be used. Replace it or remove it.";
   }
   const animate = job.sceneType === "animate";

@@ -101,6 +101,8 @@ export interface AgentTurnResponse {
 }
 
 export interface SlopfabGenerationRequest {
+  contextSceneId?: string;
+  keystoneRelativePath?: string;
   singleShot?: { endingPrompt: string };
   music?: import("./music").MusicSettings;
   jobId: string;

@@ -298,7 +298,7 @@ function SingleShotEndingPrompt({ job, references, folderPath, disabled, onChang
 
 const SCENE_TYPE_DESCRIPTIONS: Record<SceneType, string> = {
   prompt: "Generate video from shot descriptions and optional references, without fixed start or last frames.",
-  "single-shot": "Generate an ending first, then a continuous shot guided by that ending and an optional starting scene.",
+  "single-shot": "Continue a sequence using its first video as context, or generate a continuous shot guided by an ending prompt.",
   "first-last-frame": "Generate video guided by optional start and last images, with shot descriptions controlling the action.",
   backdrop: "Generate subjects and action against a solid green, blue, black or white background for keying.",
   "long-shot": "Legacy scene type. Use Bridge to connect videos in new scenes.",
@@ -370,16 +370,23 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
               ...(value === "animate" ? { endFrameReferenceId: undefined } : {}) })} />
         </PropRow>
         {sceneType === "single-shot" && <>
-          <PropRow label="Starting video" htmlFor={`${id}-single-source`} tooltip="Continue from the ending latents of another scene's full video. Generate all handles the required order.">
-            <ComboBox id={`${id}-single-source`} aria-label="Single Shot starting video" disabled={disabled} value={job.continuationSceneId ?? ""}
+          <PropRow label="Context video" htmlFor={`${id}-single-context`} tooltip="Select the first video in the sequence. Its latents keep the original appearance across continuations, with the rear anchor locking after four steps.">
+            <ComboBox id={`${id}-single-context`} aria-label="Single Shot context video" disabled={disabled} value={job.contextSceneId ?? ""}
+              options={[{ value: "", label: "None" },
+                ...(job.contextSceneId && !scenes.some((scene) => scene.id === job.contextSceneId && scene.id !== job.id)
+                  ? [{ value: job.contextSceneId, label: "Unavailable scene", disabled: true }] : []),
+                ...scenes.filter((scene) => scene.id !== job.id).map((scene) => ({ value: scene.id, label: scene.title }))]}
+              onChange={(value) => onChange({ contextSceneId: value || null })} />
+          </PropRow>
+          <PropRow label="Previous video" htmlFor={`${id}-single-source`} tooltip="Continue from the ending latents of another scene's full video. Generate all handles the required order.">
+            <ComboBox id={`${id}-single-source`} aria-label="Single Shot previous video" disabled={disabled} value={job.continuationSceneId ?? ""}
               options={[{ value: "", label: "None" },
                 ...(job.continuationSceneId && !scenes.some((scene) => scene.id === job.continuationSceneId && scene.id !== job.id)
                   ? [{ value: job.continuationSceneId, label: "Unavailable scene", disabled: true }] : []),
                 ...scenes.filter((scene) => scene.id !== job.id).map((scene) => ({ value: scene.id, label: scene.title }))]}
               onChange={(value) => onChange({ continuationSceneId: value || null })} />
           </PropRow>
-          {job.continuationSceneId && <p className="prop-caption">The previous video's ending anchors the start. The middle starts from fresh noise and progresses toward the ending prompt.</p>}
-          <SingleShotEndingPrompt job={job} references={references} folderPath={folderPath} disabled={disabled} onChange={onChange} />
+          {!job.contextSceneId && <SingleShotEndingPrompt job={job} references={references} folderPath={folderPath} disabled={disabled} onChange={onChange} />}
         </>}
         {longShot && <>
           <p className="prop-caption">Long Shot is retained for this saved scene. Use Bridge to connect videos in new scenes.</p>

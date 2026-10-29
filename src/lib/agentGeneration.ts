@@ -127,8 +127,10 @@ export async function generateAgentScene(queue: WorkQueue, session: ProjectSessi
     throw new Error(`Scene '${job.title}' already has generation in progress. Do not submit it again.`);
   }
   const source = config.generationJobs.find((candidate) => candidate.id === continuationSceneId(job, config.generationJobs));
+  const context = job.sceneType === "single-shot" && config.generationJobs.find((candidate) => candidate.id === job.contextSceneId);
   const blocker = continuationBlocker(job, config.generationJobs)
     ?? longShotBlocker(job, config, true, true)
+    ?? (context && !sceneGenerationPending(context) && (!context.latentRelativePath || context.status !== "completed") ? "Generate or queue the Context video first." : null)
     ?? (source && !sceneGenerationPending(source) && (!source.latentRelativePath || source.status !== "completed") ? "Generate or queue the selected source scene first." : null)
     ?? templateSceneBlocker(sceneTypeFor(job), template) ?? sendBlocker(job, config.references, config);
   if (blocker) throw new Error(blocker);

@@ -590,6 +590,7 @@ const generationJobBaseSchema = z.object({
   endFrameReferenceId: idSchema.nullish(),
   usePreviousSceneLastFrame: z.boolean().nullish(),
   continuationSceneId: idSchema.nullish(),
+  contextSceneId: idSchema.nullish(),
   continuationOverlapFrames: z.number().int().min(DEFAULT_CONTINUATION_OVERLAP).max(MAX_CONTINUATION_OVERLAP)
     .refine((frames) => (frames - 5) % 17 === 0, "Overlap must be 22, 39, 56, … frames.").nullish(),
   continuationFrom: z.enum(["start", "end"]).nullish(),
@@ -1039,7 +1040,7 @@ export function audioReferenceBlocker(job: GenerationJob, bound: ProjectReferenc
  * the same anchor selected for both ends is sent only once. */
 export function sceneGenerationReferences(job: GenerationJob, references: ProjectReference[]): ProjectReference[] {
   if (job.sceneType === "prompt" || job.sceneType === "backdrop" || job.sceneType === "long-shot" || job.sceneType === "single-shot") {
-    const cited = [...sceneShots(job).flatMap(shotReferenceIds), ...(job.sceneType === "single-shot" ? actionReferenceIds(job.endingPrompt ?? "") : [])];
+    const cited = [...sceneShots(job).flatMap(shotReferenceIds), ...(job.sceneType === "single-shot" && !job.contextSceneId ? actionReferenceIds(job.endingPrompt ?? "") : [])];
     return references.filter((reference) => cited.includes(reference.id));
   }
   if (job.sceneType === "pose") {
@@ -1089,6 +1090,12 @@ export function continuationSceneId(job: GenerationJob, jobs: readonly Generatio
 export const sceneGenerationPending = (job: GenerationJob) => ["queued", "generating", "ready"].includes(job.status);
 
 export function continuationBlocker(job: GenerationJob, jobs: readonly GenerationJob[]): string | null {
+  const context = job.sceneType === "single-shot" ? job.contextSceneId : undefined;
+  if (context) {
+    if (!job.continuationSceneId) return "Select a Previous video to use Context video.";
+    if (context === job.id) return "A scene cannot use itself as its Context video.";
+    if (!jobs.some((source) => source.id === context)) return "The selected Context video no longer exists.";
+  }
   if (job.sceneType === "single-shot" && !job.continuationSceneId) return null;
   if (job.sceneType !== "continue" && job.sceneType !== "single-shot" && !job.usePreviousSceneLastFrame) return null;
   if (job.sceneType && !["continue", "first-last-frame", "single-shot"].includes(job.sceneType)) return null;
@@ -1101,7 +1108,8 @@ export function continuationBlocker(job: GenerationJob, jobs: readonly Generatio
     seen.add(id);
     const source = jobs.find((candidate) => candidate.id === id);
     if (!source) return "The selected source scene no longer exists.";
-    if (source.sceneType !== "continue" && !continuationSceneId(source, jobs)) return null;
+    if (source.sceneType !== "continue" && !continuationSceneId(source, jobs))
+      return context && context !== source.id ? "Choose the first video in this continuation sequence as Context video." : null;
     current = source;
   }
 }
@@ -1247,6 +1255,8 @@ export function sceneGenerationSeed(job: GenerationJob): number {
 }
 
 export interface SceneGenerationInput {
+  contextSceneId?: string;
+  keystoneRelativePath?: string;
   singleShot?: { endingPrompt: string };
   generationEffects?: GenerationEffects;
   prompt: string;
@@ -1291,7 +1301,8 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
   return JSON.stringify({
     ...(job.sceneType ? { sceneType: job.sceneType } : {}),
     prompt: input.prompt,
-    ...(input.singleShot ? { singleShot: input.singleShot, endingPrompt: job.endingPrompt ?? "" } : {}),
+    ...(input.contextSceneId ? { contextSceneId: input.contextSceneId, keystoneRelativePath: input.keystoneRelativePath, capstoneLockAfter: 4 } : {}),
+    ...(input.singleShot ? { singleShot: input.singleShot, ...(!input.contextSceneId ? { endingPrompt: job.endingPrompt ?? "" } : {}) } : {}),
     ...(input.videoTransition ? { videoTransition: input.videoTransition } : {}),
     ...(input.latentBridge ? { latentBridge: input.latentBridge } : {}),
     frames: input.frames,

@@ -271,7 +271,7 @@ export class WorkQueue {
       const work = this.work.get(id)!;
       const job = work.config.generationJobs.find((job) => job.id === work.sceneId)!;
       if (work.upscaleSource) continue;
-      const sources = new Set([work.request.previousSceneId, work.request.latentBridge?.leftSceneId,
+      const sources = new Set([work.request.previousSceneId, work.request.contextSceneId, work.request.latentBridge?.leftSceneId,
         work.request.latentBridge?.rightSceneId, longShotPosition(job, sceneSiblings(job, work.config))?.previousBridge?.id]);
       const group = this.items.find((item) => item.id === id)!.generationGroupId!;
       const groups = new Set(this.items.filter((item) => item.projectKey === projectKey && !item.kind && isWorkActive(item)
@@ -579,7 +579,7 @@ export class WorkQueue {
               const sourceInput = JSON.parse(previous.generationSnapshot ?? "null");
               const divisor = sourceInput?.latentUpscale ? 2 : 1;
               if (sourceInput && (Math.ceil(sourceInput.canvasWidth / divisor / 32) * 32 !== work.request.canvasWidth || Math.ceil(sourceInput.canvasHeight / divisor / 32) * 32 !== work.request.canvasHeight))
-                throw new Error("Use the resolution of the starting video's original latents.");
+                throw new Error("Use the resolution of the previous video's original latents.");
             }
             if (captured.sceneType === "long-shot") {
               const current = live.generationJobs.find((job) => job.id === work.sceneId);
@@ -595,6 +595,16 @@ export class WorkQueue {
               work.request.continuationSourceFrames = sceneOutputFrames(previous, live);
               work.continuationSegments = sceneArchiveSegments(live, previous);
             }
+            work.snapshot = sceneGenerationSnapshot(captured, work.request);
+            this.updateScene(work, { generationSnapshot: work.snapshot });
+          }
+          if (work.request.contextSceneId) {
+            const live = work.session.getSnapshot().config;
+            const context = live.generationJobs.find((job) => job.id === work.request.contextSceneId);
+            if (!context?.latentRelativePath || context.status !== "completed")
+              throw new Error("Generate the Context video successfully to save its latents first, or use Generate all.");
+            work.request.keystoneRelativePath = context.latentRelativePath;
+            const captured = work.config.generationJobs.find((job) => job.id === work.sceneId)!;
             work.snapshot = sceneGenerationSnapshot(captured, work.request);
             this.updateScene(work, { generationSnapshot: work.snapshot });
           }

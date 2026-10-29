@@ -142,7 +142,7 @@ it("queues Long Shot anchors before their intervening bridges", () => {
   expect(submitted.mock.calls[0][0][2].request.latentBridge).toMatchObject({ leftSceneId: "1", rightSceneId: "3", leftMarginFrames: 17, rightMarginFrames: 17 });
 });
 
-it("keeps Single Shot prompts in the shot panel and the ending prompt and starting video in the scene panel", () => {
+it("keeps Single Shot prompts in the shot panel and the ending prompt and previous video in the scene panel", () => {
   const initial = project();
   initial.references = [{ id: "hero", kind: "image", name: "Hero", description: "", intendedUse: [], relativePath: "references/hero.png", createdAt: initial.createdAt }];
   initial.generationJobs[1].sceneType = "single-shot";
@@ -159,12 +159,18 @@ it("keeps Single Shot prompts in the shot panel and the ending prompt and starti
   fireEvent.click(screen.getByRole("button", { name: /^Hero\b/ }));
   expect(state.latest().generationJobs[0].endingPrompt).toContain("@[ref:hero]");
   expect(screen.queryByRole("button", { name: "Add a shot to First scene" })).not.toBeInTheDocument();
-  const source = screen.getByRole("combobox", { name: "Single Shot starting video" });
+  const source = screen.getByRole("combobox", { name: "Single Shot previous video" });
   expect(optionNames(source)).toEqual(["None", "Second scene", "Ordinary"]);
   chooseOption(source, "Second scene");
   expect(state.latest().generationJobs[0].continuationSceneId).toBe("scene-second");
+  const context = screen.getByRole("combobox", { name: "Single Shot context video" });
+  chooseOption(context, "Second scene");
+  expect(state.latest().generationJobs[0].contextSceneId).toBe("scene-second");
+  expect(screen.queryByLabelText("Ending prompt")).not.toBeInTheDocument();
+  chooseOption(context, "None");
+  expect(screen.getByLabelText("Ending prompt")).toBeInTheDocument();
   expect(screen.queryByRole("spinbutton", { name: "Continuation" })).not.toBeInTheDocument();
-  expect(screen.getByText(/middle starts from fresh noise/)).toBeInTheDocument();
+  expect(screen.queryByText(/middle starts from fresh noise/)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
   expect(screen.queryByRole("spinbutton", { name: "Continuation" })).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Ending prompt")).not.toBeInTheDocument();
@@ -183,11 +189,11 @@ it("keeps Single Shot prompts in the shot panel and the ending prompt and starti
   expect(state.latest().generationJobs.at(-1)?.sceneType).toBe("single-shot");
 });
 
-it.each(["prompt", "single-shot"] as const)("queues a starting %s scene before Single Shot dependents even when board order is reversed", (type) => {
+it.each(["prompt", "single-shot", "context"] as const)("queues a starting %s scene before Single Shot dependents even when board order is reversed", (type) => {
   const initial = project();
   initial.generationJobs = [
-    { ...createDraftGenerationJob("Next", { id: "next", sceneType: "single-shot" }), endingPrompt: "Finish next", continuationSceneId: "start" },
-    createDraftGenerationJob("Start", { id: "start", sceneType: type }),
+    { ...createDraftGenerationJob("Next", { id: "next", sceneType: "single-shot" }), endingPrompt: "Finish next", continuationSceneId: "start", contextSceneId: type === "context" ? "start" : null },
+    createDraftGenerationJob("Start", { id: "start", sceneType: type === "context" ? "prompt" : type }),
   ];
   const submitted = vi.fn();
   render(<GeneratorView config={initial} folderPath="C:/project" runtime={readyRuntime} onChange={vi.fn()} onGenerate={submitted} onOpenTimeline={() => {}} />);
@@ -196,7 +202,10 @@ it.each(["prompt", "single-shot"] as const)("queues a starting %s scene before S
   expect(submissions.map((item: { job: { id: string } }) => item.job.id)).toEqual(["start", "next"]);
   if (type === "single-shot") expect(submissions[0].request.singleShot.endingPrompt).toBe(submissions[0].request.prompt);
   else expect(submissions[0].request.singleShot).toBeUndefined();
-  expect(submissions[1].request.singleShot.endingPrompt).toContain("Finish next");
+  if (type === "context") {
+    expect(submissions[1].request.contextSceneId).toBe("start");
+    expect(submissions[1].request.singleShot.endingPrompt).toBe("");
+  } else expect(submissions[1].request.singleShot.endingPrompt).toContain("Finish next");
   expect(submissions[1].request.previousSceneId).toBe("start");
 });
 

@@ -6,6 +6,30 @@ import { duplicateScene, sceneInput } from "./sceneHistory";
 const project = () => createProjectConfig({ name: "Single", prompt: "A dancer walks", resolution: "416p", aspectRatio: "16:9", targetDurationSeconds: 10 });
 const shot = (id: string): GenerationJob => createDraftGenerationJob("A dancer walks", { id, sceneType: "single-shot", durationSeconds: 6 });
 
+it("keeps the original context archive while continuation advances and persists context in takes", () => {
+  const config = project();
+  const original = { ...shot("original"), sceneType: "prompt" as const, latentRelativePath: "latents/original.safetensors" };
+  const previous = { ...shot("previous"), continuationSceneId: original.id, contextSceneId: original.id, latentRelativePath: "latents/previous.safetensors" };
+  const next = { ...shot("next"), continuationSceneId: previous.id, contextSceneId: original.id, endingPrompt: "@[ref:missing] leaves." };
+  config.generationJobs = [next, previous, original];
+  expect(continuationBlocker(next, config.generationJobs)).toBeNull();
+  expect(sendBlocker(next, [])).toBeNull();
+  const request = sceneGenerationRequest(next, config, "C:/Project", 9);
+  expect(request).toMatchObject({ contextSceneId: "original", keystoneRelativePath: original.latentRelativePath,
+    previousSceneId: "previous", continuationRelativePath: previous.latentRelativePath, singleShot: { endingPrompt: "" } });
+  expect(JSON.parse(sceneGenerationSnapshot(next, request))).toMatchObject({ contextSceneId: "original", capstoneLockAfter: 4 });
+  expect(sceneGenerationSnapshot({ ...next, endingPrompt: "Something else" }, request)).toBe(sceneGenerationSnapshot(next, request));
+  expect(parseProjectConfig(JSON.parse(JSON.stringify(config))).generationJobs[0].contextSceneId).toBe("original");
+  expect(sceneInput(next).contextSceneId).toBe("original");
+  const duplicate = duplicateScene(config, next.id)!;
+  expect(duplicate.config.generationJobs.find((job) => job.id === duplicate.id)?.contextSceneId).toBe("original");
+  expect(continuationBlocker({ ...next, contextSceneId: previous.id }, config.generationJobs)).toMatch(/first video/);
+  expect(continuationBlocker({ ...next, contextSceneId: next.id }, config.generationJobs)).toMatch(/itself/);
+  expect(continuationBlocker({ ...next, contextSceneId: "missing" }, config.generationJobs)).toMatch(/no longer exists/);
+  expect(continuationBlocker({ ...next, continuationSceneId: null }, config.generationJobs)).toMatch(/Previous video/);
+  expect(sceneGenerationRequest({ ...next, sceneType: "prompt" }, config, "C:/Project", 9).keystoneRelativePath).toBeUndefined();
+});
+
 it("uses fresh middle noise with locked start/end anchors and ignores legacy Continuation values", () => {
   const config = project(), source = { ...shot("source"), latentRelativePath: "latents/source.safetensors" };
   const job = { ...shot("next"), continuationSceneId: source.id }; config.generationJobs = [source, job];

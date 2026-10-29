@@ -287,10 +287,11 @@ it("resolves queued Long Shot dependencies after encoding and extends the joined
   expect(JSON.parse(saved.generationJobs[1].generationSnapshot!).latentBridge.leftMarginFrames).toBe(17);
 });
 
-it("chains Single Shots from a regular generated scene while capturing prompts and joined scene ranges", async () => {
+it.each([false, true])("chains Single Shots with persistent context %s while capturing prompts and joined scene ranges", async (context) => {
   const { queue, first } = setup();
   first.update((config) => ({ ...config, generationJobs: ["a", "b", "c"].map((id, index) => ({ ...config.generationJobs[0], id,
-    sceneType: index === 0 ? "prompt" as const : "single-shot" as const, endingPrompt: `Ending ${id}`, continuationSceneId: index ? ["a", "b"][index - 1] : null })) }));
+    sceneType: index === 0 ? "prompt" as const : "single-shot" as const, endingPrompt: `Ending ${id}`, continuationSceneId: index ? ["a", "b"][index - 1] : null,
+    contextSceneId: context && index ? "a" : null })) }));
   vi.mocked(resolveSlopfabPlan).mockImplementation(async (request) => {
     const live = first.getSnapshot().config;
     const source = live.generationJobs.find((job) => job.latentRelativePath === request.continuationRelativePath);
@@ -306,7 +307,7 @@ it("chains Single Shots from a regular generated scene while capturing prompts a
   first.update((current) => ({ ...current, generationJobs: current.generationJobs.map((job) => ({ ...job, endingPrompt: "Edited later" })) }));
   for (let index = 0; index < ids.length; index++) {
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(index + 1));
-    if (index > 0) {
+    if (index > 0 && !context) {
       emit("slopfab-progress", { jobId: ids[index], stage: "singleShotEnding", step: 1, totalSteps: 14, plannedSteps: 14, elapsedSeconds: 1, timingProfile: "test" });
       expect(queue.getSnapshot().find((item) => item.id === ids[index])?.detail).toBe("Generating ending (1 of 2)");
       emit("slopfab-progress", { jobId: ids[index], stage: "singleShotFull", step: 8, totalSteps: 14, plannedSteps: 14, elapsedSeconds: 2, timingProfile: "test" });
@@ -318,7 +319,13 @@ it("chains Single Shots from a regular generated scene while capturing prompts a
   expect(requests[0].singleShot).toBeUndefined();
   expect(requests[1].continuationRelativePath).toBe(`latents/${ids[0]}.safetensors`);
   expect(requests[2].continuationRelativePath).toBe(`latents/${ids[1]}.safetensors`);
-  expect(requests[2].singleShot?.endingPrompt).toContain("Ending c");
+  if (context) {
+    expect(requests[1].keystoneRelativePath).toBe(`latents/${ids[0]}.safetensors`);
+    expect(requests[2].keystoneRelativePath).toBe(`latents/${ids[0]}.safetensors`);
+    expect(requests[2].singleShot?.endingPrompt).toBe("");
+    const snapshot = JSON.parse(first.getSnapshot().config.generationJobs[2].generationSnapshot!);
+    expect(snapshot.keystoneRelativePath).toBe(`latents/${ids[0]}.safetensors`);
+  } else expect(requests[2].singleShot?.endingPrompt).toContain("Ending c");
   expect(requests[2].singleShot?.endingPrompt).not.toContain("Edited later");
   const saved = first.getSnapshot().config;
   expect(saved.assets.find((asset) => asset.id === "asset-c")?.sceneSegments?.map((part) => part.sceneId)).toEqual(["a", "b", "c"]);

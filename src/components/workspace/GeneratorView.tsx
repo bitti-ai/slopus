@@ -432,7 +432,8 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
     if (visiting.has(job.id)) return false;
     if (["queued", "generating", "ready"].includes(job.status)) { visited.add(job.id); return true; }
     const previous = config.generationJobs.find((candidate) => candidate.id === continuationSceneId(job, config.generationJobs));
-    const dependencies = [...(previous ? [previous] : []), ...longShotDependencies(job, sceneSiblings(job, config))];
+    const context = job.sceneType === "single-shot" && config.generationJobs.find((candidate) => candidate.id === job.contextSceneId);
+    const dependencies = [...(previous ? [previous] : []), ...(context ? [context] : []), ...longShotDependencies(job, sceneSiblings(job, config))];
     visiting.add(job.id);
     if (dependencies.some((source) => !visitForBatch(source))) { visiting.delete(job.id); return false; }
     visiting.delete(job.id);
@@ -457,8 +458,10 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
     if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";
     if (job.status === "ready") return "Saving this scene.";
     const source = config.generationJobs.find((candidate) => candidate.id === continuationSceneId(job, config.generationJobs));
+    const context = job.sceneType === "single-shot" && config.generationJobs.find((candidate) => candidate.id === job.contextSceneId);
     return continuationBlocker(job, config.generationJobs)
       ?? longShotBlocker(job, config, true, true)
+      ?? (context && !sceneGenerationPending(context) && (!context.latentRelativePath || context.status !== "completed") ? "Generate or queue the Context video first, or use Generate all." : null)
       ?? (source && !sceneGenerationPending(source) && (!source.latentRelativePath || source.status !== "completed") ? "Generate or queue the selected source scene first, or use Generate all." : null)
       ?? templateSceneBlocker(sceneTypeFor(job), templateFor(job)) ?? sendBlocker(job, config.references, config);
   };
@@ -467,7 +470,7 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
     .filter((job) => job.status === "completed"
       && Boolean(job.generationSnapshot)
       && (job.generationSnapshot !== snapshotFor(job)
-        || config.generationJobs.some((source) => (source.id === continuationSceneId(job, config.generationJobs) || longShotDependencies(job, sceneSiblings(job, config)).includes(source)) && ["queued", "generating", "ready"].includes(source.status))))
+        || config.generationJobs.some((source) => (source.id === continuationSceneId(job, config.generationJobs) || job.sceneType === "single-shot" && source.id === job.contextSceneId || longShotDependencies(job, sceneSiblings(job, config)).includes(source)) && ["queued", "generating", "ready"].includes(source.status))))
     .map((job) => job.id));
   const selectedIndicator = selected && changedJobIds.has(selected.id) && !selected.generationHistory?.selectedId ? "changed" : selected?.status;
   const selectedCancellable = selected?.status === "queued" || selected?.status === "generating";
