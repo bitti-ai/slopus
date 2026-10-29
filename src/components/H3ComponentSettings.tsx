@@ -20,19 +20,16 @@ export function H3ComponentSettings({ settings, desktop }: { settings: Generator
     const current = loadGeneratorTemplateSettings();
     saveGeneratorTemplateSettings({ ...current, h3Components: { ...current.h3Components!, templates: current.h3Components!.templates.filter((entry) => entry.id !== id) } });
   };
+  const makeDefault = (defaultTextEncoderId: string) => {
+    const current = loadGeneratorTemplateSettings();
+    saveGeneratorTemplateSettings({ ...current, h3Components: { ...current.h3Components!, defaultTextEncoderId } });
+  };
   return <>
     {([false, true] as const).map((encoders) => <SettingsGroup key={String(encoders)} heading={encoders ? "Text Encoders" : "VAEs"}>
       <SettingsCard icon={<Add20 />} header={encoders ? "Add a text encoder" : "Add a VAE"}
         description={encoders ? "The default text encoder is used whenever MiniMax H3 needs one. Missing files download with generators." : "Name video and audio VAEs, then select them in your generators."}>
         <button type="button" className="secondary-button" onClick={() => add(encoders ? "textEncoder" : "video")}>{encoders ? "New text encoder" : "New VAE"}</button>
       </SettingsCard>
-      {encoders && <SettingsCard icon={<TextFile20 />} header="Default Text Encoder">
-        <ComboBox aria-label="Default Text Encoder" value={library.defaultTextEncoderId} options={library.templates.filter((entry) => entry.type === "textEncoder").map((entry) => ({ value: entry.id, label: entry.name }))}
-          onChange={(defaultTextEncoderId) => {
-            const current = loadGeneratorTemplateSettings();
-            saveGeneratorTemplateSettings({ ...current, h3Components: { ...current.h3Components!, defaultTextEncoderId } });
-          }} />
-      </SettingsCard>}
       <div className="settings-card-list" role="list" aria-label={encoders ? "Text Encoders" : "VAEs"}>
         {library.templates.filter((entry) => (entry.type === "textEncoder") === encoders).map((entry) => {
           const active = download?.active && download.h3ComponentId === entry.id;
@@ -42,6 +39,7 @@ export function H3ComponentSettings({ settings, desktop }: { settings: Generator
             openLabel={`Edit ${entry.name} ${encoders ? "text encoder" : "VAE"}`} onOpen={() => setEditing(entry)}
             description={waiting ? "Queued for download" : active ? "Downloading…" : `${encoders ? entry.id === library.defaultTextEncoderId ? "Used by default" : "Text encoder" : entry.type === "video" ? "Video" : "Audio"} · ${ready ? "Available" : "Download required"}`}
             actions={<>
+              {encoders && entry.id !== library.defaultTextEncoderId && <button type="button" className="secondary-button" aria-label={`Set ${entry.name} as default`} onClick={() => makeDefault(entry.id)}>Set as default</button>}
               {!ready && <button type="button" className="icon-button" aria-label={`Download ${entry.name}`} disabled={!desktop || active || waiting || !entry.sources.length} onClick={() => void downloadH3Component(entry.id)}><Download16 /></button>}
               <button type="button" className="icon-button" aria-label={`Remove ${entry.name} template`} data-tooltip={used(entry) ? "This template is in use" : "Remove template"}
                 disabled={used(entry) || Boolean(download?.active) || waiting} onClick={() => remove(entry.id)}><Delete16 /></button>

@@ -49,18 +49,25 @@ it("creates named audio and video VAEs and persists edits", async () => {
 
 it("selects a default text encoder for every H3 generator and keeps other families unchanged", async () => {
   open();
+  const library = loadGeneratorTemplateSettings().h3Components!;
+  const previousDefault = library.templates.find((entry) => entry.id === library.defaultTextEncoderId)!;
+  expect(screen.queryByRole("combobox", { name: "Default Text Encoder" })).not.toBeInTheDocument();
+  expect(screen.queryByText("Default Text Encoder")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: `Set ${previousDefault.name} as default` })).not.toBeInTheDocument();
   const mossBefore = loadGeneratorTemplateSettings().templates.find((entry) => entry.modelType === "moss")!.paths.textEncoder;
   fireEvent.click(screen.getByRole("button", { name: "New text encoder" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Text encoder name" }), { target: { value: "My encoder" } });
   fireEvent.change(screen.getByRole("textbox", { name: "Weight path or URL" }), { target: { value: "D:/encoder.safetensors" } });
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Edit My encoder text encoder" })).toBeInTheDocument());
-  pick("Default Text Encoder", "My encoder");
+  fireEvent.click(screen.getByRole("button", { name: "Set My encoder as default" }));
   await waitFor(() => {
     const settings = loadGeneratorTemplateSettings();
     expect(settings.templates.filter((entry) => entry.modelType === "minimax-h3").every((entry) => entry.paths.textEncoder === "D:/encoder.safetensors")).toBe(true);
     expect(settings.templates.find((entry) => entry.modelType === "moss")?.paths.textEncoder).toBe(mossBefore);
   });
+  expect(screen.queryByRole("button", { name: "Set My encoder as default" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: `Set ${previousDefault.name} as default` })).toBeInTheDocument();
 });
 
 it("preserves downloaded paths when a template is renamed during a download", async () => {
