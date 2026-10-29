@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
+import { installH3TestDependencies } from "./h3TestUtils";
 import { beforeEach, expect, it } from "vitest";
 import { DMAD_LORA, downloadableTemplateLoras, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
 import { createGeneratorTemplate, engineProviderSetting, generationSigmaShifts, generationStepsWithLoras, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, withEngineSettings } from "./settings";
 import { createProjectConfig } from "./project";
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => { localStorage.clear(); installH3TestDependencies(); });
 
 it("ignores legacy library multipliers and uses template strengths directly", () => {
   localStorage.setItem("slopus.loras.v1", JSON.stringify([
@@ -97,7 +98,7 @@ it("round-trips template order, enabled flags and strengths, and sends only acti
     { loraId: "off", enabled: false, strength: 1 },
     { loraId: TAOMATE_LORA.id, enabled: true, strength: 1 },
   ] };
-  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 4 });
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 17 });
   expect(loadGeneratorTemplateSettings().templates[0].loras).toEqual(template.loras);
   const config = createProjectConfig({ name: "Test", prompt: "", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 10 });
   const runtime = withEngineSettings(config);

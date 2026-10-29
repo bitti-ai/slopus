@@ -242,6 +242,7 @@ it("finds moved weights and preserves manual paths and GPU variant selection", a
   template.paths.videoVae = "C:/old/video.safetensors";
   template.sources!.videoVae![0].downloadedPath = template.paths.videoVae;
   template.paths.audioVae = "D:/personal/audio.safetensors";
+  files.add(template.paths.audioVae);
   saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: "", catalogVersion: 6 });
   const normal = vi.mocked(invoke).getMockImplementation()!;
   vi.mocked(invoke).mockImplementation(async (command, args) => {
@@ -375,6 +376,8 @@ it("reuses downloaded template LoRAs and restores readiness when a shared adapte
 it.each([{ enabled: false, strength: 1 }, { enabled: true, strength: 0 }])("skips inactive template LoRAs: %j", async (selection) => {
   const template = createGeneratorTemplate();
   template.loras = [{ loraId: TURBO_LORA.id, ...selection }];
+  Object.assign(template.paths, { textEncoder: "text", videoVae: "video", audioVae: "audio" });
+  ["text", "video", "audio"].forEach((path) => files.add(path));
   saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 6 });
   expect(templateNeedsDownload(template)).toBe(false);
   await downloadTemplateWeights(template.id);
@@ -437,9 +440,10 @@ it("downloads all sample weights, saves local paths, and restores a deleted weig
 it("removes downloaded files while retaining the template and original URLs", async () => {
   await downloadTemplateWeights("minimax-h3-original");
   await removeTemplateWeights("minimax-h3-original");
-  expect(files.size).toBe(0);
-  expect(saved().paths).toEqual(minimaxOriginalTemplate().paths);
-  expect(Object.values(saved().sources ?? {}).flat().every((source) => !source.downloadedPath)).toBe(true);
+  expect(files.size).toBe(3); // Shared VAEs and encoder remain installed.
+  expect(saved().paths.transformer).toBe(minimaxOriginalTemplate().paths.transformer);
+  expect(saved().paths.textEncoder).not.toMatch(/^https?:/);
+  expect(saved().sources!.transformer!.every((source) => !source.downloadedPath)).toBe(true);
   expect(templateNeedsDownload(saved())).toBe(true);
   await downloadTemplateWeights("minimax-h3-original");
   expect(templateNeedsDownload(saved())).toBe(false);
@@ -494,5 +498,6 @@ it("restores all templates sharing a downloaded weight when one removes it", asy
   await removeTemplateWeights("minimax-h3-original");
   const copy = loadGeneratorTemplateSettings().templates.find((template) => template.id === "copy")!;
   expect(templateNeedsDownload(copy)).toBe(true);
-  expect(copy.paths).toEqual(minimaxOriginalTemplate().paths);
+  expect(copy.paths.transformer).toBe(minimaxOriginalTemplate().paths.transformer);
+  expect(copy.paths.videoVae).not.toMatch(/^https?:/);
 });

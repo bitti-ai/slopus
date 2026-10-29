@@ -33,7 +33,7 @@ it("downloads DMAD, preserves its sampling recipe when edited, and explains its 
   pick("Add LoRA to generator", DMAD_LORA.name);
   expect(screen.getByText(/DMAD fixes generation to four/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Download weights" }));
-  await waitFor(() => expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 1, error: null }));
+  await waitFor(() => expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 4, error: null }));
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: DMAD_LORA.url }));
   expect(loadLoras().find(({ id }) => id === DMAD_LORA.id)).toMatchObject({ samplingPreset: "dmad-4step", path: expect.stringContaining("dmad_minimax_h3") });
 });
@@ -105,7 +105,7 @@ it("adds and downloads an additional safetensor from a generator's settings", as
   fireEvent.click(screen.getByRole("button", { name: "Add file" }));
   expect(screen.getByLabelText("Additional safetensor 1 URL")).toHaveValue("https://example.com/extra.safetensors");
   fireEvent.click(screen.getByRole("button", { name: "Download weights" }));
-  await waitFor(() => expect(getWeightDownloadState()).toMatchObject({ templateId: "default", active: false, completed: 1, error: null }));
+  await waitFor(() => expect(getWeightDownloadState()).toMatchObject({ templateId: "default", active: false, completed: 4, error: null }));
   expect(loadGeneratorTemplateSettings().templates[0].additionalSafetensors![0].downloadedPath).toBe("C:/Slopus/weights/extra.safetensors");
   pick("Generator mode", "Animate (reference video)");
   pick("Additional safetensor 1 use", "Animate conditioning");
@@ -150,7 +150,7 @@ it("shows discovered model files as Found even when an active LoRA is missing", 
   render(<SettingsView onClose={() => undefined} />);
   fireEvent.click(screen.getByRole("button", { name: "MiniMax H3" }));
   fireEvent.click(screen.getByRole("button", { name: "Edit Singularity generator" }));
-  await waitFor(() => expect(screen.getAllByText("Found")).toHaveLength(4));
+  await waitFor(() => expect(screen.getAllByText("Found")).toHaveLength(1));
   expect(screen.queryByText("Checking this computer…")).not.toBeInTheDocument();
   expect(screen.queryByText("Engine ready")).not.toBeInTheDocument();
   expect(screen.getByText(/Download or locate LoRA Turbo/)).toBeInTheDocument();
@@ -167,7 +167,7 @@ it("selects an undownloaded LoRA in a generator and downloads it from that gener
   expect(screen.getByLabelText("Enable Turbo")).toBeChecked();
   expect(screen.getByText(/step count to 4/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Download weights" }));
-  await waitFor(() => expect(getWeightDownloadState()).toMatchObject({ templateId: "default", active: false, completed: 1, error: null }));
+  await waitFor(() => expect(getWeightDownloadState()).toMatchObject({ templateId: "default", active: false, completed: 4, error: null }));
   expect(loadLoras().find(({ id }) => id === TURBO_LORA.id)?.path).not.toBe("");
   expect(screen.queryByRole("button", { name: "Download weights" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "MiniMax H3" }));
@@ -347,7 +347,7 @@ it("downloads the sample, enables its default choice, and removes only weights t
   render(<SettingsView onClose={() => undefined} />);
   fireEvent.click(screen.getByRole("button", { name: "MiniMax H3" }));
   const makeDefault = () => screen.getByRole("button", { name: "Set First/Last Frame as default" });
-  expect(within(screen.getByRole("list", { name: "Generators" })).getByText("Default")).toBeInTheDocument();
+  expect(within(screen.getByRole("list", { name: "Available to download" })).getByText("Default")).toBeInTheDocument();
   expect(within(screen.getByRole("list", { name: "Available to download" })).getByText("First/Last Frame")).toBeInTheDocument();
   expect(within(screen.getByRole("list", { name: "Available to download" })).queryByRole("button", { name: /as default/ })).toBeNull();
   expect(screen.queryByRole("button", { name: "Remove generator First/Last Frame" })).toBeNull();
@@ -364,7 +364,7 @@ it("downloads the sample, enables its default choice, and removes only weights t
   expect(within(screen.getByRole("list", { name: "Available to download" })).getByText("First/Last Frame")).toBeInTheDocument();
   expect(within(screen.getByRole("list", { name: "Generators" })).queryByText("First/Last Frame")).toBeNull();
   expect(within(screen.getByRole("list", { name: "Available to download" })).queryByRole("button", { name: /as default/ })).toBeNull();
-  expect(files.size).toBe(0);
+  expect(files.size).toBe(3); // Shared encoder and VAEs stay installed.
   expect(loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")?.paths.transformer).toMatch(/^https:/);
 });
 

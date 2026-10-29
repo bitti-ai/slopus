@@ -19,6 +19,29 @@ export async function executeGeneratorCommands(commands: GeneratorCommand[]): Pr
     const context = generatorContext();
     const next = await invoke<GeneratorContext>("prepare_generator_commands", { context, commands });
     if (JSON.stringify(generatorContext()) !== JSON.stringify(context)) continue;
+    // Legacy path commands remain supported after H3 dependencies moved to shared templates.
+    for (const command of commands) {
+      if (command.op !== "generator.add" && command.op !== "generator.set") continue;
+      const template = next.settings.templates.find((entry) => entry.id === command.id);
+      const paths = command.settings.paths;
+      if (template?.modelType !== "minimax-h3" || !paths) continue;
+      if (paths.videoVae !== undefined) delete template.videoVaeId;
+      if (paths.audioVae !== undefined) delete template.audioVaeId;
+      const library = next.settings.h3Components;
+      if (library && (paths.textEncoder !== undefined || paths.tokenizer !== undefined)) {
+        const encoder = library.templates.find((entry) => entry.id === library.defaultTextEncoderId);
+        if (encoder) {
+          if (paths.textEncoder !== undefined) {
+            encoder.path = paths.textEncoder;
+            encoder.sources = /^https?:\/\//i.test(encoder.path) ? [{ url: encoder.path, gpuModel: "", minVramGb: 0 }] : [];
+          }
+          if (paths.tokenizer !== undefined) {
+            encoder.tokenizer = paths.tokenizer;
+            encoder.tokenizerUrl = /^https?:\/\//i.test(paths.tokenizer) ? paths.tokenizer : undefined;
+          }
+        }
+      }
+    }
     const lorasChanged = JSON.stringify(next.loras) !== JSON.stringify(context.loras);
     if (lorasChanged) saveLoras(next.loras);
     try { saveGeneratorTemplateSettings(next.settings, { strict: true }); }

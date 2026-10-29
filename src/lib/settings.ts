@@ -179,6 +179,7 @@ function workerWeight(value: string, sources: WeightSource[] | undefined): strin
 
 export function templateNeedsDownload(template: GeneratorTemplate): boolean {
   return generatorPathFields(template).some(({ id }) => isDownloadUrl(template.paths[id])
+    || (template.modelType === MINIMAX_H3_MODEL_TYPE && (id === "videoVae" && template.videoVaeId !== undefined || id === "audioVae" && template.audioVaeId !== undefined || id === "textEncoder" && template.videoVaeId !== undefined) && !template.paths[id].trim())
     || (!template.paths[id].trim() && (template.sources?.[id]?.length ?? 0) > 0))
     || downloadableTemplateLoras(template.loras).length > 0
     || (template.additionalSafetensors ?? []).some((file) => !file.downloadedPath || isDownloadUrl(file.downloadedPath));
@@ -440,7 +441,7 @@ const normalizeTemplateSettings = (value: unknown, shareComponents = true): Gene
     : { templates, ...(record.h3Components ? { h3Components: record.h3Components as H3Components } : {}) };
   return {
     ...shared,
-    defaultTemplateId: shared.templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
+    defaultTemplateId: !shareComponents ? requestedDefault : shared.templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? shared.templates.find(templateUsable)?.id ?? "",
     catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
@@ -667,6 +668,14 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
 }
 
 export function saveGeneratorTemplateSettings(settings: GeneratorTemplateSettings, options: { strict?: boolean } = {}): void {
+  // Older API clients replace generators only; keep the independently edited library.
+  if (!settings.h3Components && (settings.catalogVersion ?? 17) >= 17) {
+    try {
+      const stored = localStorage.getItem(GENERATOR_TEMPLATES_KEY);
+      const library = stored ? JSON.parse(stored).h3Components : undefined;
+      if (library) settings = { ...settings, h3Components: library };
+    } catch { /* Normalization below handles a missing or damaged store. */ }
+  }
   const normalized = normalizeTemplateSettings(settings, (settings.catalogVersion ?? 17) >= 17) ?? initialTemplateSettings();
   try {
     localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
@@ -782,7 +791,8 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
     }
     const value = remote ? workerWeight(settings[field.id].trim(), sources?.[field.id]) : settings[field.id].trim();
     if (value && (remote || !isDownloadUrl(value))) options[field.id] = value;
-    else if (isDownloadUrl(value) || shifts.modelType === FIBO_MODEL_TYPE && field.id === "tokenizer") delete options[field.id];
+    else if (isDownloadUrl(value) || shifts.modelType === FIBO_MODEL_TYPE && field.id === "tokenizer"
+      || shifts.modelType === MINIMAX_H3_MODEL_TYPE && field.id !== "transformer") delete options[field.id];
   }
   return { enabled: base?.enabled ?? true, model: base?.model ?? null, options };
 }

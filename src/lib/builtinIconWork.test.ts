@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { installH3TestDependencies } from "./h3TestUtils";
 import { waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ReferenceIconWork } from "./referenceIconWork";
@@ -12,7 +13,7 @@ import type { ReferencePreset } from "./reference-presets";
 vi.mock("./runtime", () => ({ enqueueSlopfabGeneration: vi.fn(), cancelSlopfabGeneration: vi.fn(), saveReferenceIcon: vi.fn() }));
 vi.mock("./generatedVideo", () => ({ releaseRendered: vi.fn(async () => true) }));
 vi.mock("./builtinReferenceIcons", () => ({ hasBuiltinIcon: vi.fn(() => false), saveBuiltinIcon: vi.fn(async () => undefined) }));
-beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
+beforeEach(() => { localStorage.clear(); installH3TestDependencies(); vi.clearAllMocks(); });
 const presets: ReferencePreset[] = [
   { id: "test-alice", type: "character", name: "Alice", prompt: "Alice in a blue dress.", subcategory: "Stories" },
   { id: "test-forest", type: "location", name: "Forest", prompt: "A green forest.", subcategory: "Nature" },

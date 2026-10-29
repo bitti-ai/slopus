@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { DMAD_LORA, TURBO_LORA } from "./loras";
-import { engineProviderSetting, templateNeedsDownload, templateUsable, viggleAnimateTemplate, type GeneratorTemplate } from "./settings";
+import { engineProviderSetting, saveGeneratorTemplateSettings, templateNeedsDownload, templateUsable, viggleAnimateTemplate, type GeneratorTemplate } from "./settings";
 import { refreshWorkers, remoteWorkerSelected, selectedWorker, selectWorker, WORKERS_EVENT, type WorkerList } from "./workers";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -53,6 +53,7 @@ describe("LAN generation workers", () => {
 
   it("lets a worker download what this computer has not, and picks weights for the worker's GPU", async () => {
     const template = downloadable();
+    saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 17 });
     expect(templateNeedsDownload(template)).toBe(true);
     expect(templateUsable(template)).toBe(false);
     expect(() => engineProviderSetting(template.paths, undefined, "sage2", template.loras, "prompt", [], false, template.sources)).toThrow(/Download or locate LoRA/);

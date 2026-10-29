@@ -8,6 +8,7 @@ export interface H3ComponentTemplate {
   path: string;
   sources: WeightSource[];
   tokenizer?: string;
+  tokenizerUrl?: string;
 }
 export interface H3Components {
   templates: H3ComponentTemplate[];
@@ -47,7 +48,9 @@ function normalizeComponents(value: unknown): H3Components {
     }) : [];
     if (isUrl(path) && !sources.some(({ url }) => url === path.trim())) sources.unshift({ url: path.trim(), gpuModel: "", minVramGb: 0 });
     return [{ id: entry.id, name: typeof entry.name === "string" && entry.name.trim() ? entry.name : "Untitled template", type: entry.type,
-      path, sources, ...(typeof entry.tokenizer === "string" ? { tokenizer: entry.tokenizer } : {}) }];
+      path, sources, ...(typeof entry.tokenizer === "string" ? { tokenizer: entry.tokenizer } : {}),
+      ...(typeof entry.tokenizerUrl === "string" && isUrl(entry.tokenizerUrl) ? { tokenizerUrl: entry.tokenizerUrl }
+        : typeof entry.tokenizer === "string" && isUrl(entry.tokenizer) ? { tokenizerUrl: entry.tokenizer } : {}) }];
   });
   return { templates, defaultTextEncoderId: templates.find((entry) => entry.id === raw.defaultTextEncoderId && entry.type === "textEncoder")?.id
     ?? templates.find((entry) => entry.type === "textEncoder")?.id ?? "" };
@@ -67,7 +70,9 @@ export function resolveH3Components(template: GeneratorTemplate, library: H3Comp
   for (const field of ["videoVae", "audioVae", "textEncoder", "tokenizer"] as const) {
     const component = h3ComponentForField(template, field, library);
     paths[field] = field === "tokenizer" ? component?.tokenizer ?? "" : component?.path ?? "";
-    const entries = field === "tokenizer" ? (isUrl(paths[field]) ? [{ url: paths[field], gpuModel: "", minVramGb: 0 }] : []) : component?.sources ?? [];
+    const tokenizerUrl = component?.tokenizerUrl ?? (isUrl(paths[field]) ? paths[field] : undefined);
+    const entries = field === "tokenizer" ? (tokenizerUrl ? [{ url: tokenizerUrl, gpuModel: "", minVramGb: 0,
+      ...(paths[field] && !isUrl(paths[field]) ? { downloadedPath: paths[field] } : {}) }] : []) : component?.sources ?? [];
     if (entries.length) sources[field] = entries;
     else delete sources[field];
   }
@@ -92,8 +97,12 @@ export function normalizeH3Library(templates: GeneratorTemplate[], value: unknow
       !path || isUrl(path) || isUrl(entry.path) || canonical(entry.path) === canonical(path)
     ) && (field !== "textEncoder" || (entry.tokenizer ?? "") === template.paths.tokenizer));
     if (!entry) {
-      entry = { id: `${template.id}-${field}`, name: `${template.name} ${type === "textEncoder" ? "Text Encoder" : type === "video" ? "Video VAE" : "Audio VAE"}`,
-        type, path, sources, ...(field === "textEncoder" ? { tokenizer: template.paths.tokenizer } : {}) };
+      const baseId = `${template.id}-${field}`;
+      let id = baseId, suffix = 2;
+      while (library.templates.some((entry) => entry.id === id)) id = `${baseId}-${suffix++}`;
+      entry = { id, name: `${template.name} ${type === "textEncoder" ? "Text Encoder" : type === "video" ? "Video VAE" : "Audio VAE"}`,
+        type, path, sources, ...(field === "textEncoder" ? { tokenizer: template.paths.tokenizer,
+          tokenizerUrl: isUrl(template.paths.tokenizer) ? template.paths.tokenizer : template.sources?.tokenizer?.find((source) => source.downloadedPath === template.paths.tokenizer)?.url } : {}) };
       library.templates.push(entry);
     } else {
       if (path && !isUrl(path) && (!entry.path || isUrl(entry.path))) entry.path = path;
@@ -105,6 +114,7 @@ export function normalizeH3Library(templates: GeneratorTemplate[], value: unknow
     }
     return entry.id;
   };
+  const migratedEncoders: string[] = [];
   const linked = templates.map((template) => {
     if (template.modelType !== "minimax-h3") return template;
     const next = { ...template };
@@ -114,13 +124,15 @@ export function normalizeH3Library(templates: GeneratorTemplate[], value: unknow
     }
     if (migrating && template.mode !== "animate" && (template.paths.textEncoder || template.sources?.textEncoder?.length)) {
       const id = migrate(template, "textEncoder");
+      migratedEncoders.push(id);
       if (template.id === defaultGeneratorId) library.defaultTextEncoderId = id;
     }
     return next;
   });
   // Prefer an existing local encoder on first migration if the former default had none.
   if (migrating && !templates.find((entry) => entry.id === defaultGeneratorId)?.paths.textEncoder) {
-    library.defaultTextEncoderId = library.templates.find((entry) => entry.type === "textEncoder" && entry.path && !isUrl(entry.path))?.id ?? library.defaultTextEncoderId;
+    library.defaultTextEncoderId = library.templates.find((entry) => migratedEncoders.includes(entry.id) && entry.path && !isUrl(entry.path))?.id
+      ?? migratedEncoders[0] ?? library.defaultTextEncoderId;
   }
   return { h3Components: library, templates: linked.map((template) => resolveH3Components(template, library)) };
 }

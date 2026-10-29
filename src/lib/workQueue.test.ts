@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { installH3TestDependencies } from "./h3TestUtils";
 import { mossImageTemplate, fiboImageTemplate, fiboBaseTemplate } from "./settings";
 import { waitFor } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
@@ -37,7 +38,7 @@ const handlers = new Map<string, (event: { payload: unknown }) => void>();
 const stops: (() => void)[] = [];
 const plan = { alignedFrames: 120, canvasWidth: 736, canvasHeight: 416, boundary: "Test plan" };
 beforeEach(() => {
-  localStorage.clear();
+  localStorage.clear(); installH3TestDependencies();
   handlers.clear();
   vi.clearAllMocks();
   Object.assign(window, { __TAURI_INTERNALS__: {} });

@@ -27,6 +27,7 @@ it("serializes generator, upscaler and LoRA downloads and reports both SeedVR2 f
   const loras = await import("./loras");
   const { OTHER_WEIGHT_TEMPLATES, otherWeightPaths } = await import("./upscalers");
   const template = settings.createGeneratorTemplate("Extra");
+  Object.assign(template.paths, { textEncoder: "text", videoVae: "video", audioVae: "audio" });
   template.additionalSafetensors = [{ id: "extra", name: "Extra", url: "https://example.com/extra.safetensors" }];
   settings.saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id });
   loras.saveLoras([{ id: "adapter", name: "Adapter", path: "", url: "https://example.com/adapter.safetensors" }]);

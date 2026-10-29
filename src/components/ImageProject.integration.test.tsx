@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { installH3TestDependencies } from "../lib/h3TestUtils";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { placePromptCaret, typePrompt } from "./workspace/promptTestUtils";
@@ -21,7 +22,7 @@ import { getExportJobs, resetExportJobForTests } from "../lib/exportJob";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
-afterEach(() => { cleanup(); resetExportJobForTests(); localStorage.clear(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); resetExportJobForTests(); localStorage.clear(); installH3TestDependencies(); vi.restoreAllMocks(); });
 const record = (): ProjectRecord => ({ folderPath: "D:/Images", config: parseProjectConfig(fixture) });
 
 it("opens template settings and executes only after configuring prompts and clothing references", () => {

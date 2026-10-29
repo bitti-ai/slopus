@@ -74,6 +74,7 @@ function ComponentEditor({ initial, desktop, onDone }: { initial: H3ComponentTem
       setError("Select another VAE in generators using this template before changing its type."); return;
     }
     const saved = { ...entry, name: entry.name.trim(), path: entry.path.trim() || entry.sources[0]?.url || "" };
+    if (saved.tokenizer !== initial.tokenizer) saved.tokenizerUrl = isDownloadUrl(saved.tokenizer ?? "") ? saved.tokenizer : undefined;
     // Preserve downloads completed while this dialog was open if their source was not edited.
     const latest = library.templates.find((item) => item.id === entry.id);
     saved.sources = saved.sources.map((source) => ({ ...source, downloadedPath: latest?.sources.find((item) => item.url === source.url)?.downloadedPath ?? source.downloadedPath }));

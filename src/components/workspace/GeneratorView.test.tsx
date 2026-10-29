@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { installH3TestDependencies } from "../../lib/h3TestUtils";
 import { completeSceneGeneration, sceneInput } from "../../lib/sceneHistory";
 
 import "@testing-library/jest-dom/vitest";
@@ -28,7 +29,7 @@ vi.mock("../../lib/runtime", async (importOriginal) => ({
 
 beforeAll(() => vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined));
 beforeEach(() => {
-  localStorage.clear();
+  localStorage.clear(); installH3TestDependencies();
   vi.clearAllMocks();
 });
 afterEach(cleanup);
@@ -66,7 +67,7 @@ it("submits the selected Take to upscale and closes the action popup", () => {
 it("excludes MOSS from the video picker even when it is the saved default", () => {
   const moss = { ...mossImageTemplate(), sources: {}, paths: { transformer: "moss", textEncoder: "qwen", videoVae: "flux", tokenizer: "tokenizer.json", audioVae: "" } };
   const video = createGeneratorTemplate("Video model");
-  saveGeneratorTemplateSettings({ templates: [moss, video], defaultTemplateId: moss.id, catalogVersion: 10 });
+  saveGeneratorTemplateSettings({ templates: [moss, video], defaultTemplateId: moss.id, catalogVersion: 17 });
   setup();
   const picker = screen.getByRole("combobox", { name: /Video generator template/ });
   expect(picker).toHaveTextContent("Video model");
@@ -1021,7 +1022,7 @@ describe("Generator scene controls", () => {
         id: "draft",
         name: "Draft",
         defaultSteps: 9,
-        paths: { transformer: "", textEncoder: "", tokenizer: "", videoVae: "", audioVae: "" },
+        paths: { transformer: "", textEncoder: "text", tokenizer: "", videoVae: "video", audioVae: "audio" },
       }],
     }));
     const state = setup();
@@ -1037,14 +1038,14 @@ describe("Generator scene controls", () => {
           id: "quality",
           name: "Quality",
           defaultSteps: 20,
-          paths: { transformer: "quality.safetensors", textEncoder: "", tokenizer: "", videoVae: "", audioVae: "" },
+          paths: { transformer: "quality.safetensors", textEncoder: "text", tokenizer: "", videoVae: "video", audioVae: "audio" },
         },
         {
           id: "draft",
           name: "Fast draft",
           defaultSteps: 8,
           motionCache: true,
-          paths: { transformer: "draft.safetensors", textEncoder: "", tokenizer: "", videoVae: "", audioVae: "" },
+          paths: { transformer: "draft.safetensors", textEncoder: "text", tokenizer: "", videoVae: "video", audioVae: "audio" },
         },
       ],
     }));
@@ -1358,7 +1359,7 @@ it("shows template shifts and locks active LoRA overrides without replacing save
     loras: [{ loraId: "shift", enabled: true, strength: 1 }],
     paths: { transformer: "model", textEncoder: "text", tokenizer: "", videoVae: "video", audioVae: "audio" } };
   saveLoras([{ id: "shift", name: "Shift", path: "D:/shift.safetensors", videoSigmaShiftOverride: 6 }]);
-  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 9 });
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 17 });
   const initial = project();
   initial.generationJobs[0].videoSigmaShift = 8;
   const state = setup(initial);
@@ -1440,7 +1441,7 @@ it("keeps scene-type changes when automatically choosing a compatible generator"
   vi.mocked(getEngineStatus).mockResolvedValue(readyRuntime);
   const prompt = { ...minimaxOriginalTemplate(), id: "prompt-template", name: "Prompt template", sources: {}, paths: { transformer: "prompt-transformer", textEncoder: "text", videoVae: "vae", audioVae: "audio", tokenizer: "tokens" } };
   const animate = { ...viggleAnimateTemplate(), id: "animate-template", name: "Animate template", sources: {}, loras: [], additionalSafetensors: [], paths: { transformer: "animate-transformer", textEncoder: "text", videoVae: "vae", audioVae: "audio", tokenizer: "tokens" } };
-  saveGeneratorTemplateSettings({ templates: [prompt, animate], defaultTemplateId: prompt.id, catalogVersion: 10 });
+  saveGeneratorTemplateSettings({ templates: [prompt, animate], defaultTemplateId: prompt.id, catalogVersion: 17 });
   const state = setup();
   choose("Scene type", "Animate");
   await waitFor(() => expect(state.latest().generationJobs[0]).toMatchObject({ sceneType: "animate", generatorTemplateId: "animate-template" }));

@@ -4,6 +4,8 @@ Changes since 0.3.2.
 
 ## What's new
 
+- **MiniMax H3 dependencies.** Added named Video and Audio VAE templates, including Sol H3 VAE, and a shared default Text Encoder. Generators link to VAEs and automatically download missing dependencies; existing custom paths and downloads are preserved.
+
 - **Scene upscaling.** Generate's dropdown offers 1.5x, 2x and 4x latent upscaling as new Takes. Upscaled Takes can be enlarged again; scene references always use original latents.
 
 - **Video library.** Organize Videos → Scenes → Shots in folders, play scenes sequentially on cards or in a popout, and apply shared prompts and timed music/video references. Split a complete song into scenes; timeline clips remain individual scenes.

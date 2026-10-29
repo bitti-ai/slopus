@@ -84,7 +84,7 @@ function templateSummary(template: GeneratorTemplate): string {
 }
 
 const hasDownloadedWeights = (template: GeneratorTemplate) =>
-  Object.values(template.sources ?? {}).some((sources) => sources.length > 0) || Boolean(template.additionalSafetensors?.length);
+  Object.entries(template.sources ?? {}).some(([id, sources]) => (template.modelType !== "minimax-h3" || id === "transformer") && sources.length > 0) || Boolean(template.additionalSafetensors?.length);
 
 /* --- Shared pieces ---------------------------------------------------------- */
 

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { installH3TestDependencies } from "./lib/h3TestUtils";
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
@@ -33,7 +34,7 @@ vi.mock("./lib/runtime", async (original) => ({
 }));
 const handlers = new Map<string, (event: { payload: unknown }) => void>();
 beforeEach(() => {
-  vi.clearAllMocks(); localStorage.clear(); handlers.clear();
+  vi.clearAllMocks(); localStorage.clear(); installH3TestDependencies(); handlers.clear();
   vi.mocked(getWeightDownloadState).mockReturnValue(null);
   vi.mocked(invoke).mockImplementation(async () => undefined);
   markReleaseNotesSeen();

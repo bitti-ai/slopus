@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { installH3TestDependencies } from "../../lib/h3TestUtils";
 import "@testing-library/jest-dom/vitest";
 import { useState } from "react";
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -18,10 +19,10 @@ import fixture from "../../../fixtures/project-v1-image.json";
 import snapshotFixture from "../../../fixtures/image-generation-snapshot.json";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
-afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); localStorage.clear(); installH3TestDependencies(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 function enableCompositionTools() {
   const template = createGeneratorTemplate("MOSS", "moss");
-  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 14 });
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 17 });
 }
 function setup(initial = parseProjectConfig(fixture), workItems: WorkItem[] = []) {
   let latest: ProjectConfig = initial;
@@ -68,7 +69,7 @@ it.each(["queued", "generating"] as const)("shows a separate empty %s entry with
 it("allows Fibo text-to-image and editing while disabling unsupported templates", () => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   const fibo = { ...fiboImageTemplate(), sources: {}, paths: { transformer: "fibo", textEncoder: "qwen", videoVae: "flux", tokenizer: "", audioVae: "" } };
-  saveGeneratorTemplateSettings({ templates: [fibo], defaultTemplateId: fibo.id, catalogVersion: 14 });
+  saveGeneratorTemplateSettings({ templates: [fibo], defaultTemplateId: fibo.id, catalogVersion: 17 });
   const initial = parseProjectConfig(fixture);
   initial.imageScene = createImageScene("Make the sky blue");
   setup(initial);
@@ -92,7 +93,7 @@ it("allows Fibo text-to-image and editing while disabling unsupported templates"
 it("offers MOSS for new images and disables editing and reference templates", () => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   const moss = { ...mossImageTemplate(), sources: {}, paths: { transformer: "moss", textEncoder: "qwen", videoVae: "flux", tokenizer: "tokenizer.json", audioVae: "" } };
-  saveGeneratorTemplateSettings({ templates: [moss], defaultTemplateId: moss.id, catalogVersion: 10 });
+  saveGeneratorTemplateSettings({ templates: [moss], defaultTemplateId: moss.id, catalogVersion: 17 });
   const initial = parseProjectConfig(fixture);
   initial.imageScene = createImageScene("A red apple");
   setup(initial);
@@ -427,7 +428,7 @@ it("does not invent a used seed for an older random result or show one for draft
 it("hides placement and palette controls by model type while preserving boxes and palettes", () => {
   const h3 = createGeneratorTemplate("Renamed H3");
   const future = createGeneratorTemplate("Future generator", "future-model");
-  saveGeneratorTemplateSettings({ templates: [h3, future], defaultTemplateId: h3.id, catalogVersion: 9 });
+  saveGeneratorTemplateSettings({ templates: [h3, future], defaultTemplateId: h3.id, catalogVersion: 17 });
   const current = setup();
   const before = structuredClone(current().imageScene!.nodes);
   expect(screen.queryByText("Color palette")).not.toBeInTheDocument();
@@ -1107,7 +1108,7 @@ it("saves generation effects from the image root inspector and blocks them on MO
   expect(latest().imageScene?.generationEffects?.tone?.contrast).toBe(1.5);
   const saved = parseProjectConfig(JSON.parse(JSON.stringify(latest())));
   cleanup();
-  saveGeneratorTemplateSettings({ templates: [mossImageTemplate()], defaultTemplateId: "moss-image", catalogVersion: 10 });
+  saveGeneratorTemplateSettings({ templates: [mossImageTemplate()], defaultTemplateId: "moss-image", catalogVersion: 17 });
   setup(saved);
   expect(screen.getByRole("button", { name: "Add effect" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
@@ -1118,7 +1119,7 @@ it("shows CFG before Seed for MOSS and preserves its value when switching models
   const paths = { transformer: "model", textEncoder: "encoder", videoVae: "vae", tokenizer: "tokenizer.json", audioVae: "audio" };
   const moss = { ...mossImageTemplate(), sources: {}, paths };
   const h3 = { ...createGeneratorTemplate("H3"), sources: {}, paths };
-  saveGeneratorTemplateSettings({ templates: [moss, h3], defaultTemplateId: moss.id, catalogVersion: 10 });
+  saveGeneratorTemplateSettings({ templates: [moss, h3], defaultTemplateId: moss.id, catalogVersion: 17 });
   const initial = parseProjectConfig(fixture);
   initial.imageScene = createImageScene("An apple");
   const latest = setup(initial);
@@ -1169,13 +1170,13 @@ it("sets a temporary generation count, dismisses its panel and resets after one 
   fireEvent.click(options);
   expect(screen.getByRole("spinbutton", { name: "Count" })).toHaveValue(3);
   fireEvent.click(screen.getByRole("button", { name: "Generate (3)" }));
-  expect(onGenerate).toHaveBeenLastCalledWith(template, 3);
+  expect(onGenerate).toHaveBeenLastCalledWith(expect.objectContaining({ id: template.id }), 3);
   expect(screen.queryByRole("dialog", { name: "Generation options" })).not.toBeInTheDocument();
   fireEvent.click(options);
   expect(screen.getByRole("spinbutton", { name: "Count" })).toHaveValue(1);
   fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Count" }), { key: "Escape" });
   fireEvent.click(screen.getByRole("button", { name: "Generate" }));
-  expect(onGenerate).toHaveBeenLastCalledWith(template, 1);
+  expect(onGenerate).toHaveBeenLastCalledWith(expect.objectContaining({ id: template.id }), 1);
   expect(onChange).not.toHaveBeenCalled();
   fireEvent.click(options);
   fireEvent.change(screen.getByRole("spinbutton", { name: "Count" }), { target: { value: "4" } });
@@ -1296,7 +1297,7 @@ it("combines and subtracts lassos using release-time modifiers and shows matchin
 
 it("gates composition creation by model across menus, shortcuts and model switches", () => {
   const h3 = createGeneratorTemplate("H3"), moss = createGeneratorTemplate("MOSS", "moss"), fibo = createGeneratorTemplate("Fibo", "fibo2");
-  saveGeneratorTemplateSettings({ templates: [h3, moss, fibo], defaultTemplateId: h3.id, catalogVersion: 14 });
+  saveGeneratorTemplateSettings({ templates: [h3, moss, fibo], defaultTemplateId: h3.id, catalogVersion: 17 });
   const current = setup();
   const before = structuredClone(current().imageScene!.nodes);
   for (const name of ["Draw object", "Draw text", "Draw group"]) expect(screen.getByRole("radio", { name })).toBeDisabled();
@@ -1327,7 +1328,7 @@ it("gates composition creation by model across menus, shortcuts and model switch
 
 it("shows model-specific negative prompts, preserves them across model switches and explains Fibo", () => {
   const h3 = createGeneratorTemplate("H3"), moss = createGeneratorTemplate("MOSS", "moss"), fibo = createGeneratorTemplate("Fibo", "fibo2");
-  saveGeneratorTemplateSettings({ templates: [h3, moss, fibo], defaultTemplateId: h3.id, catalogVersion: 14 });
+  saveGeneratorTemplateSettings({ templates: [h3, moss, fibo], defaultTemplateId: h3.id, catalogVersion: 17 });
   const latest = setup();
   expect(screen.queryByRole("textbox", { name: "Negative prompt" })).not.toBeInTheDocument();
   choose("Generator", "MOSS");
@@ -1346,7 +1347,7 @@ it("shows model-specific negative prompts, preserves them across model switches 
 
 it("uses Fibo's four-step default for fresh images and imports, preserving saved steps", () => {
   const fibo = createGeneratorTemplate("Fibo", "fibo2");
-  saveGeneratorTemplateSettings({ templates: [fibo], defaultTemplateId: fibo.id, catalogVersion: 14 });
+  saveGeneratorTemplateSettings({ templates: [fibo], defaultTemplateId: fibo.id, catalogVersion: 17 });
   const initial = parseProjectConfig(fixture);
   initial.imageScene!.steps = 12;
   const imported = { id: "imported", kind: "image" as const, name: "Imported", relativePath: "media/source.png", width: 512, height: 512, mimeType: "image/png", createdAt: initial.createdAt };
@@ -1367,7 +1368,7 @@ it("uses Fibo's four-step default for fresh images and imports, preserving saved
 it.each([fiboBaseTemplate(), { ...fiboImageTemplate(), editingModel: false }])("disables editing and Zoom for $name when editing is off", (template) => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   const usable = { ...template, sources: {}, paths: { transformer: "fibo", textEncoder: "qwen", videoVae: "flux", tokenizer: "", audioVae: "" } };
-  saveGeneratorTemplateSettings({ templates: [usable], defaultTemplateId: usable.id, catalogVersion: 15 });
+  saveGeneratorTemplateSettings({ templates: [usable], defaultTemplateId: usable.id, catalogVersion: 17 });
   const initial = parseProjectConfig(fixture);
   initial.imageScene = createImageScene("A forest");
   setup(initial);

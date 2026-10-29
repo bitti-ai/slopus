@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { installH3TestDependencies } from "../lib/h3TestUtils";
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
@@ -11,7 +12,7 @@ import { loadLoras, saveLoras } from "../lib/loras";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 beforeEach(() => {
-  localStorage.clear();
+  localStorage.clear(); installH3TestDependencies();
   vi.clearAllMocks();
   delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 });
@@ -363,11 +364,13 @@ describe("the settings screen", () => {
     expect(screen.queryByText("Set its name, generation steps, attention, and model locations on this computer.")).toBeNull();
   });
 
-  it("puts the optional tokenizer setting last, marked (optional) in plain text", () => {
-    const { container } = open();
+  it("keeps the tokenizer with the shared text encoder", () => {
+    open();
     editDefaultGenerator();
-    const labels = Array.from(container.querySelectorAll(".settings-path .ui-settings-card__header")).map((label) => label.textContent);
-    expect(labels.at(-1)).toBe("Tokenizer (optional)");
+    expect(screen.queryByRole("button", { name: "More options for Tokenizer" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit Qwen3 VL 32B MiniMax H3 text encoder" }));
+    expect(screen.getByLabelText("Text encoder tokenizer")).toBeTruthy();
   });
 
   it("shows paths in cards and edits them through the More menu", () => {
@@ -476,7 +479,7 @@ describe("the settings screen", () => {
 
   it("defaults icon generation to the sole available generator and remembers a separate selection", () => {
     const first = createGeneratorTemplate("Video"), second = createGeneratorTemplate("Icons");
-    const templates = { templates: [first], defaultTemplateId: first.id, catalogVersion: 9 };
+    const templates = { templates: [first], defaultTemplateId: first.id, catalogVersion: 17 };
     saveGeneratorTemplateSettings(templates);
     const view = open(null);
     expect(combo("Reference icon generator").getAttribute("data-value")).toBe(first.id);

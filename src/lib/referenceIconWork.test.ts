@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { installH3TestDependencies } from "./h3TestUtils";
 import { listen } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
@@ -45,7 +46,7 @@ const video = (queue: WorkQueue, session: ReturnType<WorkQueue["project"]>) => q
 const originalPresetIcons = new Map(REFERENCE_PRESETS.map((preset) => [preset.id, preset.icon]));
 
 beforeEach(() => {
-  vi.useFakeTimers(); vi.clearAllMocks(); localStorage.clear(); handlers.clear();
+  vi.useFakeTimers(); vi.clearAllMocks(); localStorage.clear(); installH3TestDependencies(); handlers.clear();
   saveReferenceIconAutomation("enabled");
   Object.assign(window, { __TAURI_INTERNALS__: {} });
   vi.mocked(listen).mockImplementation((async (name: string, handler: (event: { payload: any }) => void) => { handlers.set(name, handler); return () => { handlers.delete(name); }; }) as typeof listen);
@@ -82,7 +83,7 @@ it("renders automatic icons with the chosen template without changing the video 
   icons.motionCache = true;
   saveLoras([{ id: "style", name: "Style", path: "D:/style.safetensors", stepOverride: 6 }]);
   icons.loras = [{ loraId: "style", enabled: true, strength: 0.9 }];
-  saveGeneratorTemplateSettings({ templates: [videoTemplate, icons], defaultTemplateId: videoTemplate.id, catalogVersion: 9 });
+  saveGeneratorTemplateSettings({ templates: [videoTemplate, icons], defaultTemplateId: videoTemplate.id, catalogVersion: 17 });
   saveReferenceIconGeneratorId(icons.id);
   const { session } = setup([reference("hero")]);
   await vi.advanceTimersByTimeAsync(1001);

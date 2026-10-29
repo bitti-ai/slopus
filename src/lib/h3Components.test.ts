@@ -106,3 +106,30 @@ it("refreshes missing dependencies even when their generator has not been opened
   await refreshDownloadedWeights();
   expect(loadGeneratorTemplateSettings().h3Components!.templates.find((entry) => entry.id === H3_TEXT_ENCODER_ID)?.path).toBe(minimaxOriginalTemplate().paths.textEncoder);
 });
+
+it("retains tokenizer download metadata and recovers a missing tokenizer", async () => {
+  const settings = loadGeneratorTemplateSettings();
+  const encoder = settings.h3Components!.templates.find((entry) => entry.id === H3_TEXT_ENCODER_ID)!;
+  const url = "https://example.com/tokenizer.json";
+  encoder.tokenizer = url;
+  saveGeneratorTemplateSettings(settings);
+  await downloadTemplateWeights("minimax-h3-original");
+  expect(downloads()).toContain(url);
+  expect(loadGeneratorTemplateSettings().h3Components!.templates.find((entry) => entry.id === H3_TEXT_ENCODER_ID)).toMatchObject({ tokenizer: "D:/weights/tokenizer.json", tokenizerUrl: url });
+  files.delete(url); vi.clearAllMocks();
+  await downloadTemplateWeights("minimax-h3-original");
+  expect(downloads()).toEqual([url]);
+});
+
+it("does not treat a broken VAE link as ready or reuse project-carried dependency paths", async () => {
+  const settings = loadGeneratorTemplateSettings();
+  const template = settings.templates.find((entry) => entry.id === "minimax-h3-original")!;
+  template.videoVaeId = "removed";
+  saveGeneratorTemplateSettings(settings);
+  const current = loadGeneratorTemplateSettings().templates.find((entry) => entry.id === template.id)!;
+  expect(templateNeedsDownload(current)).toBe(true);
+  const provider = engineProviderSetting(current.paths, { enabled: true, model: null, options: { videoVae: "D:/stale-project-vae" } }, current.attention, [], "prompt", [], false, current.sources, current);
+  expect(provider.options.videoVae).toBeUndefined();
+  await downloadTemplateWeights(template.id);
+  expect(getWeightDownloadState()?.error).toContain("Video VAE");
+});
