@@ -9,7 +9,7 @@ import { loadGeneratorTemplateSettings, minimaxSingularityTemplate } from "../li
 import { getWeightDownloadState } from "../lib/weightDownloads";
 import { WorkQueuePanel } from "./WorkQueuePanel";
 import { WorkQueue } from "../lib/workQueue";
-import { DMAD_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA } from "../lib/loras";
+import { DMAD_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA } from "../lib/loras";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -19,6 +19,25 @@ const pick = (name: string, option: string) => {
   fireEvent.click(screen.getByRole("option", { name: option }));
 };
 const card = (openLabel: string) => screen.getByRole("button", { name: openLabel }).closest(".settings-open-card") as HTMLElement;
+
+it.each([PIKA_FL2VA_LORA, PIKA_REF2VA_LORA])("offers $name, preserves its recipe, and downloads it with a generator", async (lora) => {
+  render(<SettingsView onClose={() => undefined} />);
+  fireEvent.click(screen.getByRole("button", { name: "MiniMax H3" }));
+  expect(screen.getByRole("button", { name: `Download LoRA ${lora.name}` })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: `Edit ${lora.name} LoRA` }));
+  expect(screen.getByRole("combobox", { name: "LoRA sampling recipe" })).toHaveTextContent("Pika H3 Flex 6-Step");
+  expect(screen.getByText(/video\/audio shifts of 12\/3/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  const generator = lora.id === PIKA_FL2VA_LORA.id ? "First/Last Frame" : "References";
+  fireEvent.click(screen.getByRole("button", { name: `Edit ${generator} generator` }));
+  pick("Add LoRA to generator", lora.name);
+  expect(screen.getByText(/Pika H3 Flex fixes generation to six/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Download weights" }));
+  await waitFor(() => expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 5, error: null }));
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: lora.url }));
+  expect(loadLoras().find(({ id }) => id === lora.id)).toMatchObject({ samplingPreset: "pika-6step", path: expect.stringContaining("pika_h3_flex") });
+});
 
 it("downloads DMAD, preserves its sampling recipe when edited, and explains its fixed grid", async () => {
   render(<SettingsView onClose={() => undefined} />);

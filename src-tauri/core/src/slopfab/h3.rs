@@ -69,9 +69,12 @@ pub(super) fn configure_request(
     }
     let video_steps = configuration.generation_steps(request.steps)?;
     api.set_steps(handle, video_steps)?;
-    let dmad = configuration.sampling_preset.as_ref().map_err(Clone::clone)? == &Some(SamplingPreset::Dmad4Step);
-    if dmad {
-        api.set_dmad_sampling(handle)?;
+    let preset = configuration.sampling_preset.as_ref().map_err(Clone::clone)?;
+    if let Some(preset) = preset {
+        match preset {
+            SamplingPreset::Dmad4Step => api.set_dmad_sampling(handle)?,
+            SamplingPreset::Pika6Step => api.set_pika_sampling(handle)?,
+        }
     } else {
         let shifts = configuration.sigma_shifts.as_ref().map_err(Clone::clone)?;
         api.set_sigma_shifts(handle, shifts.video_override.or(request.video_sigma_shift).or(shifts.video),
@@ -140,7 +143,7 @@ pub(super) fn configure_request(
     let lock_overlap = request.continuation_path.is_some() && request.continuation_lock_overlap;
     let independent_audio = request.audio_steps.is_some_and(|steps| steps != video_steps);
     // Overlap locking and different audio/video step counts require full evaluations.
-    api.set_motion_cache(handle, configuration.motion_cache && !dmad && request.image_edit.is_none() && !lock_overlap && !independent_audio && request.latent_bridge.is_none() && request.single_shot.is_none() && source_noise.is_none())?;
+    api.set_motion_cache(handle, configuration.motion_cache && preset.is_none() && request.image_edit.is_none() && !lock_overlap && !independent_audio && request.latent_bridge.is_none() && request.single_shot.is_none() && source_noise.is_none())?;
     if let Some(bridge) = &request.latent_bridge {
         api.set_latent_bridge_files(handle,
             request.bridge_left_path.as_deref().ok_or("Missing left Long Shot archive.")?,

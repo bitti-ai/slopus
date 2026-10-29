@@ -110,9 +110,11 @@ export function LoraEditor({ loraId, modelType, onDone }: { loraId: string; mode
       <label>Local file<span className="lora-manual__path"><input className="text-field" aria-label="LoRA path" value={path} spellCheck={false} onChange={(event) => setPath(event.target.value)} placeholder="Absolute path to a .safetensors file" />
         <button className="secondary-button" type="button" disabled={!isTauri()} onClick={() => void browse()}>Browse…</button></span></label>
       <label>Sampling recipe<ComboBox aria-label="LoRA sampling recipe" value={samplingPreset ?? "default"}
-        onChange={(value) => setSamplingPreset(value === "dmad-4step" ? value : undefined)}
-        options={[{ value: "default", label: "Default" }, { value: "dmad-4step", label: "DMAD 4-Step" }]} /></label>
-      {samplingPreset && <InfoBar severity="informational" message="DMAD uses four re-noising evaluations with video/audio shifts of 12/2. Its fixed schedule overrides step counts and turns off MotionCache." />}
+        onChange={(value) => setSamplingPreset(value === "dmad-4step" || value === "pika-6step" ? value : undefined)}
+        options={[{ value: "default", label: "Default" }, { value: "dmad-4step", label: "DMAD 4-Step" }, { value: "pika-6step", label: "Pika H3 Flex 6-Step" }]} /></label>
+      {samplingPreset && <InfoBar severity="informational" message={samplingPreset === "pika-6step"
+        ? "Pika H3 Flex uses six re-noising evaluations with video/audio shifts of 12/3. Its fixed schedule overrides step counts and turns off MotionCache. Use FL2VA with First/Last Frame generators and Ref2VA with References generators."
+        : "DMAD uses four re-noising evaluations with video/audio shifts of 12/2. Its fixed schedule overrides step counts and turns off MotionCache."} />}
       {!samplingPreset && <Checkbox aria-label="Override step count" checked={override} onChange={setOverride} label="Override step count"
         description="The highest override among active LoRAs replaces the scene's step count." />}
       {!samplingPreset && override && <label>Step count<input className="text-field" aria-label="LoRA step override" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={steps} onChange={(event) => setSteps(event.target.value)} /></label>}
@@ -132,6 +134,7 @@ export function TemplateLorasEditor({ modelType, value, onChange }: { modelType:
   const library = useLoras();
   const active = value.filter((entry) => entry.enabled && entry.strength !== 0);
   const dmad = active.some((entry) => library.find(({ id }) => id === entry.loraId)?.samplingPreset === "dmad-4step");
+  const pika = active.some((entry) => library.find(({ id }) => id === entry.loraId)?.samplingPreset === "pika-6step");
   const stepOverride = highestLoraStepOverride(active
     .flatMap((entry) => library.filter(({ id }) => id === entry.loraId)));
   const shifts = loraSigmaShiftOverrides(active.flatMap((entry) => library.filter(({ id }) => id === entry.loraId)));
@@ -162,7 +165,9 @@ export function TemplateLorasEditor({ modelType, value, onChange }: { modelType:
         options={available.map((lora) => ({ value: lora.id, label: lora.name }))} />
     </SettingsCard>
     {(shifts.videoSigmaShift !== undefined || shifts.audioSigmaShift !== undefined) && <InfoBar severity="informational" message={`Active LoRA sigma shifts: ${[shifts.videoSigmaShift !== undefined ? `video ${shifts.videoSigmaShift}` : "", shifts.audioSigmaShift !== undefined ? `audio ${shifts.audioSigmaShift}` : ""].filter(Boolean).join(", ")}.`} />}
-    {dmad ? <InfoBar severity="informational" message="DMAD fixes generation to four re-noising evaluations and turns off MotionCache." />
+    {dmad && pika ? <InfoBar severity="error" message="Choose either DMAD or Pika H3 Flex: their sampling recipes cannot be combined." />
+      : pika ? <InfoBar severity="informational" message="Pika H3 Flex fixes generation to six re-noising evaluations and turns off MotionCache. Use FL2VA with First/Last Frame generators and Ref2VA with References generators." />
+      : dmad ? <InfoBar severity="informational" message="DMAD fixes generation to four re-noising evaluations and turns off MotionCache." />
       : stepOverride !== undefined && <InfoBar severity="informational" message={`Active LoRAs set the scene's step count to ${stepOverride}, the highest selected override.`} />}
   </SettingsGroup>;
 }

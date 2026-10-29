@@ -24,7 +24,7 @@ const sourcesSchema = z.object({
 }).strict();
 const portableLoraSchema = z.object({
   name, url, enabled: z.boolean(), strength: z.number().finite().min(-MAX_LORA_STRENGTH).max(MAX_LORA_STRENGTH),
-  stepOverride: steps.optional(), samplingPreset: z.literal("dmad-4step").optional(),
+  stepOverride: steps.optional(), samplingPreset: z.enum(["dmad-4step", "pika-6step"]).optional(),
 }).strict();
 export const portableGeneratorSchema = z.object({
   name, modelType: name, editingModel: z.boolean().optional(), defaultSteps: steps, attention: z.enum(["exact", "flash2", "sage2", "sol"]),

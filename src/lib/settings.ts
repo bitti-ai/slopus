@@ -779,9 +779,11 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   if (shiftOverrides.audioSigmaShift !== undefined) options.audioSigmaShiftOverride = shiftOverrides.audioSigmaShift;
   const stepOverride = loraStepOverride(loras);
   if (stepOverride !== undefined) options.stepOverride = stepOverride;
-  if (loras.some((lora) => lora.samplingPreset === "dmad-4step")) {
-    options.samplingPreset = "dmad-4step";
-    // The fixed sigma grid defines four evaluations and forbids approximate caches.
+  const presets = new Set(loras.flatMap((lora) => lora.samplingPreset ? [lora.samplingPreset] : []));
+  if (presets.size > 1) throw new Error("Active LoRAs require different sampling recipes. Choose either DMAD or Pika H3 Flex.");
+  if (presets.size) {
+    options.samplingPreset = [...presets][0];
+    // Fixed re-noising schedules forbid approximate caches.
     delete options.motionCache;
   }
   for (const field of ENGINE_PATH_FIELDS) {

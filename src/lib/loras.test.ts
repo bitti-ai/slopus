@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { installH3TestDependencies } from "./h3TestUtils";
 import { beforeEach, expect, it } from "vitest";
-import { DMAD_LORA, downloadableTemplateLoras, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
+import { PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, DMAD_LORA, downloadableTemplateLoras, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
 import { createGeneratorTemplate, engineProviderSetting, generationSigmaShifts, generationStepsWithLoras, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, withEngineSettings } from "./settings";
 import { createProjectConfig } from "./project";
 
@@ -67,9 +67,9 @@ it.each([0, 1, -3, 2.5, NaN, Infinity, 2147483648])("rejects invalid step overri
 });
 
 it("starts with the bundled adapters and preserves the local library", () => {
-  expect(loadLoras()).toEqual([TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA]);
+  expect(loadLoras()).toEqual([TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA]);
   saveLoras([{ ...TAOMATE_LORA, path: "C:/weights/TaoMate.safetensors" }, { id: "style", name: "Style", path: "D:/style.safetensors" }]);
-  expect(loadLoras().map(({ name }) => name)).toEqual(["TaoMate 3-Step", "Style", "Turbo", "Viggle Animate Distillation", "LightX2V Turbo", "DMAD 4-Step"]);
+  expect(loadLoras().map(({ name }) => name)).toEqual(["TaoMate 3-Step", "Style", "Turbo", "Viggle Animate Distillation", "LightX2V Turbo", "DMAD 4-Step", "Pika H3 Flex FL2VA", "Pika H3 Flex Ref2VA"]);
 });
 
 it("preserves DMAD's recipe and local path and gives its fixed grid priority over step overrides", () => {
@@ -89,6 +89,26 @@ it("preserves DMAD's recipe and local path and gives its fixed grid priority ove
     expect(without.options).not.toHaveProperty("samplingPreset");
     expect(without.options).toMatchObject({ stepOverride: 6, motionCache: true });
   }
+});
+
+it.each([PIKA_FL2VA_LORA, PIKA_REF2VA_LORA])("preserves $name edits and applies its fixed six-step recipe", (lora) => {
+  saveLoras([{ ...lora, name: "My Pika adapter", path: "D:/pika.safetensors" }]);
+  expect(loadLoras().filter(({ id }) => id === lora.id)).toEqual([{ ...lora, name: "My Pika adapter", path: "D:/pika.safetensors" }]);
+  const selection = [{ loraId: lora.id, enabled: true, strength: 1 }];
+  const provider = engineProviderSetting(createGeneratorTemplate().paths, undefined, "sage2", selection, "prompt", [], true);
+  expect(provider.options).toMatchObject({ samplingPreset: "pika-6step", stepOverride: 6, videoSigmaShiftOverride: 12, audioSigmaShiftOverride: 3 });
+  expect(provider.options).not.toHaveProperty("motionCache");
+  expect(generationSigmaShifts({ videoSigmaShift: 8, audioSigmaShift: 2 }, { ...createGeneratorTemplate(), loras: selection })).toEqual({ videoSigmaShift: 12, audioSigmaShift: 3 });
+  for (const inactive of [{ enabled: false, strength: 1 }, { enabled: true, strength: 0 }]) {
+    expect(engineProviderSetting(createGeneratorTemplate().paths, provider, "sage2", [{ ...selection[0], ...inactive }]).options).not.toHaveProperty("samplingPreset");
+  }
+});
+
+it("rejects conflicting fixed LoRA recipes before generation", () => {
+  saveLoras([{ ...PIKA_REF2VA_LORA, path: "D:/pika.safetensors" }, { ...DMAD_LORA, path: "D:/dmad.safetensors" }]);
+  expect(() => engineProviderSetting(createGeneratorTemplate().paths, undefined, "sage2", [
+    { loraId: PIKA_REF2VA_LORA.id, enabled: true, strength: 1 }, { loraId: DMAD_LORA.id, enabled: true, strength: 1 },
+  ])).toThrow("different sampling recipes");
 });
 
 it("round-trips template order, enabled flags and strengths, and sends only active adapters", () => {

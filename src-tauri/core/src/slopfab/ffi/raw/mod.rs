@@ -403,6 +403,16 @@ impl Api {
         let settings = CString::new(r#"{"version":1,"sampler":"renoise","video_sigma_shift":12,"audio_sigma_shift":2,"base_sigmas":[1,0.75,0.5,0.25,0]}"#).unwrap();
         self.error(unsafe { set(r, settings.as_ptr()) })
     }
+    pub fn set_pika_sampling(&self, r: *mut Request) -> Result<(), String> {
+        const UPGRADE: &str = "Pika H3 Flex requires slopfab.dll API 1.16 or later. Update the runtime.";
+        if unsafe { (self.capi_version)() } < ((1 << 24) | (16 << 12)) {
+            return Err(UPGRADE.into());
+        }
+        let set = self.set_sampling_settings.ok_or(UPGRADE)?;
+        // https://github.com/Pika-Labs/Pika-H3-Flex#reproducibility
+        let settings = CString::new(r#"{"version":1,"sampler":"renoise","video_sigma_shift":12,"audio_sigma_shift":3,"base_sigmas":[1,0.75,0.5,0.25,0.1,0.04,0]}"#).unwrap();
+        self.error(unsafe { set(r, settings.as_ptr()) })
+    }
     pub fn set_sigma_shifts(&self, r: *mut Request, video: Option<f32>, audio: Option<f32>) -> Result<(), String> {
         let Some(set) = self.set_sampling_settings else {
             return if video.is_none() && audio.is_none() { Ok(()) }

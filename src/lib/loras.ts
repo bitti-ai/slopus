@@ -12,7 +12,7 @@ export interface Lora {
   stepOverride?: number;
   videoSigmaShiftOverride?: number;
   audioSigmaShiftOverride?: number;
-  samplingPreset?: "dmad-4step";
+  samplingPreset?: "dmad-4step" | "pika-6step";
   needsPreparation?: boolean;
 }
 export interface TemplateLora { loraId: string; enabled: boolean; strength: number }
@@ -41,6 +41,17 @@ export const DMAD_LORA: Lora = {
   url: "https://huggingface.co/ZhengmingYu/DMAD/resolve/main/minimax_h3/dmad_minimax_h3_4step_full_critic.safetensors",
   samplingPreset: "dmad-4step",
 };
+export const PIKA_FL2VA_LORA: Lora = {
+  id: "pika-h3-flex-fl2va", name: "Pika H3 Flex FL2VA", modelType: "minimax-h3", path: "",
+  url: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_fl2va_v1_bf16.safetensors",
+  samplingPreset: "pika-6step",
+};
+export const PIKA_REF2VA_LORA: Lora = {
+  id: "pika-h3-flex-ref2va", name: "Pika H3 Flex Ref2VA", modelType: "minimax-h3", path: "",
+  url: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_ref2va_v1_bf16.safetensors",
+  samplingPreset: "pika-6step",
+};
+const BUNDLED_LORAS = [TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA];
 const KEY = "slopus.loras.v1";
 const EVENT = "slopus:loras-changed";
 export function loadLoras(): Lora[] {
@@ -53,7 +64,7 @@ export function loadLoras(): Lora[] {
       ids.add(entry.id);
       return [{ id: entry.id, name: entry.name, path: entry.path,
         ...(typeof entry.modelType === "string" && entry.modelType.trim() ? { modelType: entry.modelType.trim() } : {}),
-        ...(entry.samplingPreset === "dmad-4step" ? { samplingPreset: "dmad-4step" as const } : {}),
+        ...(entry.samplingPreset === "dmad-4step" || entry.samplingPreset === "pika-6step" ? { samplingPreset: entry.samplingPreset as Lora["samplingPreset"] } : {}),
         ...(isSigmaShift(entry.videoSigmaShiftOverride) ? { videoSigmaShiftOverride: entry.videoSigmaShiftOverride } : {}),
         ...(isSigmaShift(entry.audioSigmaShiftOverride) ? { audioSigmaShiftOverride: entry.audioSigmaShiftOverride } : {}),
         ...(entry.needsPreparation === true ? { needsPreparation: true } : {}),
@@ -61,13 +72,12 @@ export function loadLoras(): Lora[] {
         ...(isLoraStepOverride(entry.stepOverride) ? { stepOverride: entry.stepOverride }
           : entry.stepOverride === undefined && entry.schedule === "taomate-3step" ? { stepOverride: 3 } : {}) }];
     }) : [];
-    if (!ids.has(TAOMATE_LORA.id)) entries.unshift({ ...TAOMATE_LORA });
-    if (!ids.has(TURBO_LORA.id)) entries.push({ ...TURBO_LORA });
-    if (!ids.has(VIGGLE_ANIMATE_LORA.id)) entries.push({ ...VIGGLE_ANIMATE_LORA });
-    if (!ids.has(LIGHTX2V_TURBO_LORA.id)) entries.push({ ...LIGHTX2V_TURBO_LORA });
-    if (!ids.has(DMAD_LORA.id)) entries.push({ ...DMAD_LORA });
+    for (const lora of BUNDLED_LORAS) if (!ids.has(lora.id)) {
+      if (lora.id === TAOMATE_LORA.id) entries.unshift({ ...lora });
+      else entries.push({ ...lora });
+    }
     return entries;
-  } catch { return [{ ...TAOMATE_LORA }, { ...TURBO_LORA }, { ...VIGGLE_ANIMATE_LORA }, { ...LIGHTX2V_TURBO_LORA }, { ...DMAD_LORA }]; }
+  } catch { return BUNDLED_LORAS.map((lora) => ({ ...lora })); }
 }
 export function saveLoras(loras: Lora[]): void {
   if (loras.some((lora) => lora.stepOverride !== undefined && !isLoraStepOverride(lora.stepOverride))) {
@@ -141,12 +151,14 @@ export function highestLoraStepOverride(loras: { stepOverride?: number }[]): num
 
 /** Fixed sampling schedules take priority over editable LoRA step overrides. */
 export function loraStepOverride(loras: Pick<Lora, "stepOverride" | "samplingPreset">[]): number | undefined {
-  return loras.some((lora) => lora.samplingPreset === "dmad-4step") ? 4 : highestLoraStepOverride(loras);
+  return loras.some((lora) => lora.samplingPreset === "dmad-4step") ? 4
+    : loras.some((lora) => lora.samplingPreset === "pika-6step") ? 6 : highestLoraStepOverride(loras);
 }
 
 /** Match step overrides: highest active value per stream, with fixed recipes first. */
 export function loraSigmaShiftOverrides(loras: Pick<Lora, "videoSigmaShiftOverride" | "audioSigmaShiftOverride" | "samplingPreset">[]): SigmaShifts {
   if (loras.some((lora) => lora.samplingPreset === "dmad-4step")) return { videoSigmaShift: 12, audioSigmaShift: 2 };
+  if (loras.some((lora) => lora.samplingPreset === "pika-6step")) return { videoSigmaShift: 12, audioSigmaShift: 3 };
   const highest = (values: (number | undefined)[]) => values.filter(isSigmaShift).reduce<number | undefined>((result, value) => Math.max(result ?? 0, value), undefined);
   return { videoSigmaShift: highest(loras.map((lora) => lora.videoSigmaShiftOverride)), audioSigmaShift: highest(loras.map((lora) => lora.audioSigmaShiftOverride)) };
 }

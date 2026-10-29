@@ -12,6 +12,7 @@ pub(super) struct LoraAdapter {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum SamplingPreset {
     Dmad4Step,
+    Pika6Step,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -117,6 +118,7 @@ impl Configuration {
             sampling_preset: match slopfab.and_then(|setting| setting.options.get("samplingPreset")) {
                 None => Ok(None),
                 Some(ProviderOption::String(value)) if value == "dmad-4step" => Ok(Some(SamplingPreset::Dmad4Step)),
+                Some(ProviderOption::String(value)) if value == "pika-6step" => Ok(Some(SamplingPreset::Pika6Step)),
                 _ => Err("Unsupported LoRA sampling recipe.".into()),
             },
         }
@@ -244,6 +246,9 @@ impl Configuration {
     pub(super) fn generation_steps(&self, fallback: i32) -> Result<i32, String> {
         if self.sampling_preset.clone()? == Some(SamplingPreset::Dmad4Step) {
             return Ok(4);
+        }
+        if self.sampling_preset.clone()? == Some(SamplingPreset::Pika6Step) {
+            return Ok(6);
         }
         self.step_override
             .clone()

@@ -58,9 +58,9 @@ describe("portable generator bundles", () => {
     expect(result.loras).toEqual([existingLora]);
     expect(result.settings.defaultTemplateId).toBe(template.id);
   });
-  it("imports custom LoRAs with distinct recipes and preserves unrelated settings", () => {
+  it.each(["dmad-4step", "pika-6step"] as const)("imports custom LoRAs with the %s recipe and preserves unrelated settings", (samplingPreset) => {
     const template = minimaxOriginalTemplate(); template.loras = [{ loraId: "custom", enabled: true, strength: 1.25 }];
-    const lora = { id: "custom", name: "My adapter", path: "", url: "https://example.com/lora", samplingPreset: "dmad-4step" as const };
+    const lora = { id: "custom", name: "My adapter", path: "", url: "https://example.com/lora", samplingPreset };
     const text = serializeGeneratorSlop([template], [lora]);
     saveLoras([{ ...lora, samplingPreset: undefined, path: "D:/different-recipe.safetensors" }]);
     localStorage.setItem("slopus.test-secret", "private");
@@ -70,7 +70,7 @@ describe("portable generator bundles", () => {
     expect(reopened.templates).toHaveLength(before.templates.length + 1);
     expect(reopened.defaultTemplateId).toBe(before.defaultTemplateId);
     expect(localStorage.getItem("slopus.test-secret")).toBe("private");
-    expect(loadLoras().find((entry) => entry.id === imported.loras![0].loraId)).toMatchObject({ url: lora.url, path: "", samplingPreset: "dmad-4step" });
+    expect(loadLoras().find((entry) => entry.id === imported.loras![0].loraId)).toMatchObject({ url: lora.url, path: "", samplingPreset });
     expect(imported.loras![0].loraId).not.toBe("custom");
   });
   it("reports storage errors and rolls back newly added LoRAs", () => {
