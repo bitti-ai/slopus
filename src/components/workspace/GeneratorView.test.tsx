@@ -621,7 +621,7 @@ describe("Generator scene controls", () => {
       defaultLook: "watercolor", aspectRatio: "9:16", resolution: "544p" }];
     const state = setup(initial);
     expect(screen.getByText("Using Video Look: Watercolor.")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "The look of this scene" })).toHaveTextContent("Video default");
+    expect(screen.getByRole("combobox", { name: "The look of this scene" })).toHaveTextContent("Watercolor");
     act(() => saveDebugOptionsEnabled(true));
     fireEvent.click(screen.getByRole("button", { name: "Debug prompt" }));
     expect(screen.getByRole("dialog", { name: "Debug prompt" })).toHaveTextContent("Watercolor");
@@ -636,7 +636,7 @@ describe("Generator scene controls", () => {
     initial.settings.defaultLook = "watercolor";
     const state = setup(initial);
     const selector = screen.getByRole("combobox", { name: "The look of this scene" });
-    expect(comboValue(selector)).toBe("");
+    expect(comboValue(selector)).toBe("watercolor");
     expect(screen.getByText("Using project Look: Watercolor.")).toBeInTheDocument();
     if (sceneLook) chooseOption(selector, expected);
     fireEvent.click(within(screen.getByRole("region", { name: "First scene" })).getByRole("button", { name: "Generate" }));

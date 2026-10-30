@@ -479,14 +479,14 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
           {!animate && <PropRow label="Look" htmlFor={`${id}-look`}>
             <ComboBox
               id={`${id}-look`}
-              value={chosen}
+              value={chosen || defaultLook || ""}
               disabled={disabled}
               aria-label="The look of this scene"
-              options={[{ value: "", label: defaultLookSource === "Video" ? "Video default" : "None" }, ...look.options.map((option) => ({ value: option.id, label: option.label }))]}
+              options={[...(!defaultLook ? [{ value: "", label: "None" }] : []), ...look.options.map((option) => ({ value: option.id, label: option.label }))]}
               onChange={(value) => {
                 onShots(shots.map((shot, index) => {
                   const settings = { ...(shot.settings ?? {}) };
-                  if (index === 0 && value) settings[look.id] = [value];
+                  if (index === 0 && value && value !== defaultLook) settings[look.id] = [value];
                   else delete settings[look.id];
                   return { ...shot, settings: normalizeShotTagSelection(settings) };
                 }));
