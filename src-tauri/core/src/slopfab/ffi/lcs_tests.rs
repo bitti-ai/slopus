@@ -57,6 +57,27 @@ fn bundled_lcs_snapshots_settings_and_validates_masks() {
 }
 
 #[test]
+fn bundled_single_shot_output_tone_requires_ending_and_spatial_mask() {
+    let api = bundled_api(); api.require_output_tone().unwrap();
+    let request = RequestHandle::new(&api).unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    let archive = folder.path().join("calibration.safetensors");
+    calibration(&archive);
+    api.set_resolution(&request, 64, 32).unwrap();
+    api.set_frames(&request, 34).unwrap();
+    api.set_lcs(&request, &archive, r#"{"contrast":0.9,"brightness":0.1,"saturation":0.95,"tone_after_denoise":true}"#).unwrap();
+    assert!(api.resolve(&request).is_err());
+    let ending = crate::slopfab::continuation::tests::archive(22).into_temp_path();
+    api.set_end_anchor_file(&request, &ending).unwrap();
+    let plan = api.resolve(&request).unwrap();
+    let plane = (plan.latent_width / 2 * (plan.latent_height / 2)) as usize;
+    api.set_lcs_mask(&request, &vec![0.5; plane]).unwrap();
+    api.resolve(&request).unwrap();
+    api.set_lcs_mask(&request, &vec![0.5; plane * 2]).unwrap();
+    assert!(api.resolve(&request).is_err());
+}
+
+#[test]
 fn calibration_cancellation_and_callback_panics_preserve_existing_archive() {
     let api = bundled_api();
     let request = RequestHandle::new(&api).unwrap();

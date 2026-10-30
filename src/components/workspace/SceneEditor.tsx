@@ -595,7 +595,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
         </>}
       </PropSection>
     </div>
-    <GenerationEffects key={job.id} value={job.generationEffects} supported={generatorModel(template?.modelType).generationEffects} disabled={disabled} onChange={(generationEffects) => onChange({ generationEffects })} />
+    <GenerationEffects key={job.id} value={job.generationEffects} finalTone={job.sceneType === "single-shot" && !job.contextSceneId} supported={generatorModel(template?.modelType).generationEffects} disabled={disabled} onChange={(generationEffects) => onChange({ generationEffects })} />
   </section>;
 }
 

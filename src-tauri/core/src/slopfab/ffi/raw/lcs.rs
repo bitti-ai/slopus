@@ -5,6 +5,12 @@ type SetMask = unsafe extern "C" fn(*mut Request, *const f32, usize) -> i32;
 const UPDATE: &str = "Generation effects require SlopFab API 1.31 or newer. Update the runtime on the machine running generation.";
 
 impl Api {
+    pub fn require_output_tone(&self) -> Result<(), String> {
+        if unsafe { (self.capi_version)() } < ((1 << 24) | (48 << 12)) {
+            return Err("Consistent Single Shot Tone requires SlopFab API 1.48 or newer. Update the runtime on the machine running generation.".into());
+        }
+        Ok(())
+    }
     pub fn require_lcs(&self) -> Result<(), String> {
         unsafe {
             self._library.get::<Calibrate>(b"slopfab_lcs_calibrate\0").map_err(|_| UPDATE)?;

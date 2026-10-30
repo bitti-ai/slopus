@@ -22,8 +22,12 @@ fn calibration_path(directory: &Path, vae: &Path, cancel: &AtomicBool, mut check
 }
 
 pub(super) fn prepare(api: &Api, request: &RequestHandle, item: &QueueItem, platform: ComputePlatform) -> Result<bool, String> {
-    let Some(settings) = item.request.generation_effects.as_ref().map(|e| e.native_settings()).transpose()?.flatten() else { return Ok(false); };
+    let Some(mut settings) = item.request.generation_effects.as_ref().map(|e| e.native_settings()).transpose()?.flatten() else { return Ok(false); };
     api.require_lcs()?;
+    if settings.get("contrast").is_some() && item.request.single_shot.as_ref().is_some_and(|single| single.ending_path.is_some()) {
+        api.require_output_tone()?;
+        settings["tone_after_denoise"] = serde_json::json!(true);
+    }
     // Retain the library's small fingerprint cache across isolated jobs, including
     // Vulkan hosts. The queue still releases reused model/GPU buffers when idle.
     static RUNTIME: std::sync::Mutex<Option<Api>> = std::sync::Mutex::new(None);

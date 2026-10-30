@@ -156,6 +156,11 @@ fn single_shot_generates_ending_first_then_attaches_it_with_the_starting_source(
     for (continued, noise) in [(false, None), (true, None), (true, Some(0.35)), (true, Some(1.0))] {
         let (mut item, source) = single_shot_item();
         item.request.continuation_source_noise = noise;
+        item.request.generation_effects = Some(serde_json::from_value(serde_json::json!({
+            "tone": {"contrast":0.9,"brightness":0.1,"saturation":0.95,"temperature":0},
+            "sharpness": {"strength":0.5}, "startStep":2,"endStep":4,
+            "region":{"x":0,"y":0,"width":50,"height":100,"invert":false}
+        })).unwrap());
         let original_source = std::fs::read(&source).unwrap();
         if !continued {
             item.request.continuation_path = None;
@@ -174,6 +179,9 @@ fn single_shot_generates_ending_first_then_attaches_it_with_the_starting_source(
             assert_eq!(stage.request.reference_paths, item.request.reference_paths);
             assert_eq!(stage.request.seed, item.request.seed);
             if calls == 1 {
+                let mut expected = item.request.generation_effects.clone().unwrap();
+                expected.tone = None;
+                assert_eq!(stage.request.generation_effects, Some(expected));
                 assert!(stage.request.single_shot.is_none());
                 assert_eq!(stage.request.prompt, "Waves goodbye");
                 assert_eq!(stage.request.frames, 22);
@@ -193,6 +201,7 @@ fn single_shot_generates_ending_first_then_attaches_it_with_the_starting_source(
                 ending_path = stage.request.save_latents_path.clone().unwrap();
                 std::fs::copy(generated_ending.path(), &ending_path).unwrap();
             } else {
+                assert_eq!(stage.request.generation_effects, item.request.generation_effects);
                 assert_eq!(stage.request.prompt, item.request.prompt);
                 assert_eq!(stage.request.frames, 48);
                 assert_eq!(stage.request.continuation_path, item.request.continuation_path);

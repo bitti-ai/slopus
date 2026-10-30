@@ -34,6 +34,7 @@ Changes since 0.3.2.
 
 ## Fixes and improvements
 
+- Single Shot without Context video applies Tone once across the assembled main clip and ending, avoiding separate grading of its temporary ending. Retained Previous video frames are preserved. Requires updated workers.
 - Shot speech language keeps the existing choices and also accepts custom language names.
 - Empty shot cards use their Video's resolution and aspect ratio while waiting for a preview or generated video.
 - Non-primary scene takes can be removed during generation without interrupting the running job.

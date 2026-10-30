@@ -1,8 +1,8 @@
 # Slopfab compatibility
 
-## Bundled runtime (API 1.47.0)
+## Bundled runtime (API 1.48.0)
 
-Windows and Linux runtimes use SlopFab commit `65898fd02797e148c86c10384cf341eca6aa8c7f`
+Windows and Linux runtimes use SlopFab commit `fd264f6bc293d21e76cf26aaae3e70ed25f1e491`
 from `D:\Projects\slopfab`, with CUDA and Vulkan enabled and FFmpeg disabled.
 This update keeps Keystone and delayed Capstone context inside sampling: the
 original front latent is restored before output, and Capstone adds one clean
@@ -15,7 +15,7 @@ Video previews autoplay and loop inside the existing shot card player; image
 previews update the image canvas and thumbnail. Both use the generation previews
 setting and require the optional TAEH3 weights. Saved-latent upscaling remains supported.
 
-LAN protocol is 26 so workers use the same overlap replacement behavior. Single Shot automatically shortens its preferred four-update
+LAN protocol is 27 so workers use the same Single Shot Tone and overlap behavior. Single Shot automatically shortens its preferred four-update
 Capstone delay when the resolved video schedule is shorter, without changing the
 LoRA recipe. Restart Slopus and update workers to load the new runtime.
 
@@ -63,6 +63,17 @@ identify each scene's own portion, retaining the shared decode at joins.
 Temporary endings are removed on success, failure and cancellation. Starting
 scenes must use compatible original latent resolutions. Protocol 24 also requires
 workers to support saved-latent upscale requests.
+
+For ending-first Single Shot (without Context video), Tone is omitted from the
+temporary ending. The full pass sends `tone_after_denoise` with its native LCS
+settings: contrast, brightness, saturation and temperature are applied once to
+the assembled new main clip and ending, before saving latents and decoding.
+Previously retained source frames are excluded. Region masks apply to both
+parts identically. Step limits affect the remaining sampling effects; they do
+not limit this final Tone adjustment. Sampling previews omit the final Tone pass.
+Context-video Single Shot and other generation types retain their existing
+sampling effects. Existing takes require regeneration; this change does not
+remove effects already baked into previous/context source archives.
 
 Single Shot disables `slopfab_request_set_continuation_source_init` in both
 passes: repeating the final source latent slice across the new interval can

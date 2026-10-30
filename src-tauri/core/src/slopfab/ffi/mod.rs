@@ -30,6 +30,7 @@ impl Api {
         })
     }
     pub fn require_lcs(&self) -> Result<(), String> { self.inner.require_lcs() }
+    pub fn require_output_tone(&self) -> Result<(), String> { self.inner.require_output_tone() }
     pub fn set_lcs(&self, r: &RequestHandle, path: &Path, settings: &str) -> Result<(), String> {
         self.check(r)?; self.inner.set_lcs(r.pointer.as_ptr(), path, settings)
     }

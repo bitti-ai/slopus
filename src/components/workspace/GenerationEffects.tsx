@@ -4,8 +4,8 @@ import { SliderNumberInput } from "./SliderNumberInput";
 import { Add16, ChevronDown12, Delete14, Reset16 } from "../ui/icons";
 import { GENERATION_EFFECTS, GENERATION_EFFECT_DEFAULTS, generationEffectsSchema, type GenerationEffectId, type GenerationEffects as Settings } from "../../lib/generationEffects";
 
-export function GenerationEffects({ value, onChange, supported, disabled = false }: {
-  value?: Settings | null; onChange: (value: Settings | undefined) => void; supported: boolean; disabled?: boolean;
+export function GenerationEffects({ value, onChange, supported, disabled = false, finalTone = false }: {
+  value?: Settings | null; onChange: (value: Settings | undefined) => void; supported: boolean; disabled?: boolean; finalTone?: boolean;
 }) {
   const effects = value ?? {};
   const [open, setOpen] = useState(false);
@@ -71,7 +71,7 @@ export function GenerationEffects({ value, onChange, supported, disabled = false
       {present.length > 0 && <>
         <PropRow label="First step"><input className="text-field" aria-label="First effect step" type="number" min={0} max={effects.endStep ?? 2147483647} disabled={locked} value={effects.startStep ?? 0} onChange={(e) => update({ ...effects, startStep: Number(e.target.value) })} /></PropRow>
         <PropRow label="Last step"><input className="text-field" aria-label="Last effect step" type="number" min={effects.startStep ?? 0} max={2147483647} placeholder="Last" disabled={locked} value={effects.endStep ?? ""} onChange={(e) => update({ ...effects, endStep: e.target.value === "" ? undefined : Number(e.target.value) })} /></PropRow>
-        <p className="clip-effect__note">Steps start at 0. Leave the last step empty to apply through completion.</p>
+        <p className="clip-effect__note">Steps start at 0. Leave the last step empty to apply through completion.{finalTone && effects.tone && " Tone is applied once to the completed Single Shot, including its ending. Step limits apply to the other effects."}</p>
         <Checkbox label="Limit to a region" checked={!!effects.region} disabled={locked} onChange={(enabled) => update({ ...effects, region: enabled ? { x: 0, y: 0, width: 100, height: 100, invert: false } : undefined })} />
         {effects.region && <>
           {(["x", "y", "width", "height"] as const).map((field) => <PropRow key={field} label={`${field[0].toUpperCase()}${field.slice(1)} (%)`}>

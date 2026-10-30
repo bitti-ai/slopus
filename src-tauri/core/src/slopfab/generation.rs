@@ -28,7 +28,12 @@ pub(super) fn run_generation(
 ) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
     if item.request.latent_upscale_source.is_some() { return run_latent_upscale(item); }
     if item.request.single_shot.is_some() {
-        if item.request.keystone_path.is_none() { ffi::Api::load(&item.configuration.dll_path)?.require_end_anchor()?; }
+        if item.request.keystone_path.is_none() {
+            let api = ffi::Api::load(&item.configuration.dll_path)?;
+            api.require_end_anchor()?;
+            if item.request.generation_effects.as_ref().map(|e| e.native_settings()).transpose()?.flatten()
+                .is_some_and(|settings| settings.get("contrast").is_some()) { api.require_output_tone()?; }
+        }
         return run_single_shot(item, run_single_generation);
     }
     run_edit_sequence(item, run_single_generation)
@@ -62,6 +67,9 @@ fn run_single_shot(
         // the ending pass. Both passes use fresh noise between fixed anchors.
         request.continuation_source_noise = None;
         if index == 0 {
+            // The ending is conditioning for the full pass. Grade Tone only
+            // once, after the main clip and this neutral ending are joined.
+            if let Some(effects) = request.generation_effects.as_mut() { effects.tone = None; }
             request.single_shot = None;
             request.prompt = single.ending_prompt.clone();
             request.frames = 22;
