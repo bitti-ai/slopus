@@ -6,7 +6,7 @@ fn calibration_path(directory: &Path, vae: &Path, cancel: &AtomicBool, mut check
     use super::lcs_fingerprint::{check_cancel, Fingerprints};
     static FINGERPRINTS: std::sync::OnceLock<std::sync::Mutex<Fingerprints>> = std::sync::OnceLock::new();
     let digest = FINGERPRINTS.get_or_init(Default::default).lock().map_err(|_| "VAE fingerprint cache lock failed.")?
-        .get(vae, cancel, |source| {
+        .get(directory, vae, cancel, |source| {
             checking();
             let mut hash = Sha256::new();
             let mut buffer = vec![0; 1024 * 1024];
