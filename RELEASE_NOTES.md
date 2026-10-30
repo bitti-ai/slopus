@@ -1,4 +1,4 @@
-# Slopus — Unreleased
+# Slopus — 0.4.0
 
 Changes since 0.3.2.
 
