@@ -54,7 +54,12 @@ export const PIKA_REF2VA_LORA: Lora = {
   url: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_ref2va_v1_bf16.safetensors",
   samplingPreset: "pika-6step",
 };
-const BUNDLED_LORAS = [TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA];
+export const HYPERFLOW_LORA: Lora = {
+  id: "hyperflow-8step", name: "Hyperflow 8-Step", modelType: "minimax-h3", path: "",
+  url: "https://huggingface.co/VideoRebirthAI/hyperflow/resolve/main/minimax_h3_hyperflow_8step_v1.0.safetensors",
+  stepOverride: 8,
+};
+const BUNDLED_LORAS = [TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, HYPERFLOW_LORA];
 const KEY = "slopus.loras.v1";
 const EVENT = "slopus:loras-changed";
 export function loadLoras(): Lora[] {

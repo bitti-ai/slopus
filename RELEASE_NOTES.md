@@ -14,7 +14,7 @@ Changes since 0.3.2.
 - **Image editing:** Combine or subtract lasso selections, queue batches of up to 100 images, and edit bounded regions of larger images while preserving their original resolution.
 - **Live previews:** Watch MiniMax H3 video and image generation in the editor. Optional TAEH3 preview weights are available in Settings.
 - **Generation effects:** LCS color steering, tone, sharpness and color stabilization, with step ranges and optional regions.
-- **Generator controls:** Compatible sampler/scheduler choices, including ER-SDE and Beta; global LoRAs, application ordering, scene overrides and Pika H3 Flex adapters.
+- **Generator controls:** Compatible sampler/scheduler choices, including ER-SDE and Beta; global LoRAs, application ordering, scene overrides, Pika H3 Flex and Hyperflow 8-Step adapters.
 - **Model downloads:** Shared H3 VAEs and text encoders, including Sol H3 VAE; VRAM compatibility warnings; Music3 INT8, FP16 and FP32 variants; updated FastH3 Omni weights.
 
 ## Fixes and improvements

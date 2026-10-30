@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { installH3TestDependencies } from "./h3TestUtils";
 import { beforeEach, expect, it } from "vitest";
-import { PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, DMAD_LORA, downloadableTemplateLoras, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
+import { HYPERFLOW_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, DMAD_LORA, downloadableTemplateLoras, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
 import { createGeneratorTemplate, engineProviderSetting, generationSigmaShifts, generationStepsWithLoras, kreaImageTemplates, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, withEngineSettings } from "./settings";
 import { createProjectConfig } from "./project";
 import { effectiveLoras, moveLibraryLora, selectionConflict, loraSnapshot } from "./loras";
@@ -139,9 +139,9 @@ it.each([0, 1, -3, 2.5, NaN, Infinity, 2147483648])("rejects invalid step overri
 });
 
 it("starts with the bundled adapters and preserves the local library", () => {
-  expect(loadLoras()).toEqual([TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA]);
+  expect(loadLoras()).toEqual([TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, HYPERFLOW_LORA]);
   saveLoras([{ ...TAOMATE_LORA, path: "C:/weights/TaoMate.safetensors" }, { id: "style", name: "Style", path: "D:/style.safetensors" }]);
-  expect(loadLoras().map(({ name }) => name)).toEqual(["TaoMate 3-Step", "Style", "Turbo", "Viggle Animate Distillation", "LightX2V Turbo", "DMAD 4-Step", "Pika H3 First/Last", "Pika H3 Reference"]);
+  expect(loadLoras().map(({ name }) => name)).toEqual(["TaoMate 3-Step", "Style", "Turbo", "Viggle Animate Distillation", "LightX2V Turbo", "DMAD 4-Step", "Pika H3 First/Last", "Pika H3 Reference", "Hyperflow 8-Step"]);
 });
 
 it("preserves DMAD's recipe and local path and gives its fixed grid priority over step overrides", () => {

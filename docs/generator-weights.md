@@ -119,6 +119,8 @@ downloads [TaoMate-H3-3step-ComfyUI.safetensors](https://huggingface.co/CZMartin
 and defaults to an editable **4-step override**.
 **LightX2V Turbo** downloads [the silveroxides experimental adapter](https://huggingface.co/silveroxides/MiniMax-H3_tests/resolve/main/experimental/minimax_h3_fl2v_lightx2v_turbo_4to8step_v0.1-v1.0_768p_v4_step600_dareties.safetensors)
 and defaults to an editable **6-step override** and **0.9 multiplier**.
+**Hyperflow 8-Step** downloads [the Hyperflow adapter](https://huggingface.co/VideoRebirthAI/hyperflow/resolve/main/minimax_h3_hyperflow_8step_v1.0.safetensors)
+and defaults to an editable **8-step override** for MiniMax H3.
 These adapters use the same managed `weights` location, background transfer, progress,
 cancellation, retry, and Work Queue controls as model weights. Downloads are
 serialized with weight downloads, and video generation can continue while downloading.

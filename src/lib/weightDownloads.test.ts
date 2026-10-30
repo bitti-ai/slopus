@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { invoke } from "@tauri-apps/api/core";
 import { cancelWeightDownload, downloadLora, prepareLora, removeLora, refreshDownloadedLoras, retryWeightDownload } from "./weightDownloads";
-import { PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, DMAD_LORA, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
+import { HYPERFLOW_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, DMAD_LORA, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
 import { beforeEach, expect, it, vi } from "vitest";
 import { chooseWeightSource, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, updateWeightPath, weightDownloadProgress, type DownloadState } from "./weightDownloads";
 import { ANIMATE_CONDITIONING_URL, mossImageTemplate, fiboImageTemplate, engineProviderSetting, createGeneratorTemplate, defaultGeneratorTemplate, isDownloadUrl, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, templateNeedsDownload, type WeightSource } from "./settings";
@@ -169,7 +169,7 @@ it("downloads globally enabled LoRAs with a generator without baking them into i
   expect(loadGeneratorTemplateSettings().templates[0].loras ?? []).toEqual([]);
 });
 
-it.each([TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA])("downloads $name through the weight transfer and restores missing downloads", async (lora) => {
+it.each([TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, HYPERFLOW_LORA])("downloads $name through the weight transfer and restores missing downloads", async (lora) => {
   const savedLora = () => loadLoras().find(({ id }) => id === lora.id)!;
   await downloadLora(lora.id);
   expect(invoke).toHaveBeenCalledWith("download_weight", { requestId: expect.any(String), url: lora.url });
