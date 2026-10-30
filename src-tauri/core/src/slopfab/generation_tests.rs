@@ -114,6 +114,46 @@ fn item() -> QueueItem {
         events: Arc::new(|_| {}), cancel: Arc::new(AtomicBool::new(false)) }
 }
 
+#[test]
+fn cropped_edit_sequence_merges_each_result_into_the_original_canvas() {
+    let folder = tempfile::tempdir().unwrap();
+    let path = folder.path().join("source.png");
+    let original = image::RgbaImage::from_pixel(129, 97, image::Rgba([10, 20, 30, 100]));
+    original.save(&path).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    let mut item = item();
+    item.request = serde_json::from_value(serde_json::json!({
+        "jobId":"crop-sequence", "prompt":"first", "frames":1, "stillImage":true, "steps":4, "seed":42,
+        "canvasWidth":129, "canvasHeight":97, "imageEdit":{"sourceRelativePath":"source.png", "regionSize":{"width":64,"height":64}, "edits":[
+            {"prompt":"first", "x":65,"y":33,"width":32,"height":32,"feather":0},
+            {"prompt":"second", "x":81,"y":49,"width":32,"height":32,"feather":0}
+        ]}
+    })).unwrap();
+    item.request.image_edit_path = Some(path.clone());
+    let mut calls = 0;
+    let (metadata, merged) = run_edit_sequence(&item, |stage| {
+        assert_eq!((stage.request.canvas_width, stage.request.canvas_height), (64, 64));
+        let input = stage.request.image_edit_pixels.as_ref().unwrap();
+        if calls == 1 { assert!(input.chunks_exact(3).any(|pixel| pixel == [200, 0, 0])); }
+        calls += 1;
+        let color = if calls == 1 { [200, 0, 0, 255] } else { [0, 200, 0, 255] };
+        let (mut metadata, _) = result(0);
+        metadata.width = 64; metadata.height = 64;
+        Ok((metadata, super::super::image_regions::rendered_image("crop-sequence", image::RgbaImage::from_pixel(64, 64, image::Rgba(color)))?))
+    }).unwrap();
+    assert_eq!(calls, 2);
+    assert_eq!((metadata.width, metadata.height, merged.width, merged.height), (129, 97, 129, 97));
+    let pixels = merged.frame(0).unwrap().unwrap();
+    for y in 0..97 { for x in 0..129 {
+        let expected = if (81..113).contains(&x) && (49..81).contains(&y) { [0, 200, 0, 255] }
+            else if (65..97).contains(&x) && (33..65).contains(&y) { [200, 0, 0, 255] } else { [10, 20, 30, 100] };
+        assert_eq!(&pixels[(y * 129 + x) * 4..(y * 129 + x + 1) * 4], &expected);
+    }}
+    assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    assert!(run_edit_sequence(&item, |_| Err("inference failed".into())).is_err());
+    assert_eq!(std::fs::read(path).unwrap(), bytes);
+}
+
 fn single_shot_item() -> (QueueItem, tempfile::TempPath) {
     let source = super::super::continuation::tests::archive(124).into_temp_path();
     let mut item = item();

@@ -1,6 +1,6 @@
 import { FIBO_MODEL_TYPE } from "./settings";
 import { imageSettings } from "./imageSettings";
-import { createImageEditScene, createImageScene, imageLassoContours, imageSourceSchema, type ImageNode, type ImageScene, type ImageSource, type ImagePoint } from "./imageScene";
+import { createImageEditScene, createImageScene, imageLassoContours, imageSourceSchema, type ImageBox, type ImageNode, type ImageScene, type ImageSource, type ImagePoint } from "./imageScene";
 import { compileImagePrompt } from "./imagePrompt";
 import type { ProjectConfig, ProjectReference } from "./project";
 
@@ -30,11 +30,32 @@ export function imageEditSize(source: Pick<ImageSource, "width" | "height">, sho
 export function imageEditOutputSize(scene: ImageScene) {
   return scene.outputSize ?? imageEditSize(scene.sourceImage!);
 }
+/** An explicitly smaller target limits local inference, not the saved canvas. */
+export function imageEditRegionSize(scene: ImageScene) {
+  const source = scene.sourceImage, target = scene.outputSize;
+  return source && target && (source.width > target.width || source.height > target.height) ? target : undefined;
+}
+export function imageEditCanvasSize(scene: ImageScene) {
+  return imageEditRegionSize(scene) ? { width: scene.sourceImage!.width, height: scene.sourceImage!.height } : imageEditOutputSize(scene);
+}
+export function limitImageEditBox(scene: ImageScene, box: ImageBox): ImageBox {
+  const limit = imageEditRegionSize(scene);
+  if (!limit) return box;
+  const source = scene.sourceImage!;
+  // Use pixel boundaries so outward rounding cannot exceed the target by a pixel.
+  const x = Math.floor(box.x * source.width / 1000), y = Math.floor(box.y * source.height / 1000);
+  return { ...box, width: Math.min(box.width, (x + Math.min(limit.width, source.width - x)) * 1000 / source.width - box.x),
+    height: Math.min(box.height, (y + Math.min(limit.height, source.height - y)) * 1000 / source.height - box.y) };
+}
+export function limitImageEditScene(scene: ImageScene): ImageScene {
+  if (!imageEditRegionSize(scene)) return scene;
+  return { ...scene, nodes: scene.nodes.map((node) => node.kind !== "root" && node.box ? { ...node, box: limitImageEditBox(scene, node.box) } : node) };
+}
 export function compileImageEdits(config: ProjectConfig, options: { modelType?: string } = {}): { source: ImageSource; edits: (ImageEditStep & { references: ProjectReference[] })[] } {
-  const scene = config.imageScene!;
+  const scene = limitImageEditScene(config.imageScene!);
   const source = scene.sourceImage;
   if (!source) throw new Error("Open an image before adding edits.");
-  const size = imageEditOutputSize(scene);
+  const size = imageEditCanvasSize(scene);
   const root = scene.nodes.find((node) => node.kind === "root")!;
   // The root describes a whole-image edit, followed by the local edits in order.
   const ordered: ImageNode[] = root.description.trim() ? [{ ...root, box: { x: 0, y: 0, width: 1000, height: 1000 } }] : [];
@@ -45,8 +66,9 @@ export function compileImageEdits(config: ProjectConfig, options: { modelType?: 
     if (!node.description.trim() && !node.text) throw new Error(`Describe the edit for '${node.name}'.`);
     const x = Math.min(size.width - 1, Math.floor(node.box.x * size.width / 1000));
     const y = Math.min(size.height - 1, Math.floor(node.box.y * size.height / 1000));
-    const right = Math.min(size.width, Math.ceil((node.box.x + node.box.width) * size.width / 1000));
-    const bottom = Math.min(size.height, Math.ceil((node.box.y + node.box.height) * size.height / 1000));
+    const limit = node.kind === "root" ? undefined : imageEditRegionSize(scene);
+    const right = Math.min(size.width, x + (limit?.width ?? size.width), Math.ceil((node.box.x + node.box.width) * size.width / 1000));
+    const bottom = Math.min(size.height, y + (limit?.height ?? size.height), Math.ceil((node.box.y + node.box.height) * size.height / 1000));
     const description = [options.modelType === FIBO_MODEL_TYPE ? "" : "The edited keyframe corresponds to <Picture 1> with the following change. Preserve the composition and any previously completed edits.", node.description,
       node.text ? `Render the exact text "${node.text}".` : ""].filter(Boolean).join(" ");
     const editScene = { ...createImageScene(description), rootType: "image" as const, sourceImage: source, referenceIds: [] };

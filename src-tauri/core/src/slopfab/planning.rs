@@ -34,10 +34,11 @@ pub fn resolve_plan(
     }
     let platform = configuration.platform(detect_platform(&api));
     let handle = RequestHandle::new(&api)?;
+    let region = super::image_regions::prepare_first(request)?;
     configure_request(
         &api,
         &handle,
-        request,
+        region.as_ref().map_or(request, |region| &region.request),
         &configuration,
         platform,
         RequestPurpose::Plan,
@@ -110,6 +111,25 @@ pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Resul
         return Err("Latent upscale requires a video canvas of at least 64 pixels per side, in multiples of 32.".into());
     }
     if let Some(edit) = &request.image_edit {
+        if let Some(size) = &edit.region_size {
+            if !(32..=8192).contains(&size.width) || !(32..=8192).contains(&size.height)
+                || size.width % 32 != 0 || size.height % 32 != 0 {
+                return Err("Image edit target dimensions must be multiples of 32 between 32 and 8192.".into());
+            }
+            for step in &edit.edits {
+                let whole = step.mask_polygon.is_none() && step.mask_contours.is_none()
+                    && step.x == 0 && step.y == 0 && step.width == request.canvas_width && step.height == request.canvas_height;
+                if step.invert_mask || !whole && (step.width > size.width || step.height > size.height) {
+                    return Err("Local edit areas must fit within the target resolution.".into());
+                }
+                for point in step.mask_polygon.iter().flatten().chain(step.mask_contours.iter().flatten().flatten()) {
+                    if point.x < step.x as f64 - 1e-6 || point.y < step.y as f64 - 1e-6
+                        || point.x > step.x as f64 + step.width as f64 + 1e-6 || point.y > step.y as f64 + step.height as f64 + 1e-6 {
+                        return Err("Lasso points must stay inside the editable area's bounding box.".into());
+                    }
+                }
+            }
+        }
         if !request.still_image || request.frames != 1 || request.continuation_relative_path.is_some() || request.continuation_path.is_some() || request.video_transition.is_some()
             || edit.edits.is_empty() || edit.edits.len() > 500 || request.canvas_width > 8192 || request.canvas_height > 8192
             || edit.edits.iter().any(|step| step.prompt.trim().is_empty() || step.x < 0 || step.y < 0 || step.width <= 0 || step.height <= 0

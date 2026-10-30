@@ -308,7 +308,7 @@ fn image_edit_recipe_disables_motion_cache_and_keeps_source_geometry() {
         prompt: "A red vase".into(), still_image: true, frames: 1, steps: 4, seed: 1,
         canvas_width: 65, canvas_height: 41,
         image_edit_pixels: Some(std::sync::Arc::new(vec![100; 65 * 41 * 3])),
-        image_edit: Some(types::ImageEditRequest { source_relative_path: "media/source.png".into(), edits: vec![
+        image_edit: Some(types::ImageEditRequest { source_relative_path: "media/source.png".into(), region_size: None, edits: vec![
             types::ImageEditStep { mask_contours: None, mask_polygon: None, prompt: "A red vase".into(), x: 30, y: 10, width: 35, height: 31, feather: None, strength: None, invert_mask: false, outpaint_blend_overlap: None, outpaint_langevin_steps: None, reference_paths: None, refmods: None }
         ] }), ..Default::default()
     };

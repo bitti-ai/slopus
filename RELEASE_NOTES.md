@@ -42,6 +42,7 @@ Changes since 0.3.2.
 
 ## Fixes and improvements
 
+- Local image edits on larger originals use the selected resolution as the maximum rectangle or lasso size. Each crop is merged back into the original-sized image, preserving pixels outside the selected area. Requires updated workers.
 - Krea 2 and other generators without LoRA support no longer inherit adapters from the default generator when their own adapter list is omitted.
 - Single Shot without Context video applies Tone once across the assembled main clip and ending, avoiding separate grading of its temporary ending. Retained Previous video frames are preserved. Requires updated workers.
 - Shot speech language keeps the existing choices and also accepts custom language names.

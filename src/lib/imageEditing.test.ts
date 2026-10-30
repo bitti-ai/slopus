@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { parseProjectConfig } from "./project";
 import { addImageNode, createImageEditScene } from "./imageScene";
-import { compileImageEdits, editGeneratedImage, imageEditSize } from "./imageEditing";
+import { compileImageEdits, editGeneratedImage, imageEditSize, imageEditCanvasSize, limitImageEditScene } from "./imageEditing";
 import fixture from "../../fixtures/project-v1-image.json";
 
 it.each([
@@ -10,12 +10,13 @@ it.each([
   expect(imageEditSize({ width, height })).toEqual({ width: expectedWidth, height: expectedHeight });
 });
 
-it("scales local edits to the selected output size and validates saved dimensions", () => {
+it("keeps local edits in original pixels when the target is smaller and validates saved dimensions", () => {
   const config = parseProjectConfig(fixture);
   config.imageScene = addImageNode(createImageEditScene({ relativePath: "media/source.png", name: "Source", width: 1001, height: 809 }), "image-root", "object", { x: 750, y: 750, width: 250, height: 250 });
   config.imageScene.nodes[1].description = "Add a balloon";
   config.imageScene.outputSize = { width: 672, height: 544 };
-  expect(compileImageEdits(config).edits[0]).toMatchObject({ x: 504, y: 408, width: 168, height: 136 });
+  expect(compileImageEdits(config).edits[0]).toMatchObject({ x: 750, y: 606, width: 251, height: 203 });
+  expect(imageEditCanvasSize(config.imageScene)).toEqual({ width: 1001, height: 809 });
   expect(parseProjectConfig(JSON.parse(JSON.stringify(config))).imageScene).toEqual(config.imageScene);
   config.imageScene.outputSize.width = 673;
   expect(() => parseProjectConfig(config)).toThrow();
@@ -112,15 +113,32 @@ it("applies whole-image actions first and compiles only the references each edit
   expect(() => compileImageEdits(config)).toThrow("The prompt cites a reference that no longer exists.");
 });
 
-it("disables feathering for a full-canvas edit box at the selected resolution", () => {
+it("caps a local box at the target while keeping feathering against the larger original", () => {
   const config = parseProjectConfig(fixture);
   config.imageScene = addImageNode(createImageEditScene({ relativePath: "media/source.png", name: "Source", width: 1001, height: 809 }), "image-root", "object", { x: 0, y: 0, width: 1000, height: 1000 });
   config.imageScene.outputSize = { width: 672, height: 544 };
   config.imageScene.nodes[1].description = "Warm up the lighting";
-  expect(compileImageEdits(config).edits[0]).toMatchObject({ x: 0, y: 0, width: 672, height: 544, feather: 0 });
+  expect(compileImageEdits(config).edits[0]).toMatchObject({ x: 0, y: 0, width: 672, height: 544 });
+  expect(compileImageEdits(config).edits[0].feather).toBeUndefined();
   // A local edit touching the canvas edge still blends with the rest of the image.
   config.imageScene.nodes[1].box!.width = 500;
   expect(compileImageEdits(config).edits[0].feather).toBeUndefined();
+});
+
+it("bounds lasso outlines and multiple local edits without moving their source positions", () => {
+  const config = parseProjectConfig(fixture);
+  let scene = createImageEditScene({ relativePath: "source.png", name: "Large", width: 4096, height: 3072 });
+  scene.outputSize = { width: 1024, height: 768 };
+  scene = addImageNode(scene, "image-root", "object", { x: 500, y: 500, width: 500, height: 500 });
+  Object.assign(scene.nodes[1], { description: "A flower", lasso: [{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 0, y: 1000 }] });
+  scene = addImageNode(scene, "image-root", "object", { x: 100, y: 100, width: 50, height: 50 });
+  scene.nodes[2].description = "A bee";
+  config.imageScene = limitImageEditScene(scene);
+  expect(config.imageScene.nodes[1].box).toEqual({ x: 500, y: 500, width: 250, height: 250 });
+  const edits = compileImageEdits(config).edits;
+  expect(edits[0]).toMatchObject({ x: 2048, y: 1536, width: 1024, height: 768,
+    maskPolygon: [{ x: 2048, y: 1536 }, { x: 3072, y: 1536 }, { x: 2048, y: 2304 }] });
+  expect(edits[1]).toMatchObject({ x: 409, y: 307, width: 206, height: 154 });
 });
 
 it("uses plain Fibo edit instructions, preserves structured JSON and rejects extra pictures", () => {

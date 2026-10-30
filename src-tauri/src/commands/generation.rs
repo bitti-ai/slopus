@@ -359,6 +359,9 @@ fn prepare_image_edit_path(request: &mut slopfab::GenerationRequest, folder_path
         let root = crate::project::paths::ProjectRoot::open(folder_path.ok_or("Image edits require a project folder.")?)?;
         let mut path = root.existing(&edit.source_relative_path)?;
         let (width, height) = ::image::image_dimensions(&path).map_err(|error| format!("Could not read source image: {error}"))?;
+        if edit.region_size.is_some() && (width != request.canvas_width as u32 || height != request.canvas_height as u32) {
+            return Err("The source image dimensions changed. Reopen the image before editing.".into());
+        }
         if width != request.canvas_width as u32 || height != request.canvas_height as u32 {
             // Native inpainting takes its canvas dimensions from the source file.
             // Prepare the selected size before planning or uploading to a LAN worker.
@@ -408,6 +411,24 @@ mod image_edit_tests {
         assert!(prepare_image_edit_path(&mut request, folder.path().to_str()).is_err());
         request.canvas_width = 8193;
         assert!(prepare_image_edit_path(&mut request, folder.path().to_str()).is_err());
+    }
+
+    #[test]
+    fn regional_edit_keeps_the_original_file_for_local_and_worker_generation() {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::write(folder.path().join("slopus.json"), "{}").unwrap();
+        let source = folder.path().join("source.png");
+        ::image::RgbaImage::from_pixel(1001, 809, ::image::Rgba([80, 120, 160, 128])).save(&source).unwrap();
+        let mut request: slopfab::GenerationRequest = serde_json::from_value(serde_json::json!({
+            "jobId":"regional", "prompt":"Flower", "frames":1, "stillImage":true, "steps":4, "seed":42, "canvasWidth":1001, "canvasHeight":809,
+            "imageEdit":{"sourceRelativePath":"source.png", "regionSize":{"width":672,"height":544},
+                "edits":[{"prompt":"Flower", "x":700,"y":600,"width":100,"height":100}]}
+        })).unwrap();
+        prepare_image_edit_path(&mut request, folder.path().to_str()).unwrap();
+        assert_eq!(std::fs::canonicalize(request.image_edit_path.as_ref().unwrap()).unwrap(), std::fs::canonicalize(source).unwrap());
+        assert!(!folder.path().join("cache/image-edits").exists());
+        request.canvas_width = 672;
+        assert!(prepare_image_edit_path(&mut request, folder.path().to_str()).unwrap_err().contains("dimensions changed"));
     }
 }
 

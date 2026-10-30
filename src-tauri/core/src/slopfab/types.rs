@@ -150,8 +150,13 @@ pub struct SingleShotRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ImageEditRequest {
     pub source_relative_path: String,
+    /// Bound inference to a crop while keeping the original output canvas.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region_size: Option<ImageEditRegionSize>,
     pub edits: Vec<ImageEditStep>,
 }
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ImageEditRegionSize { pub width: i32, pub height: i32 }
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageEditStep {

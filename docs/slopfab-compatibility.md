@@ -15,7 +15,7 @@ Video previews autoplay and loop inside the existing shot card player; image
 previews update the image canvas and thumbnail. Both use the generation previews
 setting and require the optional TAEH3 weights. Saved-latent upscaling remains supported.
 
-LAN protocol is 27 so workers use the same Single Shot Tone and overlap behavior. Single Shot automatically shortens its preferred four-update
+LAN protocol is 28 so workers use the same image crop merging, Single Shot Tone and overlap behavior. Single Shot automatically shortens its preferred four-update
 Capstone delay when the resolved video schedule is shorter, without changing the
 LoRA recipe. Restart Slopus and update workers to load the new runtime.
 
@@ -139,6 +139,26 @@ checks cover UI authoring, project persistence, request snapshots, worker
 serialization, mask validation, calibration cancellation and callback panic
 containment through the bundled DLL. Full generation and visual LCS quality
 with model weights were not evaluated in this integration.
+
+## Local edits on larger images
+
+When an image editor's selected resolution is smaller than its source, rectangle
+and lasso bounding boxes are limited to that resolution in original-image pixels.
+The saved image retains its original dimensions. Each edit uses a target-sized
+crop around its selection; the native sequence merges its result into the
+original canvas before preparing the next crop. Pixels outside the rectangle or
+lasso, including holes and transparency, remain unchanged. Rectangle feathering
+blends inward once, even when the selection fills the crop. Edited results use PNG.
+
+The optional `imageEdit.regionSize` carries the target width and height to local
+generation and LAN workers. `canvasWidth`, `canvasHeight`, edit boxes and lasso
+points continue to describe the original image. Planning and execution prepare
+the same crop. Original files are never resized or overwritten for these jobs.
+Protocol 28 prevents older workers from silently processing the full canvas.
+
+Whole-image prompts still affect the full image: they run at the selected target
+resolution and are resized back into the original canvas before local edits.
+Crop previews are withheld so they cannot replace the full-image editor preview.
 
 ## Krea 2 image generation
 

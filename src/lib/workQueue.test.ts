@@ -1078,8 +1078,8 @@ describe("image generation work", () => {
     const session = queue.project(record);
     queue.enqueueImage(session, template);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
-    const expected = { steps: 32, seed: 123456, canvasWidth: 672, canvasHeight: 544,
-      imageEdit: { sourceRelativePath: "media/source.png", edits: [expect.objectContaining({ x: 0, y: 0, width: 672, height: 544, feather: 0 })] } };
+    const expected = { steps: 32, seed: 123456, canvasWidth: 1001, canvasHeight: 809,
+      imageEdit: { sourceRelativePath: "media/source.png", regionSize: { width: 672, height: 544 }, edits: [expect.objectContaining({ x: 0, y: 0, width: 1001, height: 809, feather: 0 })] } };
     expect(vi.mocked(resolveSlopfabPlan).mock.calls[0][0]).toMatchObject(expected);
     const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
     expect(request).toMatchObject(expected);
@@ -1101,7 +1101,7 @@ describe("image generation work", () => {
       queue.enqueueImage(session, template);
       await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(index + 1));
       const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[index][0];
-      expect(request).toMatchObject({ seed: 101 + index, canvasWidth: 672, canvasHeight: 544,
+      expect(request).toMatchObject({ seed: 101 + index, canvasWidth: 1001, canvasHeight: 809,
         imageEdit: { sourceRelativePath: "media/source.png", edits: [expect.objectContaining({ prompt: expect.stringContaining(index === 2 ? "Make it moonlit" : "Warm up the lighting") })] } });
       vi.mocked(invoke).mockResolvedValue({ relativePath: `media/edited-${index}.png`, width: 672, height: 544 });
       await finish(queue, request.jobId);

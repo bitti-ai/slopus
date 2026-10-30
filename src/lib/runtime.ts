@@ -112,7 +112,7 @@ export interface SlopfabGenerationRequest {
   prompt: string;
   frames: number;
   stillImage?: boolean;
-  imageEdit?: { sourceRelativePath: string; edits: import("./imageEditing").ImageEditStep[] };
+  imageEdit?: { sourceRelativePath: string; regionSize?: { width: number; height: number }; edits: import("./imageEditing").ImageEditStep[] };
   steps: number;
   audioSteps?: number;
   guidanceScale?: number;

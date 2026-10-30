@@ -9,7 +9,7 @@ import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type
 import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Copy16, Cube16, Cube16Filled, Cursor16, Cursor16Filled, Delete14, Delete16, Edit16, Film16, FolderAdd16, FolderOpen16, Group16, Group16Filled, Image16, Image32, Lasso16, Paste16, References16, Rename16, Sparkle16, Stop14, Text16, Text16Filled } from "../ui/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, imageLassoPath, imageLassoSchema, simplifyImageLasso, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource, type ImagePoint } from "../../lib/imageScene";
-import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt, imageEditOutputSize, imageEditSize } from "../../lib/imageEditing";
+import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt, imageEditOutputSize, imageEditSize, imageEditRegionSize, limitImageEditBox, limitImageEditScene } from "../../lib/imageEditing";
 import { imageSettings } from "../../lib/imageSettings";
 import { outputDimensions } from "../../lib/export";
 import { compileImagePrompt } from "../../lib/imagePrompt";
@@ -65,7 +65,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   onImageOpened?: () => void;
   onBackNavigationChange?: BackNavigationChange;
 }) {
-  const scene = useMemo(() => config.imageScene ?? { ...createImageScene(config.brief.prompt), steps: selectedImageGeneratorTemplate().defaultSteps }, [config.imageScene, config.brief.prompt]);
+  const scene = useMemo(() => limitImageEditScene(config.imageScene ?? { ...createImageScene(config.brief.prompt), steps: selectedImageGeneratorTemplate().defaultSteps }), [config.imageScene, config.brief.prompt]);
   const settings = imageSettings(config);
   const root = scene.nodes.find((node) => node.kind === "root")!;
   const imageRoot = scene.rootType === "image";
@@ -224,6 +224,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   useEffect(() => subscribeGeneratorTemplates(() => setTemplates(loadGeneratorTemplateSettings())), []);
 
   const commit = (next: ImageScene) => {
+    next = limitImageEditScene(next);
     if (JSON.stringify(next) === JSON.stringify(scene)) return;
     undo.current = [...undo.current.slice(-99), scene]; redo.current = [];
     onChange((current) => ({ ...current, imageScene: { ...next, outputAssetId: current.imageScene?.outputAssetId ?? null } }));
@@ -400,6 +401,14 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return;
     const original = start.scene.nodes.find((node) => node.id === start.id)?.box;
     if (start.lasso) {
+      const limit = imageEditRegionSize(start.scene);
+      if (limit) {
+        const xs = start.lasso.map((point) => point.x), ys = start.lasso.map((point) => point.y);
+        const maxWidth = limit.width / start.scene.sourceImage!.width * 1000;
+        const maxHeight = limit.height / start.scene.sourceImage!.height * 1000;
+        at.x = Math.max(Math.max(...xs) - maxWidth, Math.min(Math.min(...xs) + maxWidth, at.x));
+        at.y = Math.max(Math.max(...ys) - maxHeight, Math.min(Math.min(...ys) + maxHeight, at.y));
+      }
       if (Math.hypot(at.x - start.lasso.at(-1)!.x, at.y - start.lasso.at(-1)!.y) < 2) return;
       start.lasso.push(at);
       if (start.lasso.length > 2048) start.lasso = start.lasso.filter((_, index) => index % 2 === 0);
@@ -411,6 +420,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       const y = start.resize ? original.y : Math.max(0, Math.min(1000 - original.height, original.y + at.y - start.y));
       start.box = { x, y, width: start.resize ? Math.max(1, Math.min(1000 - x, original.width + at.x - start.x)) : original.width, height: start.resize ? Math.max(1, Math.min(1000 - y, original.height + at.y - start.y)) : original.height };
     } else start.box = { x: Math.min(start.x, at.x), y: Math.min(start.y, at.y), width: Math.abs(at.x - start.x), height: Math.abs(at.y - start.y) };
+    start.box = limitImageEditBox(start.scene, start.box);
     setDraftBox(start.box);
   };
   const pointerUp = (event: PointerEvent<SVGSVGElement>) => {
@@ -424,6 +434,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         attempt(() => {
           const mode = event.altKey ? "subtract" : event.ctrlKey ? "add" : "new";
           const result = applyLassoStroke(start.scene, points, mode, selected.id);
+          const limit = imageEditRegionSize(result.scene);
+          if (limit && result.scene.nodes.some((node) => node.lasso && node.box &&
+            (node.box.width * result.scene.sourceImage!.width / 1000 > limit.width + 1e-6 || node.box.height * result.scene.sourceImage!.height / 1000 > limit.height + 1e-6))) {
+            throw new Error(`The combined lasso must fit within ${limit.width} × ${limit.height} pixels. Use separate edits for a larger area.`);
+          }
           commit(result.scene); setSelection(result.id);
           setCollapsed((current) => { const next = new Set(current); next.delete(root.id); return next; });
           if (mode === "new") setDrawKind(null);
@@ -843,6 +858,9 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             {!imageRoot && <PropRow label="Aspect ratio" htmlFor={rootField("ratio")}><ComboBox id={rootField("ratio")} aria-label="Aspect ratio" value={settings.aspectRatio} options={["16:9", "9:16", "1:1", "4:5"].map((ratio) => ({ value: ratio, label: ratio }))} onChange={(value) => { const aspectRatio = value as ProjectConfig["settings"]["aspectRatio"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), aspectRatio } })); }} /></PropRow>}
             {imageRoot ? editSize && <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={sizeValue(editSize)} options={editSizes.map((size) => ({ value: sizeValue(size), label: `${size.width} × ${size.height}` }))} onChange={(value) => { const size = editSizes.find((size) => sizeValue(size) === value); if (size) commit({ ...scene, outputSize: size }); }} /></PropRow> : <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={settings.resolution} options={[...new Set([...PROJECT_RESOLUTIONS, settings.resolution])].map((resolution) => { const size = outputDimensions(resolution, settings.aspectRatio); return { value: resolution, label: `${size.width} × ${size.height}` }; })} onChange={(value) => { const resolution = value as ProjectConfig["settings"]["resolution"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), resolution } })); }} /></PropRow>}
           </PropSection>
+          {imageRoot && imageEditRegionSize(scene) && <PropRow label="Saved image" tooltip="Local boxes and lassos are limited to the selected resolution. Their edits are merged into the original image.">
+            <span>{scene.sourceImage!.width} × {scene.sourceImage!.height}</span>
+          </PropRow>}
           {!imageRoot && <PropSection title="Style" persistKey="image.style">
             <PropRow label="Mode" htmlFor={rootField("mode")}><ComboBox id={rootField("mode")} aria-label="Mode" value={scene.style.mode} options={[{ value: "none", label: "None" }, { value: "photo", label: "Photo" }, { value: "art", label: "Art" }]} onChange={(value) => commit({ ...scene, style: { ...scene.style, mode: value as "none" | "photo" | "art" } })} /></PropRow>
             {scene.style.mode !== "none" && <>

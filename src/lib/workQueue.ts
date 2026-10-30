@@ -8,7 +8,7 @@ import { imageSettings } from "./imageSettings";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "./imageScene";
-import { compileImageEdits, imageEditDebugPrompt, imageEditOutputSize } from "./imageEditing";
+import { compileImageEdits, imageEditDebugPrompt, imageEditCanvasSize, imageEditRegionSize } from "./imageEditing";
 import { compileImagePrompt } from "./imagePrompt";
 import { compileExtendImage, type ExtendOptions } from "./extendImage";
 import { CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, characterSheetViewIndices, characterSheetViews, compileCharacterSheet, type CharacterSheetOptions } from "./characterSheet";
@@ -352,7 +352,7 @@ export class WorkQueue {
     const projectKey = projectQueueKey(session.record);
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && (item.imageDraftId ?? item.imageAssetId) === scene.outputAssetId && isWorkActive(item))) return;
     const { prompt, references } = edit ? edit.edits[0] : compileImagePrompt(current, { modelType: template.modelType });
-    const { width, height } = edit ? imageEditOutputSize(scene) : outputDimensions(imageSettings(current).resolution, imageSettings(current).aspectRatio);
+    const { width, height } = edit ? imageEditCanvasSize(scene) : outputDimensions(imageSettings(current).resolution, imageSettings(current).aspectRatio);
     const id = `image-${crypto.randomUUID()}`;
     const negativePrompt = generatorModel(template.modelType).negativePrompt ? scene.negativePrompts?.[template.modelType] : undefined;
     const guidanceScale = imageCfgScale(template.modelType, scene.cfgScales, template.kreaVariant);
@@ -386,7 +386,7 @@ export class WorkQueue {
       let finish!: () => void;
       const done = new Promise<void>((resolve) => { finish = resolve; });
       const request: SlopfabGenerationRequest = { ...(negativePrompt ? { negativePrompt } : {}), ...(guidanceScale !== undefined ? { guidanceScale } : {}), generationEffects: activeGenerationEffects(scene.generationEffects), jobId: entry.id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
-        ...(edit ? { imageEdit: { sourceRelativePath: edit.source.relativePath, edits: edit.edits.map(({ references, ...step }) => ({
+        ...(edit ? { imageEdit: { sourceRelativePath: edit.source.relativePath, regionSize: imageEditRegionSize(scene), edits: edit.edits.map(({ references, ...step }) => ({
           ...step, referencePaths: referencePaths(references), refmods: referenceRefmodInputs(session.record.folderPath, references),
         })) } } : {}),
         canvasWidth: width, canvasHeight: height, steps: generationStepsWithLoras(scene.steps, config), seed,

@@ -31,7 +31,8 @@ pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 // v25 emits MiniMax still-image previews as well as video previews.
 // v26 replaces Single Shot's 39-frame overlap, holding 22 and regenerating 17.
 // v27 grades Tone once after joining Single Shot's neutral ending and main clip.
-pub const PROTOCOL_VERSION: u32 = 27;
+// v28 bounds image-edit inference to the target region and preserves the original canvas.
+pub const PROTOCOL_VERSION: u32 = 28;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -386,7 +387,31 @@ mod tests {
         let single = restored.single_shot.unwrap();
         assert_eq!(single.ending_prompt, "The subject waves goodbye");
         assert!(single.ending_path.is_none());
-        assert_eq!(PROTOCOL_VERSION, 27);
+        assert_eq!(PROTOCOL_VERSION, 28);
+    }
+
+    #[test]
+    fn regional_image_edits_keep_source_coordinates_and_target_limits_on_the_wire() {
+        let mut request: GenerationRequest = serde_json::from_value(serde_json::json!({
+            "jobId":"regional", "prompt":"Flower", "frames":1, "stillImage":true, "steps":4, "seed":42,
+            "canvasWidth":4096,"canvasHeight":3072,"imageEdit":{"sourceRelativePath":"media/source.png",
+                "regionSize":{"width":1024,"height":768},"edits":[{"prompt":"Flower","x":2048,"y":1536,"width":512,"height":512,
+                    "maskPolygon":[{"x":2048,"y":1536},{"x":2560,"y":1536},{"x":2048,"y":2048}],
+                    "referencePaths":["C:/project/media/source.png"]}]}
+        })).unwrap();
+        visit_paths(&mut request, &mut Default::default(), |kind, path| {
+            assert_eq!(kind, PathKind::Input);
+            *path = file_token(0);
+            Ok(())
+        }).unwrap();
+        let restored: GenerationRequest = serde_json::from_slice(&serde_json::to_vec(&request).unwrap()).unwrap();
+        assert_eq!((restored.canvas_width, restored.canvas_height), (4096, 3072));
+        let edit = restored.image_edit.unwrap();
+        let target = edit.region_size.unwrap();
+        assert_eq!((target.width, target.height), (1024, 768));
+        assert_eq!((edit.edits[0].x, edit.edits[0].y), (2048, 1536));
+        assert_eq!(edit.edits[0].mask_polygon.as_ref().unwrap()[0].x, 2048.0);
+        assert_eq!(edit.edits[0].reference_paths.as_ref().unwrap(), &[file_token(0)]);
     }
 
     #[test]

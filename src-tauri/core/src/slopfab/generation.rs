@@ -139,7 +139,9 @@ fn run_edit_sequence(
     mut generate: impl FnMut(&QueueItem) -> Result<(OutputMetadata, rendered::RenderedVideo), String>,
 ) -> Result<(OutputMetadata, rendered::RenderedVideo), String> {
     let Some(edit) = &item.request.image_edit else { return generate(item); };
+    if item.cancel.load(Ordering::Acquire) { return Err("Image editing cancelled.".into()); }
     let count = edit.edits.len();
+    let mut canvas = if edit.region_size.is_some() { Some(super::image_regions::load_source(&item.request)?) } else { None };
     let mut pixels = None;
     let mut elapsed = 0.0;
     let mut computed = 0;
@@ -152,12 +154,18 @@ fn run_edit_sequence(
         if let Some(refmods) = &step.refmods { request.refmods = refmods.clone(); }
         request.image_edit.as_mut().unwrap().edits = vec![step.clone()];
         request.image_edit_pixels = pixels.take();
+        let region = canvas.as_ref().map(|source| super::image_regions::RegionEdit::prepare(&request, source)).transpose()?;
+        if let Some(region) = &region { request = region.request.clone(); }
+        let cropped = region.is_some();
         let sink = item.events.clone();
         let offset = elapsed;
         let stage = QueueItem {
             request, configuration: item.configuration.clone(), references: item.references.clone(), cancel: item.cancel.clone(),
             events: std::sync::Arc::new(move |event| {
                 let event = match event {
+                    // A crop preview has a different coordinate system from the
+                    // original canvas; retain the source until the merged result.
+                    super::events::NativeEvent::Preview(_) if cropped => return,
                     super::events::NativeEvent::Progress(mut progress) if progress.stage != "calibrating" => {
                         let per_edit = progress.planned_steps.max(1);
                         progress.step = index as i32 * per_edit + progress.step.clamp(0, per_edit);
@@ -174,6 +182,7 @@ fn run_edit_sequence(
         };
         let (mut metadata, result) = generate(&stage)?;
         if item.cancel.load(Ordering::Acquire) { return Err("Image editing cancelled.".into()); }
+        if let (Some(region), Some(canvas)) = (&region, &mut canvas) { region.merge(canvas, &result)?; }
         elapsed += metadata.seconds_total;
         computed += metadata.steps_computed;
         skipped += metadata.steps_skipped;
@@ -182,8 +191,14 @@ fn run_edit_sequence(
             metadata.steps_computed = computed;
             metadata.steps_skipped = skipped;
             metadata.timing_profile.push_str(&format!("|imageEdits={count}"));
+            if let Some(canvas) = canvas {
+                metadata.width = canvas.width() as i32;
+                metadata.height = canvas.height() as i32;
+                return Ok((metadata, super::image_regions::rendered_image(&item.request.job_id, canvas)?));
+            }
             return Ok((metadata, result));
         }
+        if canvas.is_some() { continue; }
         let rgba = result.frame(0)?.ok_or("Image edit returned no pixels.")?;
         // Copy only the completed still, then release its generation before
         // starting the next edit. No intermediate file or lossy encode.

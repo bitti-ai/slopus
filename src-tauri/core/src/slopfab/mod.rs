@@ -15,6 +15,7 @@ mod continuation;
 mod events;
 mod ffi;
 mod generation;
+mod image_regions;
 mod latent_upscale;
 mod lcs;
 mod lcs_fingerprint;

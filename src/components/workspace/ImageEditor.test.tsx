@@ -256,7 +256,7 @@ it("edits imported-image generation settings and restores them with the draft", 
   fireEvent.change(screen.getByLabelText("Seed"), { target: { value: "123456" } });
   choose("Resolution", "672 × 544");
   expect(current().imageScene).toMatchObject({ steps: 32, seed: 123456, outputSize: { width: 672, height: 544 } });
-  expect(compileImageEdits(current()).edits[0]).toMatchObject({ width: 672, height: 544 });
+  expect(compileImageEdits(current()).edits[0]).toMatchObject({ width: 1001, height: 809 });
   expect(current().assets[0]).toMatchObject({ width: 1001, height: 809 });
   const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
   expect(reopened.imageScene).toEqual(current().imageScene);
@@ -269,7 +269,7 @@ it("edits imported-image generation settings and restores them with the draft", 
   expect(screen.getByLabelText("Seed")).toHaveValue(123456);
   expect(comboValue(screen.getByLabelText("Resolution"))).toBe("672x544");
   choose("Resolution", "992 × 800");
-  expect(compileImageEdits(current()).edits[0]).toMatchObject({ width: 992, height: 800 });
+  expect(compileImageEdits(current()).edits[0]).toMatchObject({ width: 1001, height: 809 });
 });
 
 it.each(["media/photo.png", "references/photo.webp", "references/frames/frame.png"])("opens %s for editing after measuring its preview and preserves the original", async (relativePath) => {
@@ -1200,6 +1200,34 @@ it("sets a temporary generation count, dismisses its panel and resets after one 
   render(<ImageEditor {...props} />);
   fireEvent.click(screen.getByRole("button", { name: "Generation options" }));
   expect(screen.getByRole("spinbutton", { name: "Count" })).toHaveValue(1);
+});
+
+it.each(["Edit Box", "Lasso"])("caps a drawn %s at the target resolution on a larger image", (tool) => {
+  const initial = parseProjectConfig(fixture);
+  initial.imageScene = createImageEditScene({ relativePath: "media/large.png", name: "Large", width: 4096, height: 4096 });
+  initial.imageScene.outputSize = { width: 512, height: 512 };
+  const current = setup(initial);
+  const canvas = screen.getByLabelText("Image placement canvas");
+  Object.defineProperty(canvas, "setPointerCapture", { value: vi.fn() });
+  Object.defineProperty(canvas, "getBoundingClientRect", { value: () => ({ left: 0, top: 0, width: 1000, height: 1000 }) });
+  const pointer = (type: "pointerDown" | "pointerMove" | "pointerUp", x: number, y: number, target: Element = canvas) => {
+    const event = createEvent[type](target);
+    Object.defineProperties(event, { button: { value: 0 }, pointerId: { value: 1 }, clientX: { value: x }, clientY: { value: y } });
+    fireEvent(target, event);
+  };
+  fireEvent.click(screen.getByRole("radio", { name: tool }));
+  pointer("pointerDown", 500, 500);
+  pointer("pointerMove", 900, 500);
+  pointer("pointerUp", tool === "Lasso" ? 500 : 900, 900);
+  expect(current().imageScene!.nodes[1].box).toEqual({ x: 500, y: 500, width: 125, height: 125 });
+  typePrompt(screen.getByLabelText("Edit prompt"), "A red flower");
+  expect(compileImageEdits(current()).edits[0]).toMatchObject({ x: 2048, y: 2048, width: 512, height: 512 });
+  if (tool === "Edit Box") {
+    const handle = canvas.querySelector("[data-resize]")!;
+    pointer("pointerDown", 625, 625, handle); pointer("pointerUp", 1000, 1000);
+    expect(current().imageScene!.nodes[1].box).toEqual({ x: 500, y: 500, width: 125, height: 125 });
+  }
+  expect(current().imageScene!.sourceImage).toMatchObject({ width: 4096, height: 4096 });
 });
 
 it("draws a lasso, edits its prompt, moves its outline, and saves it independently", () => {
