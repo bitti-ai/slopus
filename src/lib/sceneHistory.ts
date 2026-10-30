@@ -110,8 +110,17 @@ export function makeSceneGenerationPrimary(config: ProjectConfig, sceneId: strin
 /** Remove history metadata, keeping media files available to Undo and references. */
 export function removeSceneGeneration(config: ProjectConfig, sceneId: string, versionId: string): ProjectConfig {
   const current = config.generationJobs.find(job => job.id === sceneId);
-  if (!current || ["queued", "generating", "ready"].includes(current.status)
-    || !sceneHistory(current, config.assets).versions.some(version => version.id === versionId)) return config;
+  if (!current) return config;
+  const currentHistory = sceneHistory(current, config.assets);
+  if (!currentHistory.versions.some(version => version.id === versionId)) return config;
+  if (["queued", "generating", "ready"].includes(current.status)) {
+    if (currentHistory.primaryId === versionId) return config;
+    // Removing history must not restore another take's inputs into a live job.
+    // Keep the selected take's inputs as a draft if that take is removed.
+    const history = { ...currentHistory, versions: currentHistory.versions.filter(version => version.id !== versionId),
+      ...(currentHistory.selectedId === versionId ? { selectedId: null, draft: sceneInput(current) } : {}) };
+    return { ...config, generationJobs: config.generationJobs.map(job => job.id === sceneId ? { ...job, generationHistory: history } : job) };
+  }
   const saved = saveSceneDrafts(config);
   const job = saved.generationJobs.find(job => job.id === sceneId)!;
   const history = sceneHistory(job, saved.assets);

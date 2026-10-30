@@ -34,12 +34,12 @@ export function SceneHistoryBar({ job, assets, folderPath, onSelect, onMakePrima
       const primary = version.id === history.primaryId;
       const open = (source: Parameters<typeof menu.open>[0]) => menu.open(source, [{ id: "primary", label: "Make Primary", disabled: busy || primary || !onMakePrimary,
         onSelect: () => onMakePrimary?.(job, version.id) }, { separator: true },
-        { id: "remove", label: "Remove generation", icon: <Delete16 />, danger: true, disabled: busy || !onRemove,
+        { id: "remove", label: "Remove generation", icon: <Delete16 />, danger: true, disabled: busy && primary || !onRemove,
           onSelect: () => onRemove?.(job, version.id) }], { "aria-label": `Generation ${index + 1} actions` });
-      return <button key={version.id} type="button" className="scene-history__take" disabled={busy || !onSelect}
+      return <button key={version.id} type="button" className="scene-history__take" disabled={busy ? primary || !onRemove : !onSelect && !onRemove}
         aria-label={`Generation ${index + 1}${primary ? " (Primary)" : ""} of ${job.title}`} aria-pressed={history.selectedId === version.id}
         data-tooltip={`Generation ${index + 1}${primary ? " - Primary" : ""}${version.upscaleFactor ? ` - Upscaled ${version.upscaleFactor}x (${version.media.width} × ${version.media.height})` : ""} - ${new Date(version.createdAt).toLocaleString()}`}
-        onClick={() => onSelect?.(job, version.id)} onContextMenu={open} onKeyDown={event => { if (event.key === "ContextMenu" || event.key === "F10" && event.shiftKey) { event.preventDefault(); open(event); } }}>
+        onClick={() => { if (!busy) onSelect?.(job, version.id); }} onContextMenu={open} onKeyDown={event => { if (event.key === "ContextMenu" || event.key === "F10" && event.shiftKey) { event.preventDefault(); open(event); } }}>
         <span className="scene-history__picture"><TakePoster folderPath={folderPath} media={version.media} /></span>
         <span>{primary ? "Primary" : `Take ${index + 1}`}</span>
         {version.upscaleFactor && <span>{version.upscaleFactor}x upscale</span>}

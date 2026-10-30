@@ -113,10 +113,42 @@ describe("scene generation history", () => {
     expect(removed.generationJobs[0].generationHistory!.versions.map(v => v.id)).toEqual(["two"]);
     expect(removed.assets).toEqual(config.assets);
     expect(removeSceneGeneration(removed, id, "one")).toBe(removed);
-    for (const status of ["queued", "generating", "ready"] as const) {
-      const busy = { ...config, generationJobs: config.generationJobs.map(job => ({ ...job, status })) };
-      expect(removeSceneGeneration(busy, id, "one")).toBe(busy);
+  });
+  it.each(["queued", "generating", "ready"] as const)("removes non-primary history while %s without changing the live job", status => {
+    const base = finish(edit(finish(edit(initial(), "First"), "one"), "Second"), "two");
+    const id = base.generationJobs[0].id;
+    for (const config of [edit(base, "Pending"), selectSceneGeneration(base, id, "one"), base]) {
+      const busy = { ...config, generationJobs: config.generationJobs.map(job => ({ ...job, status, progress: 0.4 })) };
+      const before = busy.generationJobs[0];
+      const removed = removeSceneGeneration(busy, id, "one");
+      expect({ ...removed.generationJobs[0], generationHistory: undefined }).toEqual({ ...before, generationHistory: undefined });
+      expect(removed.generationJobs[0].generationHistory!.versions.map(v => v.id)).toEqual(["two"]);
+      expect(removed.generationJobs[0].generationHistory!.primaryId).toBe("two");
+      expect(removed.generationJobs[0].generationHistory!.selectedId).toBe(before.generationHistory!.selectedId === "one" ? null : before.generationHistory!.selectedId);
+      if (before.generationHistory!.selectedId === "one") expect(removed.generationJobs[0].generationHistory!.draft).toEqual(sceneInput(before));
+      expect(removed.assets).toBe(busy.assets);
+      expect(removed.timeline).toBe(busy.timeline);
+      expect(removeSceneGeneration(busy, id, "two")).toBe(busy);
+      expect(removeSceneGeneration(removed, id, "one")).toBe(removed);
     }
+  });
+  it("keeps a completed generation through undo and redo of a take removed while rendering", () => {
+    let config = finish(edit(finish(edit(initial(), "First"), "one"), "Second"), "two");
+    const id = config.generationJobs[0].id;
+    config = selectSceneGeneration(config, id, "one");
+    config.generationJobs[0].status = "generating";
+    const submitted = take(config, "three");
+    const session = new ProjectSession({ folderPath: "C:/history", config }, vi.fn(async () => {}));
+    session.edit(current => removeSceneGeneration(current, id, "one"));
+    expect(session.getSnapshot().config.generationJobs[0]).toMatchObject({ status: "generating", music: "First", generationHistory: { selectedId: null, draft: { music: "First" } } });
+    session.update(current => completeSceneGeneration(current, id, submitted));
+    expect(session.getSnapshot().config.generationJobs[0].generationHistory!.versions.map(v => v.id)).toEqual(["two", "three"]);
+    expect(session.undo()).toBe(true);
+    expect(session.getSnapshot().config.generationJobs[0].generationHistory!.versions.map(v => v.id)).toEqual(["one", "two", "three"]);
+    expect(session.redo()).toBe(true);
+    const completed = session.getSnapshot().config.generationJobs[0];
+    expect(completed.generationHistory!.versions.map(v => v.id)).toEqual(["two", "three"]);
+    expect(completed).toMatchObject({ status: "completed", outputRelativePath: "media/three.mp4", music: "First", generationHistory: { primaryId: "three", selectedId: "three" } });
   });
   it("promotes the newest remaining take when removing the primary and restores selected inputs", () => {
     let config = finish(edit(initial(), "First"), "one");

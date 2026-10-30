@@ -1409,6 +1409,33 @@ it("disables removing the scene's only Draft", () => {
   expect(screen.getByRole("menuitem", { name: "Remove draft" })).toBeDisabled();
 });
 
+it.each(["mouse", "keyboard"])("removes a non-primary take during generation through its %s menu", method => {
+  let config = project();
+  const id = config.generationJobs[0].id;
+  for (const takeId of ["one", "two"]) {
+    const job = config.generationJobs[0];
+    config = completeSceneGeneration(config, id, { id: takeId, scene: sceneInput(job), createdAt: config.createdAt,
+      media: { id: `asset-${id}`, kind: "generated", name: job.title, mimeType: "video/mp4", relativePath: `media/${takeId}.mp4`, createdAt: config.createdAt } });
+  }
+  config.generationJobs[0].status = "generating";
+  config.generationJobs[0].progress = 0.4;
+  const state = setup(config);
+  const older = screen.getByRole("button", { name: "Generation 1 of First scene" });
+  expect(older).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Generation 2 (Primary) of First scene" })).toBeDisabled();
+  fireEvent.click(older);
+  expect(state.latest().generationJobs[0].generationHistory!.selectedId).toBe("two");
+  if (method === "mouse") fireEvent.contextMenu(older);
+  else fireEvent.keyDown(older, { key: "F10", shiftKey: true });
+  expect(screen.getByRole("menuitem", { name: "Make Primary" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Remove generation" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove generation" }));
+  expect(state.latest().generationJobs[0]).toMatchObject({ status: "generating", progress: 0.4, outputRelativePath: "media/two.mp4",
+    generationHistory: { primaryId: "two", selectedId: "two" } });
+  expect(state.latest().generationJobs[0].generationHistory!.versions.map(version => version.id)).toEqual(["two"]);
+  expect(screen.getByRole("button", { name: "Generation 1 (Primary) of First scene" })).toBeDisabled();
+});
+
 it("restores older takes and drafts, makes a take primary, removes history and duplicates a scene", () => {
   let config = project();
   const id = config.generationJobs[0].id;
