@@ -2,7 +2,7 @@
 import { installH3TestDependencies } from "./h3TestUtils";
 import { beforeEach, expect, it } from "vitest";
 import { PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, DMAD_LORA, downloadableTemplateLoras, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
-import { createGeneratorTemplate, engineProviderSetting, generationSigmaShifts, generationStepsWithLoras, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, withEngineSettings } from "./settings";
+import { createGeneratorTemplate, engineProviderSetting, generationSigmaShifts, generationStepsWithLoras, kreaImageTemplates, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, withEngineSettings } from "./settings";
 import { createProjectConfig } from "./project";
 import { effectiveLoras, moveLibraryLora, selectionConflict, loraSnapshot } from "./loras";
 import { generationStepsForTemplate, templateNeedsDownload } from "./settings";
@@ -11,6 +11,20 @@ import { sceneLoraBlocker, sceneGenerationRequest } from "./sceneGeneration";
 import { sceneInput, duplicateScene } from "./sceneHistory";
 
 beforeEach(() => { localStorage.clear(); installH3TestDependencies(); });
+
+it("does not inherit default-generator or global adapters when Krea omits its LoRA list", () => {
+  saveLoras([{ ...DMAD_LORA, path: "D:/dmad.safetensors", globallyEnabled: true }]);
+  const defaults = createGeneratorTemplate();
+  defaults.loras = [{ loraId: DMAD_LORA.id, enabled: true, strength: 1 }];
+  saveGeneratorTemplateSettings({ templates: [defaults], defaultTemplateId: defaults.id, catalogVersion: 20 });
+  for (const template of kreaImageTemplates()) {
+    const options = engineProviderSetting(template.paths, undefined, template.attention, undefined, "prompt", [], false, template.sources,
+      { ...template, sampler: "er_sde", scheduler: "beta" }).options;
+    expect(options).toMatchObject({ modelType: "krea2", sampler: "er_sde", scheduler: "beta" });
+    for (const key of ["loras", "samplingPreset", "stepOverride", "videoSigmaShiftOverride", "audioSigmaShiftOverride"]) expect(options).not.toHaveProperty(key);
+    expect(effectiveLoras(defaults.loras, defaults.loras, template.modelType)).toEqual([]);
+  }
+});
 
 it("merges global, template and scene LoRAs once in library order and keeps globals active", () => {
   saveLoras([{ id: "style", name: "Style", path: "D:/style", globallyEnabled: true, globalStrength: 0.7 },

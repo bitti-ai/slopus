@@ -1,5 +1,6 @@
 import { isSigmaShift, type SigmaShifts } from "./sampling";
 import { MAX_GENERATION_STEPS } from "./project";
+import { generatorModel } from "./generatorModels";
 
 /** Machine-local adapter library; paths never belong in portable projects. */
 export interface Lora {
@@ -160,6 +161,7 @@ export function resolveTemplateLoras(selection: TemplateLora[] = [], worker = fa
 /** Scene choices override templates; global adapters are always applied last.
  * The library order is the execution order, independent of the selection source. */
 export function effectiveLoras(selection: TemplateLora[] = [], overrides: TemplateLora[] = [], modelType = "minimax-h3", library = loadLoras()): TemplateLora[] {
+  if (!generatorModel(modelType).loras) return [];
   const chosen = new Map(selection.map((entry) => [entry.loraId, entry]));
   for (const entry of overrides) chosen.set(entry.loraId, entry);
   if (modelType === "minimax-h3") for (const lora of library) {
