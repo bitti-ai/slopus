@@ -898,7 +898,8 @@ describe("Generator scene controls", () => {
     expect(speech).toHaveTextContent("");
     expect(comboValue(language)).toBe("English");
 
-    chooseOption(language, "Korean");
+    fireEvent.keyDown(language, { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "Korean" }));
     typePrompt(speech, "문을 열어 주세요.");
     expect(sceneShots(state.latest().generationJobs[0])[0]).toEqual(expect.objectContaining({
       speech: "문을 열어 주세요.",
@@ -911,15 +912,27 @@ describe("Generator scene controls", () => {
     expect(snapshot.prompt).toContain("<d>[Korean] 문을 열어 주세요.</d>");
   });
 
-  it("keeps an LLM-authored custom speech language in the language list", () => {
+  it("keeps language presets and allows typing a custom speech language", () => {
     const initial = project();
     initial.generationJobs[0].shots![0].speechLanguage = "Klingon";
-    setup(parseProjectConfig(initial));
+    const state = setup(parseProjectConfig(initial));
     fireEvent.click(screen.getByRole("button", { name: "Shot 1 of First scene" }));
 
     const language = screen.getByRole("combobox", { name: "Speech language for shot 1" });
     expect(comboValue(language)).toBe("Klingon");
-    expect(optionNames(language)).toContain("Klingon");
+    fireEvent.keyDown(language, { key: "ArrowDown" });
+    expect(screen.getAllByRole("option").map(option => option.textContent)).toEqual(expect.arrayContaining(["English", "Korean", "Klingon"]));
+    fireEvent.keyDown(language, { key: "Escape" });
+    fireEvent.change(language, { target: { value: "  Finnish  " } });
+    fireEvent.keyDown(language, { key: "Enter" });
+    expect(language).toHaveValue("Finnish");
+    expect(parseProjectConfig(state.latest()).generationJobs[0].shots![0].speechLanguage).toBe("Finnish");
+    fireEvent.change(language, { target: { value: "Swedish" } });
+    fireEvent.blur(language);
+    expect(state.latest().generationJobs[0].shots![0].speechLanguage).toBe("Swedish");
+    fireEvent.change(language, { target: { value: "   " } });
+    fireEvent.blur(language);
+    expect(language).toHaveValue("Swedish");
   });
 
   it("inserts a voice chip into Speech and removes its generation input when the chip is removed", () => {

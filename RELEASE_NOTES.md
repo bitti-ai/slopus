@@ -34,6 +34,7 @@ Changes since 0.3.2.
 
 ## Fixes and improvements
 
+- Shot speech language keeps the existing choices and also accepts custom language names.
 - Empty shot cards use their Video's resolution and aspect ratio while waiting for a preview or generated video.
 - Non-primary scene takes can be removed during generation without interrupting the running job.
 - Videos can override project Look, aspect ratio and resolution; scenes inherit their Video's settings.

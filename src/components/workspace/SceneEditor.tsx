@@ -214,6 +214,8 @@ export function ShotInspector({ job, shots, shot, index, endsAt, duration, refer
       <PropRow label="Language" htmlFor={`shot-language-${shot.id}`}>
         <ComboBox
           id={`shot-language-${shot.id}`}
+          editable
+          parseText={text => text.trim() || null}
           value={speechLanguage}
           disabled={disabled}
           aria-label={`Speech language for shot ${shotNumber}`}
