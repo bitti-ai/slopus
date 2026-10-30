@@ -22,7 +22,7 @@ export const GENERATION_EFFECTS = [
 export type GenerationEffectId = typeof GENERATION_EFFECTS[number]["id"];
 export const GENERATION_EFFECT_DEFAULTS: Required<Pick<GenerationEffects, GenerationEffectId>> = {
   color: { color: "#ff8000", strength: 0.35, mode: "interpolated" },
-  tone: { contrast: 1, brightness: 0, saturation: 1, temperature: 0 },
+  tone: { contrast: 0.9, brightness: 0.1, saturation: 0.95, temperature: 0 },
   sharpness: { strength: 0.1 },
   anchor: { mode: "self", strength: 0.25 },
 };
