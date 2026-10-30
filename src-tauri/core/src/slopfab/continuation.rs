@@ -312,7 +312,7 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn single_shot_keystone_resolves_one_pass_and_requires_more_than_four_video_updates() {
+    fn single_shot_keystone_adapts_lock_delay_to_short_video_schedules() {
         use super::super::types::SingleShotRequest;
         let source = archive(124).into_temp_path();
         let context = archive(56).into_temp_path();
@@ -330,11 +330,53 @@ pub(super) mod tests {
         assert_eq!(plan.model_evaluations, 8);
         assert_eq!(std::fs::read(&source).unwrap(), source_bytes);
         assert_eq!(std::fs::read(&context).unwrap(), context_bytes);
+        for steps in [2, 3, 4, 5, 6, 9] {
+            request.steps = steps;
+            let plan = resolve_plan(&request, &settings, &ReferenceVideos::default()).unwrap();
+            assert_eq!(plan.aligned_frames, 175);
+            assert_eq!(plan.model_evaluations, steps - 1);
+            assert!(plan.description.contains(&format!("capstone locks after {} video updates", (steps - 2).min(4))));
+        }
+        // Audio can add joint evaluations without adding any video updates.
         request.steps = 4;
-        assert!(resolve_plan(&request, &settings, &ReferenceVideos::default()).is_err());
+        request.audio_steps = Some(17);
+        let plan = resolve_plan(&request, &settings, &ReferenceVideos::default()).unwrap();
+        assert!(plan.model_evaluations > 4);
+        assert!(plan.description.contains("capstone locks after 2 video updates"));
+        request.audio_steps = None;
         request.steps = 9;
         request.continuation_path = None;
         assert!(resolve_plan(&request, &settings, &ReferenceVideos::default()).unwrap_err().contains("Previous video"));
+    }
+
+    #[test]
+    fn single_shot_keystone_keeps_fixed_recipes_in_planning_and_execution() {
+        use super::super::{ffi::{Api, RequestHandle}, h3::configure_request, config::Configuration,
+            platform::ComputePlatform, planning::RequestPurpose, types::SingleShotRequest};
+        use crate::settings::{ProviderOption, ProviderSetting};
+        let source = archive(124).into_temp_path();
+        let context = archive(56).into_temp_path();
+        let request = GenerationRequest { prompt: "Walk forward".into(), frames: 48, steps: 30, seed: 1,
+            canvas_width: 64, canvas_height: 32, audio_steps: Some(17),
+            single_shot: Some(SingleShotRequest { ending_prompt: String::new(), ending_path: None }),
+            continuation_path: Some(source.to_path_buf()), continuation_overlap_frames: Some(22),
+            continuation_from: Some("end".into()), continuation_lock_overlap: true,
+            keystone_path: Some(context.to_path_buf()), ..Default::default() };
+        for (preset, delay, updates) in [("dmad-4step", 3, 4), ("pika-6step", 4, 6)] {
+            let settings = BTreeMap::from([("slopfab".into(), ProviderSetting { enabled: true, model: None,
+                options: BTreeMap::from([("samplingPreset".into(), ProviderOption::String(preset.into()))]) })]);
+            let configuration = Configuration::from_settings(&settings);
+            let api = Api::load(&configuration.dll_path).unwrap();
+            for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+                for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+                    let handle = RequestHandle::new(&api).unwrap();
+                    configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+                    let description = api.describe(&handle).unwrap();
+                    assert!(description.contains(&format!("capstone locks after {delay} video updates")));
+                    assert!(description.contains(&format!("modality updates    video {updates}")));
+                }
+            }
+        }
     }
 
     #[test]

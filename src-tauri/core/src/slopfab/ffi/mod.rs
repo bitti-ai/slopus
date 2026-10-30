@@ -165,9 +165,9 @@ impl Api {
         self.inner.set_latent_bridge_files(r.pointer.as_ptr(), left, right, left_margin, right_margin, context)
     }
     pub fn require_end_anchor(&self) -> Result<(), String> { self.inner.require_end_anchor() }
-    pub fn set_keystone_file(&self, r: &RequestHandle, path: &Path) -> Result<(), String> {
+    pub fn set_keystone_file(&self, r: &RequestHandle, path: &Path, lock_after: i32) -> Result<(), String> {
         self.check(r)?;
-        self.inner.set_keystone_file(r.pointer.as_ptr(), path)
+        self.inner.set_keystone_file(r.pointer.as_ptr(), path, lock_after)
     }
     pub fn require_continuation_source_init(&self) -> Result<(), String> { self.inner.require_continuation_source_init() }
     pub fn set_continuation_source_init(&self, r: &RequestHandle, noise: f32) -> Result<(), String> {

@@ -163,9 +163,6 @@ pub(super) fn configure_request(
         )?;
         api.set_continuation_lock_overlap(handle, lock_overlap)?;
     }
-    if let Some(path) = &request.keystone_path {
-        api.set_keystone_file(handle, path)?;
-    }
     if let Some(path) = request.single_shot.as_ref().and_then(|single| single.ending_path.as_ref()) {
         api.set_end_anchor_file(handle, path)?;
     }
@@ -221,6 +218,20 @@ pub(super) fn configure_request(
             refmod.strength,
             refmod.copies as i32,
         )?;
+    }
+    if let Some(path) = &request.keystone_path {
+        // Check after all model/adapter metadata and audio settings are attached.
+        // The C API exposes joint evaluations, not the video update count, so
+        // it cannot safely be inferred from steps (especially with fixed grids).
+        // Prefer four; shorten only for this specific schedule validation error.
+        for delay in (0..=4).rev() {
+            api.set_keystone_file(handle, path, delay)?;
+            match api.resolve(handle) {
+                Ok(_) => break,
+                Err(error) if delay > 0 && error.contains("capstone lock delay must be smaller than the number of video updates") => continue,
+                Err(error) => return Err(error),
+            }
+        }
     }
     Ok(())
 }

@@ -38,11 +38,11 @@ it("rejects incompatible global recipes and Pika variants without changing the s
   expect(templateNeedsDownload(createGeneratorTemplate())).toBe(true);
 });
 
-it("blocks a four-update global recipe for Single Shot context and permits Pika's six updates", () => {
+it("allows short global recipes for Single Shot context with automatic native lock timing", () => {
   saveLoras([{ ...DMAD_LORA, path: "D:/dmad", globallyEnabled: true }]);
   const job = { ...createDraftGenerationJob("Continue", { sceneType: "single-shot" }), contextSceneId: "original" };
   const template = createGeneratorTemplate();
-  expect(sceneLoraBlocker(job, template)).toContain("more than four");
+  expect(sceneLoraBlocker(job, template)).toBeNull();
   saveLoras(loadLoras().map((lora) => ({ ...lora, globallyEnabled: lora.id === PIKA_REF2VA_LORA.id })));
   expect(sceneLoraBlocker(job, template)).toBeNull();
 });

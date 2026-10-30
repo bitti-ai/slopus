@@ -450,6 +450,31 @@ fn metadata_checkpoint(path: &std::path::Path, metadata: serde_json::Value) {
 }
 
 #[test]
+fn keystone_lock_uses_checkpoint_video_updates_instead_of_requested_or_joint_steps() {
+    let root = tempfile::tempdir().unwrap();
+    let transformer = root.path().join("short-grid.safetensors");
+    metadata_checkpoint(&transformer, serde_json::json!({
+        "slopfab.sampling": r#"{"version":1,"base_sigmas":[1,0.5,0]}"#
+    }));
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.models[0].2 = Some(transformer);
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    let source = continuation::tests::archive(124).into_temp_path();
+    let context = continuation::tests::archive(56).into_temp_path();
+    let request = GenerationRequest { prompt: "A quiet harbour.".into(), frames: 48, steps: 20,
+        audio_steps: Some(17), canvas_width: 64, canvas_height: 32,
+        single_shot: Some(types::SingleShotRequest { ending_prompt: String::new(), ending_path: None }),
+        continuation_path: Some(source.to_path_buf()), continuation_overlap_frames: Some(22),
+        continuation_lock_overlap: true, keystone_path: Some(context.to_path_buf()), ..Default::default() };
+    for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+        let handle = RequestHandle::new(&api).unwrap();
+        configure_request(&api, &handle, &request, &configuration, ComputePlatform::Cuda13, purpose, &ReferenceVideos::default()).unwrap();
+        assert!(api.resolve(&handle).unwrap().num_model_evaluations > 4);
+        assert!(api.describe(&handle).unwrap().contains("capstone locks after 1 video updates"));
+    }
+}
+
+#[test]
 fn model_metadata_is_shared_by_preview_and_execution_requests() {
     let root = tempfile::tempdir().unwrap();
     let transformer = root.path().join("model.safetensors");

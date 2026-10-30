@@ -17,7 +17,7 @@ it("keeps the original context archive while continuation advances and persists 
   const request = sceneGenerationRequest(next, config, "C:/Project", 9);
   expect(request).toMatchObject({ contextSceneId: "original", keystoneRelativePath: original.latentRelativePath,
     previousSceneId: "previous", continuationRelativePath: previous.latentRelativePath, singleShot: { endingPrompt: "" } });
-  expect(JSON.parse(sceneGenerationSnapshot(next, request))).toMatchObject({ contextSceneId: "original", capstoneLockAfter: 4 });
+  expect(JSON.parse(sceneGenerationSnapshot(next, request))).toMatchObject({ contextSceneId: "original", capstoneLockAfter: "auto" });
   expect(sceneGenerationSnapshot({ ...next, endingPrompt: "Something else" }, request)).toBe(sceneGenerationSnapshot(next, request));
   expect(parseProjectConfig(JSON.parse(JSON.stringify(config))).generationJobs[0].contextSceneId).toBe("original");
   expect(sceneInput(next).contextSceneId).toBe("original");

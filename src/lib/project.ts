@@ -1306,7 +1306,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     ...(job.sceneType ? { sceneType: job.sceneType } : {}),
     prompt: input.prompt,
     ...(input.loraSnapshot?.length ? { loras: input.loraSnapshot } : {}),
-    ...(input.contextSceneId ? { contextSceneId: input.contextSceneId, keystoneRelativePath: input.keystoneRelativePath, capstoneLockAfter: 4 } : {}),
+    ...(input.contextSceneId ? { contextSceneId: input.contextSceneId, keystoneRelativePath: input.keystoneRelativePath, capstoneLockAfter: "auto" } : {}),
     ...(input.singleShot ? { singleShot: input.singleShot, ...(!input.contextSceneId ? { endingPrompt: job.endingPrompt ?? "" } : {}) } : {}),
     ...(input.videoTransition ? { videoTransition: input.videoTransition } : {}),
     ...(input.latentBridge ? { latentBridge: input.latentBridge } : {}),

@@ -372,7 +372,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
               ...(value === "animate" ? { endFrameReferenceId: undefined } : {}) })} />
         </PropRow>
         {sceneType === "single-shot" && <>
-          <PropRow label="Context video" htmlFor={`${id}-single-context`} tooltip="Select the first video in the sequence. Its latents keep the original appearance across continuations, with the rear anchor locking after four steps.">
+          <PropRow label="Context video" htmlFor={`${id}-single-context`} tooltip="Select the first video in the sequence. Its latents keep the original appearance across continuations. The rear anchor locks after up to four video updates, automatically shortened for faster LoRA schedules.">
             <ComboBox id={`${id}-single-context`} aria-label="Single Shot context video" disabled={disabled} value={job.contextSceneId ?? ""}
               options={[{ value: "", label: "None" },
                 ...(job.contextSceneId && !scenes.some((scene) => scene.id === job.contextSceneId && scene.id !== job.id)

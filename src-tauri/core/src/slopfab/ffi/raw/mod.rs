@@ -568,10 +568,10 @@ impl Api {
     pub fn require_end_anchor(&self) -> Result<(), String> {
         self.set_end_anchor_file.map(|_| ()).ok_or("Single Shot requires SlopFab API 1.40 or newer. Update the app and workers.".into())
     }
-    pub fn set_keystone_file(&self, r: *mut Request, path: &Path) -> Result<(), String> {
+    pub fn set_keystone_file(&self, r: *mut Request, path: &Path, lock_after: i32) -> Result<(), String> {
         let set = self.set_keystone_file.ok_or("Context video requires SlopFab API 1.45 or newer. Update the app and workers.")?;
         let path = CString::new(path.to_string_lossy().as_bytes()).map_err(|_| "Context video path contains a null byte.")?;
-        self.error(unsafe { set(r, path.as_ptr(), 1, 4) })
+        self.error(unsafe { set(r, path.as_ptr(), 1, lock_after) })
     }
     pub fn require_continuation_source_init(&self) -> Result<(), String> {
         self.set_continuation_source_init.map(|_| ()).ok_or("Single Shot continuation requires SlopFab API 1.41 or newer. Update the app and workers.".into())
