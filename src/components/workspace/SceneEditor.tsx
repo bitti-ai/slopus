@@ -578,7 +578,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
             onCommit={(value) => onChange({ seed: value })}
           />
         </PropRow>
-        <PropRow label="Advanced options" htmlFor={`${id}-advanced-options`} tooltip="Show sigma shifts and a separate audio step count.">
+        <PropRow label="Advanced options" htmlFor={`${id}-advanced-options`} tooltip="Show sigma shifts, a separate audio step count and LoRAs.">
           <ToggleSwitch id={`${id}-advanced-options`} aria-label="Advanced options" checked={job.audioSteps != null} disabled={disabled}
             onChange={(checked) => onChange({ audioSteps: checked ? Math.min(sceneGenerationSteps(job, defaultSteps), MAX_AUDIO_GENERATION_STEPS) : undefined })} />
         </PropRow>
@@ -589,8 +589,8 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
               value={job.audioSteps} integer disabled={disabled} aria-label="Audio step count" onCommit={(value) => onChange({ audioSteps: value })} />
           </PropRow>
           <SceneSigmaShift stream="audio" job={job} template={template} disabled={disabled} onChange={onChange} />
+          {generatorModel(template?.modelType).loras && <SceneLoras key={job.id} template={template} value={job.loraOverrides} disabled={disabled} onChange={(loraOverrides) => onChange({ loraOverrides })} />}
         </>}
-        {generatorModel(template?.modelType).loras && <SceneLoras key={job.id} template={template} value={job.loraOverrides} disabled={disabled} onChange={(loraOverrides) => onChange({ loraOverrides })} />}
       </PropSection>
     </div>
     <GenerationEffects key={job.id} value={job.generationEffects} supported={generatorModel(template?.modelType).generationEffects} disabled={disabled} onChange={(generationEffects) => onChange({ generationEffects })} />

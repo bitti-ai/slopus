@@ -28,7 +28,7 @@ it("shows global LoRAs read only and adds, bypasses, edits and removes scene ove
   expect(saved()).toEqual([{ loraId: "template", enabled: false, strength: 0.5 }]);
   fireEvent.click(screen.getByRole("button", { name: "Remove Template override" }));
   expect(screen.getByRole("checkbox", { name: "Enable scene LoRA Template" })).toBeChecked();
-  fireEvent.click(screen.getByRole("button", { name: "Add LoRA override" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add LoRA" }));
   fireEvent.click(screen.getByRole("button", { name: "Style" }));
   fireEvent.change(screen.getByRole("spinbutton", { name: "Style scene strength" }), { target: { value: "0.6" } });
   expect(saved()).toEqual([{ loraId: "style", enabled: true, strength: 0.6 }]);
@@ -39,6 +39,6 @@ it("shows global LoRAs read only and adds, bypasses, edits and removes scene ove
 it("disables adding recipes incompatible with global LoRAs", () => {
   saveLoras([{ ...DMAD_LORA, path: "D:/dmad", globallyEnabled: true }]);
   render(<Harness />);
-  fireEvent.click(screen.getByRole("button", { name: "Add LoRA override" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add LoRA" }));
   expect(screen.getByRole("button", { name: PIKA_REF2VA_LORA.name })).toBeDisabled();
 });

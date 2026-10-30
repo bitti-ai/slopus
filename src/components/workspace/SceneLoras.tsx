@@ -44,7 +44,7 @@ export function SceneLoras({ template, value, disabled = false, onChange }: {
         </div>
       </section>;
     })}
-    <button ref={trigger} className="secondary-button clip-effects__add" type="button" disabled={disabled || !available.length} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}><Add16 />Add LoRA override</button>
+    <button ref={trigger} className="secondary-button clip-effects__add" type="button" disabled={disabled || !available.length} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}><Add16 />Add LoRA</button>
     <Flyout open={open && !disabled} anchor={trigger} onClose={() => setOpen(false)} aria-label="Available scene LoRAs" role="group" placement="top" width={260}>
       <div className="clip-effects__picker">{available.map((lora) => {
         const entry = { loraId: lora.id, enabled: true, strength: 1 };
