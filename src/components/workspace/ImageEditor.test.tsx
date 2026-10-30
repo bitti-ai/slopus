@@ -35,6 +35,22 @@ function setup(initial = parseProjectConfig(fixture), workItems: WorkItem[] = []
   return () => latest;
 }
 
+it("updates a low-resolution image preview in the canvas and image card, then removes it on completion", () => {
+  const config = parseProjectConfig(fixture);
+  config.imageScene = createImageScene("A forest");
+  const pending = saveImageDraft(config, "default", true, "pending");
+  const preview = { jobId: "job", width: 128, height: 128, fps: 24, step: 1, frames: ["/9j/AA=="] };
+  const work = { id: "job", imageDraftId: "pending", status: "generating", progress: 0.25, detail: "Generating", preview } as WorkItem;
+  const props = { config: pending, folderPath: "D:/Images", onChange: vi.fn(), onGenerate: vi.fn(), onCancel: vi.fn() };
+  const view = render(<ImageEditor {...props} workItems={[work]} />);
+  expect(screen.getByAltText("Image generation preview")).toHaveAttribute("src", "data:image/jpeg;base64,/9j/AA==");
+  expect(screen.getAllByAltText(/generation preview/)).toHaveLength(2);
+  view.rerender(<ImageEditor {...props} workItems={[{ ...work, preview: { ...preview, step: 2, frames: ["/9j/BB=="] } }]} />);
+  expect(screen.getByAltText("Image generation preview")).toHaveAttribute("src", "data:image/jpeg;base64,/9j/BB==");
+  view.rerender(<ImageEditor {...props} workItems={[{ ...work, status: "completed" }]} />);
+  expect(screen.queryAllByAltText(/generation preview/)).toHaveLength(0);
+});
+
 it.each(["queued", "generating"] as const)("shows a separate empty %s entry without progress on the original", async (status) => {
   vi.spyOn(persistence, "readMediaFileUrl").mockImplementation(async (_folder, location) => `blob:${location.relativePath}`);
   vi.stubGlobal("URL", class extends URL { static revokeObjectURL = vi.fn(); });

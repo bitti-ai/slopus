@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProjectConfig, parseProjectConfig, sceneShots, type GenerationJob } from "../../lib/project";
 import { ShotThumbnail, shotPoster } from "./ShotThumbnail";
+import { GenerationPreviewContext } from "./GenerationPreviewSource";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -100,6 +101,55 @@ const rendered = (folder: string): GenerationJob => {
 };
 
 describe("a shot's picture", () => {
+  it("keeps a short generation phase within its available frames for a later shot", async () => {
+    const folder = "C:/Short preview", job = { ...rendered(folder), status: "generating" as const };
+    const preview = { jobId: "work", width: 256, height: 144, fps: 4, step: 1, frames: ["/9j/AA=="] };
+    await withFakeFile({ seconds: .25 }, async () => {
+      const view = render(<GenerationPreviewContext.Provider value={{ preview, url: "blob:short-preview" }}>
+        <ShotThumbnail folderPath={folder} job={job} seconds={4} endSeconds={8} shotNumber={2} />
+      </GenerationPreviewContext.Provider>);
+      await screen.findByRole("button", { name: "Pause shot 2 of First scene" });
+      const video = document.querySelector("video")!;
+      expect(video.currentTime).toBe(0);
+      video.currentTime = .25; fireEvent.timeUpdate(video);
+      expect(video.currentTime).toBe(0);
+      view.unmount();
+    });
+  });
+  it("autoplays and loops generation in the card with the finished shot's controls", async () => {
+    const folder = "C:/Live preview", job = { ...rendered(folder), status: "generating" as const };
+    const preview = { jobId: "work", width: 256, height: 144, fps: 4, step: 1, frames: Array(36).fill("/9j/AA==") };
+    await withFakeFile({ seconds: 9 }, async seen => {
+      const contents = (url: string) => <GenerationPreviewContext.Provider value={{ preview, url }}>
+        <div className="generator-board-viewport"><div className="generator-board">
+          <ShotThumbnail folderPath={folder} job={job} seconds={2} endSeconds={4} sourceOffsetSeconds={10} shotNumber={1} />
+        </div></div>
+      </GenerationPreviewContext.Provider>;
+      const view = render(contents("blob:preview1"));
+      await screen.findByRole("button", { name: "Pause shot 1 of First scene" });
+      const video = document.querySelector(".shot-thumb video") as HTMLVideoElement;
+      expect(video.autoplay).toBe(true); expect(video.loop).toBe(true); expect(video.muted).toBe(true);
+      expect(video.currentTime).toBe(2); expect(seen.reads()).toBe(0);
+      video.currentTime = 4; fireEvent.timeUpdate(video);
+      expect(video.currentTime).toBe(2);
+      await waitFor(() => expect(screen.getByRole("button", { name: "Pause shot 1 of First scene" })).not.toBeNull());
+      // jsdom has no playback engine to update its read-only paused property.
+      Object.defineProperty(video, "paused", { configurable: true, value: false });
+      fireEvent.click(screen.getByRole("button", { name: "Pause shot 1 of First scene" }));
+      expect(screen.getByRole("button", { name: "Play shot 1 of First scene" })).not.toBeNull();
+      view.rerender(contents("blob:preview2"));
+      fireEvent.loadedMetadata(video);
+      expect(video.autoplay).toBe(false);
+      expect(screen.getByRole("button", { name: "Play shot 1 of First scene" })).not.toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Pop out shot 1 of First scene" }));
+      const dialog = await screen.findByRole("dialog");
+      await waitFor(() => expect(dialog.querySelector("video")?.getAttribute("src")).toBe("blob:preview2"));
+      expect(dialog.querySelector("video")?.loop).toBe(true);
+      expect(seen.reads()).toBe(0);
+      fireEvent.keyDown(document, { key: "Escape" });
+      view.unmount();
+    });
+  });
   it("waits for the first presented frame before drawing the thumbnail", async () => {
     const prototype = HTMLVideoElement.prototype;
     const originalRequest = prototype.requestVideoFrameCallback, originalCancel = prototype.cancelVideoFrameCallback;

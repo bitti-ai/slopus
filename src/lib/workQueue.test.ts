@@ -670,6 +670,24 @@ describe("agent scene generation", () => {
 describe("image generation work", () => {
   const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
   const imageProject = (): ProjectRecord => ({ folderPath: "C:/Image", config: createProjectConfig({ name: "Poster", prompt: "An ocean poster", generationType: "image", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 }) });
+  it.each(["minimax-h3", "moss-image"] as const)("accepts single-frame image previews only for MiniMax (%s)", async modelType => {
+    const { queue } = setup();
+    const session = queue.project(imageProject());
+    const id = queue.enqueueImage(session, { ...template, modelType });
+    await waitFor(() => expect(queue.getSnapshot().find(item => item.id === id)?.status).toBe("generating"));
+    const preview = { jobId: id, width: 2, height: 2, fps: 24, step: 1, frames: ["/9j/AA=="] };
+    emit("slopfab-preview", { ...preview, frames: [...preview.frames, ...preview.frames] });
+    expect(queue.getSnapshot().find(item => item.id === id)?.preview).toBeUndefined();
+    emit("slopfab-preview", preview);
+    expect(queue.getSnapshot().find(item => item.id === id)?.preview).toEqual(modelType === "minimax-h3" ? preview : undefined);
+    saveGenerationPreviewsEnabled(false);
+    expect(queue.getSnapshot().find(item => item.id === id)?.preview).toBeUndefined();
+    saveGenerationPreviewsEnabled(true);
+    emit("slopfab-preview", preview);
+    await queue.cancel(id!);
+    expect(queue.getSnapshot().find(item => item.id === id)?.preview).toBeUndefined();
+    emit("slopfab-job", { jobId: id, state: "cancelled", detail: "Cancelled" });
+  });
   it.each([-1, 42, Number.MAX_SAFE_INTEGER])("queues a batch of independent images with unique seeds starting at %s", async (seed) => {
     const { queue } = setup();
     const record = imageProject();

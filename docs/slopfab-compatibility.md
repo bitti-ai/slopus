@@ -2,20 +2,24 @@
 
 ## Bundled runtime (API 1.46.0)
 
-Windows and Linux runtimes use SlopFab commit `700affae5b01e4e09af4ecb15289bfd43952e1a5`
+Windows and Linux runtimes use SlopFab commit `2beebd6be5e0c69411e7670e53a789cab9109b6c`
 from `D:\Projects\slopfab`, with CUDA and Vulkan enabled and FFmpeg disabled.
 This update keeps Keystone and delayed Capstone context inside sampling: the
 original front latent is restored before output, and Capstone adds one clean
 video latent only during model calls. It does not replace generated end frames
 or add hidden tail frames. Saved joined output preserves the previous clip.
-TAEH3 generation previews and saved-latent upscaling remain supported.
+TAEH3 now also decodes single-frame MiniMax image previews on CUDA and Vulkan.
+Video previews autoplay and loop inside the existing shot card player; image
+previews update the image canvas and thumbnail. Both use the generation previews
+setting and require the optional TAEH3 weights. Saved-latent upscaling remains supported.
 
-LAN protocol is 24. Single Shot automatically shortens its preferred four-update
+LAN protocol is 25 so workers also support still-image previews. Single Shot automatically shortens its preferred four-update
 Capstone delay when the resolved video schedule is shorter, without changing the
 LoRA recipe. Restart Slopus and update workers to load the new runtime.
 
 Both platform builds pass C API and embedded-tokenizer checks. Slopus core tests
-pass against the Windows DLL. Linux retains the Fibo text-renderer linker
+pass against the Windows DLL. Single-frame TAEH3 decoding matches the upstream
+causal first-frame reference exactly on CUDA and Vulkan. Linux retains the Fibo text-renderer linker
 workaround documented below.
 
 ## Single Shot

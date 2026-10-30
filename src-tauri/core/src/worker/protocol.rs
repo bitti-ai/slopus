@@ -28,7 +28,8 @@ pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 // v21 keeps Single Shot's middle fresh; v20 workers default to a repeated source prior.
 // v23 carries Single Shot's persistent context archive; older workers ignore Keystone.
 // v24 adapts capstone locking to the resolved video schedule, including short LoRA grids.
-pub const PROTOCOL_VERSION: u32 = 24;
+// v25 emits MiniMax still-image previews as well as video previews.
+pub const PROTOCOL_VERSION: u32 = 25;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -383,7 +384,7 @@ mod tests {
         let single = restored.single_shot.unwrap();
         assert_eq!(single.ending_prompt, "The subject waves goodbye");
         assert!(single.ending_path.is_none());
-        assert_eq!(PROTOCOL_VERSION, 24);
+        assert_eq!(PROTOCOL_VERSION, 25);
     }
 
     #[test]

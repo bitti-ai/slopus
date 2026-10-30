@@ -43,6 +43,7 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
   const shown = inFamily ? family : primaries;
   const pressed = inFamily ? selectedId : root;
   const childCount = (id: string) => images.filter((asset) => asset.id !== id && imageFamilyRoot(images, asset.id) === id).length;
+  const previews = new Map(workItems.filter(isWorkActive).filter((work) => work.preview).map((work) => [work.imageDraftId ?? work.imageAssetId ?? work.id, work.preview!]));
   const pending = new Map(workItems.filter(isWorkActive).map((work) => [work.imageDraftId ?? work.imageAssetId ?? work.id, work.status === "queued" ? "Queued" : "Generating"]));
 
   const previousCount = useRef(shown.length);
@@ -129,7 +130,7 @@ export const ImageBar = forwardRef<HTMLDivElement | null, {
         onMenu(asset.id, bounds.left, bounds.bottom, inFamily);
       })}
       onClick={() => { setShowAll(false); onSelect(asset.id); }}>
-      {!pending.has(asset.id) && (asset.relativePath || asset.sourcePath) ? <ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /> : <Image24 aria-hidden="true" />}
+      {previews.has(asset.id) ? <img src={`data:image/jpeg;base64,${previews.get(asset.id)!.frames[0]}`} alt={`${asset.name} generation preview`} draggable={false} /> : !pending.has(asset.id) && (asset.relativePath || asset.sourcePath) ? <ReferenceImage folderPath={folderPath} relativePath={asset.relativePath} sourcePath={asset.sourcePath} alt={asset.name} /> : <Image24 aria-hidden="true" />}
       {!inFamily && childCount(asset.id) > 0 && <span className="image-family-badge" aria-hidden="true">{childCount(asset.id) + 1}</span>}
       {pending.has(asset.id) ? <span className="image-draft-badge">{pending.get(asset.id)}</span> : asset.imageDraft && <span className="image-draft-badge"><Edit11 aria-hidden="true" />{asset.imageGeneration?.scene.rootType === "image" ? "Editing" : "Draft"}</span>}
     </button>)}

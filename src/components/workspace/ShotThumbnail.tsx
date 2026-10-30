@@ -1,5 +1,6 @@
 import { Clock18, Film18, OpenExternal16, Pause20, Play20Filled, Prohibited18, Spinner18, Spinner20, Warning18, Warning20 } from "../ui/icons";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { GenerationPreviewContext } from "./GenerationPreviewSource";
 import { createPortal } from "react-dom";
 import { ShotPopout, SHOT_PLAY_EVENT } from "./ShotPopout";
 import { readMediaFileUrl } from "../../lib/persistence";
@@ -300,9 +301,12 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
   /** Opens this shot in the editor when playback begins. */
   onPlay?: () => void;
 }) {
+  const live = useContext(GenerationPreviewContext);
+  const generation = !cancelling && ["queued", "generating", "ready"].includes(job.status) ? live : undefined;
   const relativePath = job.status === "completed" ? job.outputRelativePath : null;
-  const at = seconds + sourceOffsetSeconds;
-  const endAt = endSeconds + sourceOffsetSeconds;
+  const at = generation ? Math.min(seconds, (generation.preview.frames.length - 1) / generation.preview.fps) : seconds + sourceOffsetSeconds;
+  const endAt = generation ? Math.min(endSeconds, generation.preview.frames.length / generation.preview.fps) : endSeconds + sourceOffsetSeconds;
+  const previewPosition = useRef({ paused: false, time: at });
   const playbackId = `${job.id}@${seconds}`;
   const [result, setResult] = useState<PosterResult>(() =>
     relativePath ? { poster: POSTERS.get(posterKey(fileKey(folderPath, relativePath), at)) ?? null, failed: false } : NOTHING);
@@ -326,6 +330,11 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
 
   const finishPlayback = () => {
     clearCutTimer();
+    if (generation?.url && videoRef.current && !previewPosition.current.paused) {
+      videoRef.current.currentTime = at;
+      void playToCut(videoRef.current);
+      return;
+    }
     videoRef.current?.pause();
     setPlaying(false);
     setPlaybackUrl(null);
@@ -364,11 +373,14 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
       if ((event as CustomEvent<string>).detail === playbackId) return;
       requestRef.current += 1;
       setLoadingPlayback(false);
+      previewPosition.current.paused = true;
       finishPlayback();
     };
     window.addEventListener(PLAY_EVENT, stopOtherShot);
     return () => window.removeEventListener(PLAY_EVENT, stopOtherShot);
-  }, [playbackId]);
+  }, [playbackId, generation?.url]);
+
+  useEffect(() => () => { requestRef.current += 1; clearCutTimer(); }, [generation?.url]);
 
   useEffect(() => () => {
     requestRef.current += 1;
@@ -387,20 +399,25 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
 
   const stopAtCut = () => {
     const video = videoRef.current;
-    if (!video || video.currentTime + 0.02 < endAt) return;
+    if (video && generation?.url && video.currentTime < at) video.currentTime = at;
+    if (video && generation) previewPosition.current.time = video.currentTime;
+    if (!video || video.currentTime <= at || video.currentTime + 0.02 < endAt) return;
     finishPlayback();
   };
 
   const togglePlayback = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    if (!relativePath || loadingPlayback) return;
+    if ((!relativePath && !generation?.url) || loadingPlayback) return;
     const video = videoRef.current;
     if (video) {
       if (!video.paused) {
+        requestRef.current += 1;
+        previewPosition.current.paused = true;
         clearCutTimer();
         video.pause();
         setPlaying(false);
       } else {
+        previewPosition.current.paused = false;
         onPlay?.();
         window.dispatchEvent(new CustomEvent<string>(PLAY_EVENT, { detail: playbackId }));
         if (video.currentTime < at || video.currentTime >= endAt) video.currentTime = at;
@@ -429,9 +446,9 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
     }
   };
 
-  if (result.poster) {
-    const poster = result.poster;
-    const shape = POSTER_SHAPES.get(poster);
+  if (result.poster || generation) {
+    const poster = generation ? `data:image/jpeg;base64,${generation.preview.frames[Math.min(generation.preview.frames.length - 1, Math.floor(at * generation.preview.fps))]}` : result.poster!;
+    const shape = generation ? `${generation.preview.width} / ${generation.preview.height}` : POSTER_SHAPES.get(poster);
     const action = playFailed ? "Playback unavailable" : loadingPlayback ? "Opening shot" : playing ? "Pause" : "Play";
     return <div className="shot-thumb-frame" style={shape ? { aspectRatio: shape } : undefined}><button
       type="button"
@@ -442,14 +459,17 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
       data-tooltip={`${action} this shot only (${seconds.toFixed(1)}s–${endSeconds.toFixed(1)}s)`}
       onClick={(event) => void togglePlayback(event)}
     >
-      {playbackUrl
+      {generation?.url || playbackUrl
         ? <video
           ref={videoRef}
-          src={playbackUrl}
+          src={generation?.url ?? playbackUrl!}
           playsInline
+          muted={!!generation}
+          autoPlay={!!generation && !previewPosition.current.paused}
+          loop={!!generation}
           onLoadedMetadata={(event) => {
-            event.currentTarget.currentTime = Math.min(at, Math.max(0, event.currentTarget.duration - 0.01));
-            void playToCut(event.currentTarget);
+            event.currentTarget.currentTime = Math.min(generation ? Math.max(at, Math.min(previewPosition.current.time, endAt - .01)) : at, Math.max(0, event.currentTarget.duration - 0.01));
+            if (!generation || !previewPosition.current.paused) void playToCut(event.currentTarget);
           }}
           onTimeUpdate={stopAtCut}
           onEnded={stopAtCut}
@@ -470,7 +490,7 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
           const host = event.currentTarget.closest<HTMLElement>(".generator-board-viewport");
           if (host) { onPlay?.(); setPopoutHost(host); }
         }}><OpenExternal16 /></button>
-      {popoutHost && relativePath && createPortal(<ShotPopout folderPath={folderPath} relativePath={relativePath} start={at} end={endAt}
+      {popoutHost && (relativePath || generation?.url) && createPortal(<ShotPopout folderPath={folderPath} relativePath={relativePath ?? undefined} sourceUrl={generation?.url} loop={!!generation} start={at} end={endAt}
         poster={poster} title={`shot ${shotNumber} of ${job.title}`} onClose={() => { setPopoutHost(null); popoutButton.current?.focus(); }} />, popoutHost)}
     </div>;
   }

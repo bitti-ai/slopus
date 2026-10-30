@@ -723,7 +723,9 @@ export class WorkQueue {
     if (!loadGenerationPreviewsEnabled() || !validGenerationPreview(event)) return;
     const work = this.nativeWork(event.jobId);
     const item = this.items.find((candidate) => candidate.id === work?.id);
-    if (!work || !item || work.cancelled || item.cancelling || item.kind || work.upscaleSource
+    if (!work || !item || work.cancelled || item.cancelling || (item.kind && item.kind !== "image") || work.upscaleSource
+      || (work.config.providerSettings.slopfab?.options.modelType ?? "minimax-h3") !== "minimax-h3"
+      || (work.image && event.frames.length !== 1)
       || !["preparing", "generating"].includes(item.status)) return;
     this.patch(work.id, { preview: event });
   }

@@ -1032,9 +1032,6 @@
 
 /* Takes sit beside tiles, or in a wrapping row below the shot list. */
 .scene-section__content { display: grid; grid-template-columns: minmax(0, 1fr) 88px; align-items: start; gap: var(--space-2); }
-.generation-preview { display: grid; gap: var(--space-1); width: min(100%, 360px); margin-bottom: var(--space-2); }
-.generation-preview video, .generation-preview img { display: block; width: 100%; max-height: 260px; object-fit: contain; background: #000; border-radius: var(--radius-lg); }
-.generation-preview > span { font-size: 12px; color: var(--text-secondary); }
 .scene-section__content > .shot-grid { min-width: 0; grid-template-columns: repeat(auto-fill, minmax(0, min(var(--shot-tile-width), 100%))); }
 .scene-board--list .scene-section__content { grid-template-columns: minmax(0, 1fr); gap: 0; }
 .scene-board--list .scene-section__content > .shot-grid { grid-template-columns: minmax(0, 1fr); }

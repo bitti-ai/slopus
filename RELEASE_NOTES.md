@@ -8,7 +8,7 @@ Changes since 0.3.2.
 
 - **LoRA controls.** Enable MiniMax H3 LoRAs globally, drag the library to set application order, and add scene overrides in Generation. Global adapters remain active and appear read only in scenes. Step counts and sampling recipes follow the effective stack, with conflicting recipes blocked.
 
-- **Generation previews.** Download TAEH3 from Other weights to play silent MiniMax H3 previews in scene cards during generation, locally or on a worker. A Settings switch controls previews; final videos use the generator's selected VAE.
+- **Generation previews.** MiniMax H3 video previews autoplay and loop inside shot cards with the usual play/pause and pop-out controls. Low-resolution image previews update the image canvas and thumbnail during generation. Download TAEH3 from Other weights and enable generation previews in Settings; previews work locally or on updated workers, while final output uses the generator's selected VAE.
 
 - **Pika H3 Flex.** Added FL2VA and Ref2VA LoRA downloads with Pika's fixed six-step re-noising recipe and video/audio sigma shifts of 12/3.
 
