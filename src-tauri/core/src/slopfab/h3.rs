@@ -17,8 +17,11 @@ pub(super) fn configure_request(
     purpose: RequestPurpose,
     references: &ReferenceVideos,
 ) -> Result<(), String> {
-    if request.music.is_some() { return super::music::configure(api, handle, request, configuration, platform); }
     configuration.validate_inputs(request)?;
+    if platform == ComputePlatform::Vulkan && configuration.sampling.as_ref().map_err(Clone::clone)?.sampler.as_deref() == Some("ab2") {
+        return Err("AB2 sampling requires CUDA. Select a CUDA GPU or worker, or choose another sampler in Settings.".into());
+    }
+    if request.music.is_some() { return super::music::configure(api, handle, request, configuration, platform); }
     if request.single_shot.is_some() && request.keystone_path.is_none() { api.require_end_anchor()?; }
     let source_noise = super::continuation::source_noise(request);
     if source_noise.is_some() { api.require_continuation_source_init()?; }
@@ -87,8 +90,9 @@ pub(super) fn configure_request(
             let tokens = f64::from(width / 16) * f64::from(height / 16);
             (0.5 + (tokens - 256.0) * 0.65 / (6400.0 - 256.0)).exp() as f32
         });
-        api.set_sigma_shifts(handle, shifts.video_override.or(request.video_sigma_shift).or(shifts.video).or(krea_raw_shift),
-            shifts.audio_override.or(request.audio_sigma_shift).or(shifts.audio))?;
+        let sampling = configuration.sampling.as_ref().map_err(Clone::clone)?;
+        api.set_sampling(handle, shifts.video_override.or(request.video_sigma_shift).or(shifts.video).or(krea_raw_shift),
+            shifts.audio_override.or(request.audio_sigma_shift).or(shifts.audio), sampling.sampler.as_deref(), sampling.scheduler.as_deref())?;
     }
     // Sampling presets replace overrides, so apply the audio setting afterward.
     api.set_audio_steps(handle, request.audio_steps.unwrap_or(0))?;

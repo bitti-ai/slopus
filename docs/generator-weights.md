@@ -13,6 +13,32 @@ the video default is used if eligible, otherwise the first available template.
 Icons use the selected template's steps, attention, MotionCache and LoRAs,
 including their step overrides.
 
+## Sampler and scheduler
+
+Open a generator template's **Sampling** section to choose its sampler and
+scheduler. Both start at **Model default**, which preserves the current
+checkpoint and adapter recipe. Existing templates keep their behavior.
+
+| Generator | Samplers besides Model default | Schedulers besides Model default |
+| --- | --- | --- |
+| MiniMax H3 | Euler, AB2 (CUDA), Re-noising, ER-SDE | Beta |
+| MOSS, Fibo 2, Krea 2 | Euler, ER-SDE | Beta |
+| FastH3 Omni | Euler | None |
+| Animate | Euler | Beta when no adapter fixes the schedule |
+| YuE2, MiniMax Music3 | None | None |
+
+Active DMAD and Pika recipes control both choices. These restrictions apply to template, global
+and scene adapters; saved preferences return when the restriction is removed.
+Selecting a sampler other than Euler turns off MotionCache. H3 image editing
+requires Euler or Re-noising. Custom checkpoint metadata is also validated by
+SlopFab before generation; Beta cannot replace a fixed grid supplied by metadata.
+An adapter's step-count override alone does not prevent using Beta.
+
+Selections persist in template settings, `.slop` exports and worker requests.
+The optional payload fields are `sampler` (`default`, `euler`, `ab2`, `renoise`,
+`er_sde`) and `scheduler` (`default`, `beta`). Omitted fields mean Model default.
+Explicit choices require a compatible SlopFab runtime on the generation machine.
+
 ## Sharing generator templates
 
 Use **Export** in Settings → Generator to select one or more templates and save

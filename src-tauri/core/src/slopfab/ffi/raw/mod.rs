@@ -437,12 +437,14 @@ impl Api {
         let settings = CString::new(r#"{"version":1,"sampler":"renoise","video_sigma_shift":12,"audio_sigma_shift":3,"base_sigmas":[1,0.75,0.5,0.25,0.1,0.04,0]}"#).unwrap();
         self.error(unsafe { set(r, settings.as_ptr()) })
     }
-    pub fn set_sigma_shifts(&self, r: *mut Request, video: Option<f32>, audio: Option<f32>) -> Result<(), String> {
+    pub fn set_sampling(&self, r: *mut Request, video: Option<f32>, audio: Option<f32>, sampler: Option<&str>, scheduler: Option<&str>) -> Result<(), String> {
         let Some(set) = self.set_sampling_settings else {
-            return if video.is_none() && audio.is_none() { Ok(()) }
-                else { Err("Sigma shifts require slopfab.dll API 1.16 or later. Update the runtime.".into()) };
+            return if video.is_none() && audio.is_none() && sampler.is_none() && scheduler.is_none() { Ok(()) }
+                else { Err("Sampling settings require a newer SlopFab runtime. Update the machine running generation.".into()) };
         };
         let mut settings = serde_json::json!({ "version": 1 });
+        if let Some(sampler) = sampler { settings["sampler"] = serde_json::json!(sampler); }
+        if let Some(scheduler) = scheduler { settings["scheduler"] = serde_json::json!(scheduler); }
         for (key, value) in [("video_sigma_shift", video), ("audio_sigma_shift", audio)] {
             if let Some(value) = value {
                 if !value.is_finite() || value <= 0.0 { return Err("Sigma shifts must be finite and positive.".into()); }

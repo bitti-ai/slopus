@@ -4,6 +4,8 @@
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GeneratorFeatures {
+    pub samplers: Vec<String>,
+    pub schedulers: Vec<String>,
     pub negative_prompt: bool,
     pub label: String,
     pub image_generation: bool,

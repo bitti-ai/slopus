@@ -46,6 +46,8 @@ pub struct GeneratorPatch {
     pub model_type: Option<String>,
     pub editing_model: Option<bool>,
     pub krea_variant: Option<String>,
+    pub sampler: Option<String>,
+    pub scheduler: Option<String>,
     pub default_steps: Option<u32>,
     pub attention: Option<String>,
     pub mode: Option<String>,
@@ -276,6 +278,8 @@ pub(crate) fn prepare(
             if add || template["modelType"] != model.as_str() {
                 template["editingModel"] = json!(slopus_core::models::generator_features(model).image_editing);
                 template.as_object_mut().unwrap().remove("kreaVariant");
+                template.as_object_mut().unwrap().remove("sampler");
+                template.as_object_mut().unwrap().remove("scheduler");
             }
             template["modelType"] = json!(model);
         }
@@ -294,6 +298,13 @@ pub(crate) fn prepare(
                 return Err("defaultSteps must be 2..2147483647.".into());
             }
             template["defaultSteps"] = json!(steps);
+        }
+        let features = slopus_core::models::generator_features(template["modelType"].as_str().unwrap_or("minimax-h3"));
+        for (key, value, allowed) in [("sampler", &patch.sampler, &features.samplers), ("scheduler", &patch.scheduler, &features.schedulers)] {
+            if let Some(value) = value {
+                if value != "default" && !allowed.contains(value) { return Err(format!("Unsupported {key} for {}.", features.label)); }
+                template[key] = json!(value);
+            }
         }
         if let Some(attention) = &patch.attention {
             if !["exact", "flash2", "sage2", "sol"].contains(&attention.as_str()) {

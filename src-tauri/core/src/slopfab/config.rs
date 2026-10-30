@@ -25,6 +25,7 @@ pub(super) struct SigmaShifts {
 
 #[derive(Clone)]
 pub(super) struct Configuration {
+    pub(super) sampling: Result<SamplingChoices, String>,
     pub(super) model_type: String,
     pub(super) krea_raw: bool,
     pub(super) editing_model: bool,
@@ -41,6 +42,12 @@ pub(super) struct Configuration {
     pub(super) step_override: Result<Option<i32>, String>,
     pub(super) sampling_preset: Result<Option<SamplingPreset>, String>,
     pub(super) sigma_shifts: Result<SigmaShifts, String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(super) struct SamplingChoices {
+    pub sampler: Option<String>,
+    pub scheduler: Option<String>,
 }
 
 impl Configuration {
@@ -68,6 +75,15 @@ impl Configuration {
             }
         };
         Self {
+            sampling: (|| {
+                let read = |name: &str| match slopfab.and_then(|setting| setting.options.get(name)) {
+                    None => Ok(None),
+                    Some(ProviderOption::String(value)) if value == "default" => Ok(None),
+                    Some(ProviderOption::String(value)) => Ok(Some(value.clone())),
+                    _ => Err(format!("{name} must be a supported sampling option.")),
+                };
+                Ok(SamplingChoices { sampler: read("sampler")?, scheduler: read("scheduler")? })
+            })(),
             editing_model: !matches!(slopfab.and_then(|setting| setting.options.get("editingModel")), Some(ProviderOption::Boolean(false))),
             model_type: string_option("modelType").unwrap_or("minimax-h3").to_owned(),
             krea_raw: string_option("kreaVariant") == Some("raw"),
@@ -129,6 +145,26 @@ impl Configuration {
     }
 
     pub(super) fn validate_inputs(&self, request: &GenerationRequest) -> Result<(), String> {
+        let sampling = self.sampling.as_ref().map_err(Clone::clone)?;
+        let features = crate::models::generator_features(&self.model_type);
+        for (label, value, allowed) in [("sampler", &sampling.sampler, &features.samplers), ("scheduler", &sampling.scheduler, &features.schedulers)] {
+            if value.as_ref().is_some_and(|value| !allowed.contains(value)) {
+                return Err(format!("{} does not support the selected {label}.", features.label));
+            }
+        }
+        if self.sampling_preset.as_ref().map_err(Clone::clone)?.is_some() && (sampling.sampler.is_some() || sampling.scheduler.is_some()) {
+            return Err("The active LoRA recipe controls the sampler and scheduler.".into());
+        }
+        if self.animate && sampling.sampler.as_deref().is_some_and(|sampler| sampler != "euler") {
+            return Err("Animate requires Euler sampling.".into());
+        }
+        if self.model_type == "minimax-h3" && request.image_edit.is_some()
+            && sampling.sampler.as_deref().is_some_and(|sampler| !["euler", "renoise"].contains(&sampler)) {
+            return Err("MiniMax H3 image editing requires Euler or re-noising sampling.".into());
+        }
+        if self.motion_cache && sampling.sampler.as_deref().is_some_and(|sampler| sampler != "euler") {
+            return Err("MotionCache requires Euler sampling.".into());
+        }
         if request.latent_upscale_source.is_some() {
             if self.model_type != "minimax-h3" { return Err("Saved latent upscaling requires MiniMax H3.".into()); }
             for (label, path) in [("latent upscaler", self.latent_upscaler.as_ref()), ("video VAE", self.models[3].2.as_ref()), ("audio VAE", self.models[4].2.as_ref())] {

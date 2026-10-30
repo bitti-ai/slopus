@@ -21,7 +21,16 @@
     "imageCompositionCreation": false,
     "negativePrompt": false,
     "negativePromptDisabledReason": null,
-    "musicGeneration": false
+    "musicGeneration": false,
+    "samplers": [
+      "euler",
+      "ab2",
+      "renoise",
+      "er_sde"
+    ],
+    "schedulers": [
+      "beta"
+    ]
   },
   "moss": {
     "label": "MOSS Image",
@@ -47,7 +56,14 @@
     "imageCompositionCreation": true,
     "negativePrompt": true,
     "negativePromptDisabledReason": null,
-    "musicGeneration": false
+    "musicGeneration": false,
+    "samplers": [
+      "euler",
+      "er_sde"
+    ],
+    "schedulers": [
+      "beta"
+    ]
   },
   "fibo2": {
     "label": "Fibo 2.0",
@@ -71,7 +87,14 @@
     "imageCompositionCreation": true,
     "negativePrompt": false,
     "negativePromptDisabledReason": "Fibo 2.0 Turbo uses only the positive prompt. Slopfab does not support negative prompts for this model.",
-    "musicGeneration": false
+    "musicGeneration": false,
+    "samplers": [
+      "euler",
+      "er_sde"
+    ],
+    "schedulers": [
+      "beta"
+    ]
   },
   "yue2": {
     "label": "YuE2",
@@ -95,7 +118,9 @@
     "imageCompositionCreation": false,
     "negativePrompt": false,
     "negativePromptDisabledReason": null,
-    "musicGeneration": true
+    "musicGeneration": true,
+    "samplers": [],
+    "schedulers": []
   },
   "minimax_music3": {
     "label": "MiniMax Music3",
@@ -119,7 +144,9 @@
     "imageCompositionCreation": false,
     "negativePrompt": false,
     "negativePromptDisabledReason": null,
-    "musicGeneration": true
+    "musicGeneration": true,
+    "samplers": [],
+    "schedulers": []
   },
   "krea2": {
     "label": "Krea 2",
@@ -145,6 +172,13 @@
     "imageCompositionCreation": true,
     "negativePrompt": true,
     "negativePromptDisabledReason": null,
-    "musicGeneration": false
+    "musicGeneration": false,
+    "samplers": [
+      "euler",
+      "er_sde"
+    ],
+    "schedulers": [
+      "beta"
+    ]
   }
 }

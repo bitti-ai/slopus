@@ -154,6 +154,25 @@ fn command_batches_preserve_other_settings_and_are_atomic() {
 }
 
 #[test]
+fn generator_sampling_choices_validate_and_reset_on_model_change() {
+    let add = command(json!({"op":"generator.add","id":"sampler","settings":{
+        "name":"Sampling", "modelType":"krea2", "sampler":"er_sde", "scheduler":"beta"
+    }}));
+    let context = prepare(&GeneratorContext::default(), &[add]).unwrap();
+    assert_eq!(context.settings["templates"][0]["sampler"], "er_sde");
+    assert_eq!(context.settings["templates"][0]["scheduler"], "beta");
+    let invalid = command(json!({"op":"generator.set","id":"sampler","settings":{"sampler":"ab2"}}));
+    assert!(prepare(&context, &[invalid]).unwrap_err().contains("Unsupported sampler"));
+    let reset = command(json!({"op":"generator.set","id":"sampler","settings":{"sampler":"default","scheduler":"default"}}));
+    let reset = prepare(&context, &[reset]).unwrap();
+    assert_eq!(reset.settings["templates"][0]["sampler"], "default");
+    let change = command(json!({"op":"generator.set","id":"sampler","settings":{"modelType":"moss"}}));
+    let changed = prepare(&context, &[change]).unwrap();
+    assert!(changed.settings["templates"][0].get("sampler").is_none());
+    assert!(changed.settings["templates"][0].get("scheduler").is_none());
+}
+
+#[test]
 fn validates_roles_paths_ranges_and_lora_registration() {
     let dir = tempfile::tempdir().unwrap();
     let lora = dir.path().join("adapter.safetensors");

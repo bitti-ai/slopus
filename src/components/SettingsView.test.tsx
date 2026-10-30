@@ -202,6 +202,24 @@ describe("the settings screen", () => {
     fireEvent.click(screen.getByRole("option", { name: "Turbo" }));
     expect((screen.getByRole("spinbutton", { name: "Generator default steps" }) as HTMLInputElement).value).toBe("8");
   });
+  it("persists supported sampling choices and resets them when the model changes", () => {
+    const view = open("MOSS");
+    fireEvent.click(screen.getByRole("button", { name: "Edit MOSS Image generator" }));
+    expect(combo("Generator sampler").getAttribute("data-value")).toBe("default");
+    expect(optionsOf("Generator sampler")).toEqual(["Model default", "Euler", "ER-SDE"]);
+    expect(optionsOf("Generator scheduler")).toEqual(["Model default", "Beta"]);
+    pick("Generator sampler", "ER-SDE");
+    pick("Generator scheduler", "Beta");
+    expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "moss-image")).toMatchObject({ sampler: "er_sde", scheduler: "beta" });
+    view.unmount();
+    open("MOSS");
+    fireEvent.click(screen.getByRole("button", { name: "Edit MOSS Image generator" }));
+    expect(combo("Generator sampler").getAttribute("data-value")).toBe("er_sde");
+    fireEvent.click(combo("Generator model"));
+    fireEvent.click(screen.getByRole("option", { name: /^MiniMax Music3/ }));
+    expect(combo("Generator sampler").getAttribute("data-value")).toBe("default");
+    expect(combo("Generator scheduler").getAttribute("data-value")).toBe("default");
+  });
   it("remembers MotionCache per generator and disables it in Animate mode", () => {
     const view = open();
     editDefaultGenerator();

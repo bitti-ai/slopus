@@ -217,9 +217,9 @@ impl Api {
         self.check(r)?;
         self.inner.set_seed(r.pointer.as_ptr(), v)
     }
-    pub fn set_sigma_shifts(&self, r: &RequestHandle, video: Option<f32>, audio: Option<f32>) -> Result<(), String> {
+    pub fn set_sampling(&self, r: &RequestHandle, video: Option<f32>, audio: Option<f32>, sampler: Option<&str>, scheduler: Option<&str>) -> Result<(), String> {
         self.check(r)?;
-        self.inner.set_sigma_shifts(r.pointer.as_ptr(), video, audio)
+        self.inner.set_sampling(r.pointer.as_ptr(), video, audio, sampler, scheduler)
     }
     pub fn set_dmad_sampling(&self, r: &RequestHandle) -> Result<(), String> {
         self.check(r)?;

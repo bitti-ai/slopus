@@ -1,3 +1,4 @@
+import { SAMPLERS, SCHEDULERS } from "./sampling";
 import { z } from "zod";
 import { MAX_GENERATION_STEPS } from "./project";
 import { loadLoras, MAX_LORA_STRENGTH, saveLoras, type Lora } from "./loras";
@@ -27,7 +28,7 @@ const portableLoraSchema = z.object({
   stepOverride: steps.optional(), samplingPreset: z.enum(["dmad-4step", "pika-6step"]).optional(),
 }).strict();
 export const portableGeneratorSchema = z.object({
-  name, modelType: name, editingModel: z.boolean().optional(), kreaVariant: z.enum(["turbo", "raw"]).optional(), defaultSteps: steps, attention: z.enum(["exact", "flash2", "sage2", "sol"]),
+  name, modelType: name, sampler: z.enum(SAMPLERS).optional(), scheduler: z.enum(SCHEDULERS).optional(), editingModel: z.boolean().optional(), kreaVariant: z.enum(["turbo", "raw"]).optional(), defaultSteps: steps, attention: z.enum(["exact", "flash2", "sage2", "sol"]),
   mode: z.enum(["prompt", "animate"]).default("prompt"), motionCache: z.boolean().default(false),
   sources: sourcesSchema,
   loras: z.array(portableLoraSchema).max(128).default([]),
@@ -81,7 +82,7 @@ export function portableGenerator(template: GeneratorTemplate, library = loadLor
       ...(lora.samplingPreset ? { samplingPreset: lora.samplingPreset } : {}) };
   });
   return validatedGenerator({
-    name: template.name, modelType: template.modelType, editingModel: template.editingModel, kreaVariant: template.kreaVariant, defaultSteps: template.defaultSteps, attention: template.attention,
+    name: template.name, sampler: template.sampler, scheduler: template.scheduler, modelType: template.modelType, editingModel: template.editingModel, kreaVariant: template.kreaVariant, defaultSteps: template.defaultSteps, attention: template.attention,
     mode: template.mode ?? "prompt", motionCache: template.motionCache ?? false, sources, loras,
     additionalSafetensors: (template.additionalSafetensors ?? []).map((file) => ({ name: file.name, url: file.url, ...(file.role ? { role: file.role } : {}) })),
   }, template.name);
@@ -122,7 +123,7 @@ export function mergeGeneratorSlop(document: GeneratorSlop, current: GeneratorTe
     const paths = { ...EMPTY_ENGINE_SETTINGS };
     const usedLoraIds = new Set<string>();
     for (const field of ENGINE_PATH_FIELDS) paths[field.id] = data.sources[field.id]?.[0]?.url ?? "";
-    return { ...template, editingModel: data.editingModel, kreaVariant: data.kreaVariant, defaultSteps: data.defaultSteps, attention: data.attention, mode: data.mode, motionCache: data.motionCache,
+    return { ...template, sampler: data.sampler, scheduler: data.scheduler, editingModel: data.editingModel, kreaVariant: data.kreaVariant, defaultSteps: data.defaultSteps, attention: data.attention, mode: data.mode, motionCache: data.motionCache,
       paths, sources: structuredClone(data.sources),
       additionalSafetensors: data.additionalSafetensors.map((file) => ({ ...file, id: `additional-${crypto.randomUUID()}` })),
       loras: data.loras.map((entry) => {

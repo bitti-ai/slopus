@@ -12,7 +12,7 @@
  * in src-tauri/core/src/slopfab/config.rs. Renaming one here without renaming it there
  * silently drops that path.
  */
-import { isSigmaShift, type SigmaShifts } from "./sampling";
+import { isSigmaShift, isSampler, isScheduler, type SigmaShifts, type SamplingChoices, type Sampler, type Scheduler } from "./sampling";
 import { initialH3Components, normalizeH3Library, resolveH3Components, type H3Components } from "./h3Components";
 import { generatorModel } from "./generatorModels";
 export { generatorModel, GENERATOR_MODELS } from "./generatorModels";
@@ -87,7 +87,7 @@ export const templateSupportsEditing = (template: Pick<GeneratorTemplate, "model
 export const templateSupportsOutpainting = (template: Pick<GeneratorTemplate, "modelType" | "editingModel" | "mode">): boolean =>
   templateSupportsEditing(template) && generatorModel(template.modelType).imageOutpainting;
 
-export interface GeneratorTemplate extends SigmaShifts {
+export interface GeneratorTemplate extends SigmaShifts, SamplingChoices {
   id: string;
   name: string;
   /** Stable model-family identifier, independent of template name and mode.
@@ -123,6 +123,30 @@ export interface WeightSource {
   gpuModel: string;
   minVramGb: number;
   downloadedPath?: string;
+}
+
+export function templateSamplingOptions(template: Partial<GeneratorTemplate>, overrides: TemplateLora[] = []) {
+  const model = generatorModel(template.modelType);
+  const library = loadLoras();
+  const active = new Set(effectiveLoras(template.loras, overrides, template.modelType, library)
+    .filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
+  const adapters = library.filter((entry) => active.has(entry.id));
+  const preset = adapters.some((entry) => entry.samplingPreset);
+  const omni = template.modelType === MINIMAX_H3_MODEL_TYPE && [template.paths?.transformer ?? "", ...(template.sources?.transformer ?? []).map((source) => source.url)]
+    .some((path) => path.includes("fasth3_omniref_8step_pruned_int8_convrot.safetensors"));
+  const samplers: Sampler[] = ["default", ...(preset ? [] : omni || template.mode === "animate" ? ["euler"] : model.samplers) as Sampler[]];
+  const schedulers: Scheduler[] = ["default", ...(!omni && !preset ? model.schedulers : []) as Scheduler[]];
+  const reason = preset ? "The active LoRA recipe controls the sampler and scheduler."
+    : omni ? "FastH3 Omni requires Euler and its trained schedule."
+    : template.mode === "animate" ? "Animate requires Euler. Adapters may also require a fixed schedule."
+    : model.musicGeneration ? "This music model uses its built-in solver and schedule." : undefined;
+  return { samplers, schedulers, reason };
+}
+
+export function effectiveTemplateSampling(template: Partial<GeneratorTemplate>, overrides: TemplateLora[] = []): Required<SamplingChoices> {
+  const allowed = templateSamplingOptions(template, overrides);
+  return { sampler: template.sampler && allowed.samplers.includes(template.sampler) ? template.sampler : "default",
+    scheduler: template.scheduler && allowed.schedulers.includes(template.scheduler) ? template.scheduler : "default" };
 }
 
 export function generatorPathFields(template: Pick<GeneratorTemplate, "mode"> & { modelType?: string }): EnginePathField[] {
@@ -460,6 +484,8 @@ const normalizeTemplateSettings = (value: unknown, shareComponents = true): Gene
       ...(typeof candidate.audioVaeId === "string" ? { audioVaeId: candidate.audioVaeId } : {}),
       ...(typeof candidate.editingModel === "boolean" ? { editingModel: candidate.editingModel } : {}),
       ...(candidate.kreaVariant === "raw" || candidate.kreaVariant === "turbo" ? { kreaVariant: candidate.kreaVariant } : {}),
+      ...(isSampler(candidate.sampler) ? { sampler: candidate.sampler } : {}),
+      ...(isScheduler(candidate.scheduler) ? { scheduler: candidate.scheduler } : {}),
       ...(isSigmaShift(candidate.videoSigmaShift) ? { videoSigmaShift: candidate.videoSigmaShift } : {}),
       ...(isSigmaShift(candidate.audioSigmaShift) ? { audioSigmaShift: candidate.audioSigmaShift } : {}),
       ...(typeof candidate.motionCache === "boolean" ? { motionCache: candidate.motionCache } : {}),
@@ -797,7 +823,7 @@ export function saveEngineSettings(settings: EngineSettings): void {
 /** The `slopfab` provider setting these paths describe, with blanks dropped so
  *  an unset field falls through to whatever the project (or the Rust default)
  *  already had rather than overwriting it with "". */
-export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false, sources = defaultGeneratorTemplate().sources, shifts: SigmaShifts & { modelType?: string; editingModel?: boolean; kreaVariant?: "raw" | "turbo" } = defaultGeneratorTemplate(), sceneLoras: TemplateLora[] = []): ProviderSetting {
+export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false, sources = defaultGeneratorTemplate().sources, shifts: SigmaShifts & SamplingChoices & { modelType?: string; editingModel?: boolean; kreaVariant?: "raw" | "turbo" } = defaultGeneratorTemplate(), sceneLoras: TemplateLora[] = []): ProviderSetting {
   // Resolve again at submission: a queued generator may predate a default encoder change.
   if (shifts.modelType === MINIMAX_H3_MODEL_TYPE) {
     const library = loadGeneratorTemplateSettings().h3Components!;
@@ -822,6 +848,8 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
   if (shifts.modelType === KREA_MODEL_TYPE) options.kreaVariant = shifts.kreaVariant ?? "turbo";
   delete options.loras;
   delete options.schedule;
+  delete options.sampler;
+  delete options.scheduler;
   delete options.stepOverride;
   delete options.samplingPreset;
   for (const key of ["videoSigmaShift", "audioSigmaShift"] as const) {
@@ -865,6 +893,10 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
     // Fixed re-noising schedules forbid approximate caches.
     delete options.motionCache;
   }
+  const sampling = effectiveTemplateSampling({ ...shifts, paths: settings, sources, mode, loras: selection }, sceneLoras);
+  if (sampling.sampler !== "default") options.sampler = sampling.sampler;
+  if (sampling.scheduler !== "default") options.scheduler = sampling.scheduler;
+  if (sampling.sampler !== "default" && sampling.sampler !== "euler") delete options.motionCache;
   for (const field of ENGINE_PATH_FIELDS) {
     if (!pathFields.some(({ id }) => id === field.id)) {
       delete options[field.id];

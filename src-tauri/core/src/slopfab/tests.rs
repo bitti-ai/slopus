@@ -31,6 +31,66 @@ fn music_plans_on_cuda_and_vulkan_without_video_controls() {
 }
 
 #[test]
+fn sampler_and_scheduler_options_reach_planning_and_generation_and_reset() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
+    let api = ffi::Api::load(&path).unwrap();
+    for family in ["minimax-h3", "moss", "fibo2", "krea2"] {
+        let mut configuration = Configuration::from_settings(&BTreeMap::new());
+        configuration.model_type = family.into();
+        configuration.attention = "flash2";
+        let request = GenerationRequest { prompt: "An apple".into(), still_image: family != "minimax-h3",
+            frames: if family == "minimax-h3" { 22 } else { 1 }, steps: 8, seed: 42,
+            canvas_width: 512, canvas_height: 512, video_sigma_shift: if family == "fibo2" { None } else { Some(4.0) }, ..Default::default() };
+        for sampler in &crate::models::generator_features(family).samplers {
+            for scheduler in [None, Some("beta")] {
+                for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+                    for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+                        if platform == ComputePlatform::Vulkan && crate::models::generator_features(family).cuda_only { continue; }
+                        configuration.sampling = Ok(SamplingChoices { sampler: Some(sampler.clone()), scheduler: scheduler.map(str::to_owned) });
+                        let handle = RequestHandle::new(&api).unwrap();
+                        if platform == ComputePlatform::Vulkan && sampler == "ab2" {
+                            assert!(configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap_err().contains("AB2 sampling requires CUDA"));
+                            continue;
+                        }
+                        configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+                        let description = api.describe(&handle).unwrap();
+                        assert!(description.contains(if sampler == "euler" && family != "minimax-h3" { "Euler" } else { sampler }), "{description}");
+                        if family != "minimax-h3" { assert!(description.contains(if scheduler.is_some() { "schedule    beta" } else { "schedule    default" }), "{description}"); }
+                        configuration.sampling = Ok(Default::default());
+                        configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+                        let reset = api.describe(&handle).unwrap();
+                        assert!(!reset.contains("er_sde"));
+                        assert!(!reset.contains("schedule    beta"));
+                        if family == "minimax-h3" && scheduler.is_some() {
+                            assert_ne!(description.lines().find(|line| line.contains("sigma range")), reset.lines().find(|line| line.contains("sigma range")));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn unsupported_sampling_choices_are_rejected_before_generation() {
+    for (family, sampler, scheduler) in [("moss", "ab2", "default"), ("fibo2", "renoise", "default"),
+        ("krea2", "euler", "unknown"), ("yue2", "er_sde", "default"), ("minimax_music3", "default", "beta")] {
+        let settings = BTreeMap::from([("slopfab".into(), ProviderSetting { enabled: true, model: None,
+            options: BTreeMap::from([("modelType".into(), ProviderOption::String(family.into())),
+                ("sampler".into(), ProviderOption::String(sampler.into())), ("scheduler".into(), ProviderOption::String(scheduler.into()))]) })]);
+        let configuration = Configuration::from_settings(&settings);
+        assert!(configuration.validate_inputs(&GenerationRequest::default()).unwrap_err().contains("does not support"));
+    }
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.animate = true;
+    configuration.sampling = Ok(SamplingChoices { sampler: Some("er_sde".into()), scheduler: None });
+    assert!(configuration.validate_inputs(&GenerationRequest::default()).unwrap_err().contains("Animate requires Euler"));
+    configuration.animate = false;
+    configuration.sampling_preset = Ok(Some(SamplingPreset::Pika6Step));
+    assert!(configuration.validate_inputs(&GenerationRequest::default()).unwrap_err().contains("LoRA recipe"));
+}
+
+#[test]
 fn krea_plans_turbo_and_raw_on_cuda_and_vulkan() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
     let api = ffi::Api::load(&path).unwrap();

@@ -4,6 +4,8 @@ Changes since 0.3.2.
 
 ## What's new
 
+- **Sampler and scheduler controls.** Generator templates offer compatible sampling choices, including ER-SDE and Beta. Model default preserves existing recipes; choices are saved, shared in template exports and sent to workers.
+
 - **Krea 2 images.** Added Turbo and Raw generators with CFG, negative prompts and image sigma shift controls. Turbo defaults to 8 steps; Raw uses 52 steps, CFG 3.5 and a resolution-dependent shift. Both generate new images without editing or image references, on updated CUDA and Vulkan runtimes.
 
 - **MiniMax Music3 precision.** Added FP16 transformer downloads for GPUs with at least 5 GB VRAM and FP32 for at least 10 GB, alongside the 3 GB INT8 variant.

@@ -84,6 +84,12 @@ describe("LAN generation workers", () => {
     expect(options).toMatchObject({ samplingPreset: "dmad-4step", stepOverride: 4 });
     expect(options).not.toHaveProperty("motionCache");
   });
+  it("sends sampler and scheduler choices to the selected worker", async () => {
+    await choose({ selectedId: "aaaaaaaaaaaaaaaa", workers: [worker()] });
+    const template = { ...downloadable(), loras: [], sampler: "er_sde" as const, scheduler: "beta" as const };
+    const options = engineProviderSetting(template.paths, undefined, "flash2", [], "prompt", [], false, template.sources, template).options;
+    expect(options).toMatchObject({ sampler: "er_sde", scheduler: "beta" });
+  });
 
   it.each([12, 32])("selects worker variants with %s GB even when another variant is downloaded locally", async (vram) => {
     const template = downloadable();
