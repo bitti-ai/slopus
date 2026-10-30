@@ -44,12 +44,12 @@ export const DMAD_LORA: Lora = {
   samplingPreset: "dmad-4step",
 };
 export const PIKA_FL2VA_LORA: Lora = {
-  id: "pika-h3-flex-fl2va", name: "Pika H3 Flex FL2VA", modelType: "minimax-h3", path: "",
+  id: "pika-h3-flex-fl2va", name: "Pika H3 First/Last", modelType: "minimax-h3", path: "",
   url: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_fl2va_v1_bf16.safetensors",
   samplingPreset: "pika-6step",
 };
 export const PIKA_REF2VA_LORA: Lora = {
-  id: "pika-h3-flex-ref2va", name: "Pika H3 Flex Ref2VA", modelType: "minimax-h3", path: "",
+  id: "pika-h3-flex-ref2va", name: "Pika H3 Reference", modelType: "minimax-h3", path: "",
   url: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_ref2va_v1_bf16.safetensors",
   samplingPreset: "pika-6step",
 };
@@ -76,6 +76,10 @@ export function loadLoras(): Lora[] {
         ...(isLoraStepOverride(entry.stepOverride) ? { stepOverride: entry.stepOverride }
           : entry.stepOverride === undefined && entry.schedule === "taomate-3step" ? { stepOverride: 3 } : {}) }];
     }) : [];
+    for (const [lora, oldName] of [[PIKA_FL2VA_LORA, "Pika H3 Flex FL2VA"], [PIKA_REF2VA_LORA, "Pika H3 Flex Ref2VA"]] as const) {
+      const saved = entries.find((entry) => entry.id === lora.id);
+      if (saved?.name === oldName) saved.name = lora.name;
+    }
     for (const lora of BUNDLED_LORAS) if (!ids.has(lora.id)) {
       if (lora.id === TAOMATE_LORA.id) entries.unshift({ ...lora });
       else entries.push({ ...lora });

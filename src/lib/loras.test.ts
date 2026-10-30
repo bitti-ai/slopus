@@ -127,7 +127,7 @@ it.each([0, 1, -3, 2.5, NaN, Infinity, 2147483648])("rejects invalid step overri
 it("starts with the bundled adapters and preserves the local library", () => {
   expect(loadLoras()).toEqual([TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA]);
   saveLoras([{ ...TAOMATE_LORA, path: "C:/weights/TaoMate.safetensors" }, { id: "style", name: "Style", path: "D:/style.safetensors" }]);
-  expect(loadLoras().map(({ name }) => name)).toEqual(["TaoMate 3-Step", "Style", "Turbo", "Viggle Animate Distillation", "LightX2V Turbo", "DMAD 4-Step", "Pika H3 Flex FL2VA", "Pika H3 Flex Ref2VA"]);
+  expect(loadLoras().map(({ name }) => name)).toEqual(["TaoMate 3-Step", "Style", "Turbo", "Viggle Animate Distillation", "LightX2V Turbo", "DMAD 4-Step", "Pika H3 First/Last", "Pika H3 Reference"]);
 });
 
 it("preserves DMAD's recipe and local path and gives its fixed grid priority over step overrides", () => {
