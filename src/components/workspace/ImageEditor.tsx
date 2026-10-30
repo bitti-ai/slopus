@@ -131,6 +131,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const [error, setError] = useState<string | null>(null);
   const [generationCount, setGenerationCount] = useState("1");
   const [generationOptionsOpen, setGenerationOptionsOpen] = useState(false);
+  const [generationOptionsWidth, setGenerationOptionsWidth] = useState<number>();
+  const generationControls = useRef<HTMLDivElement>(null);
   const generationOptionsButton = useRef<HTMLButtonElement>(null);
   const generationCountInput = useRef<HTMLInputElement>(null);
   const count = Number(generationCount);
@@ -623,7 +625,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const missingReference = (id: string) => config.references.find((reference) => reference.id === id)?.name ?? "Deleted reference";
   const templateInspector = Boolean((extendMode && output && extendOptions) || (output && templateSourceId === output.id) || (runningTemplate && templateSource));
   const generateDisabled = active ? work.cancelling || work.status === "encoding" : Boolean(inputBlocked || effectsBlocked) || Boolean(templateSnapshot && output?.imageDraft) || !isTauri() || !template || !templateUsable(template) || (imageRoot ? Boolean(editingBlocked || editPlan?.error) : !imageScenePrompt(scene));
-  const generateButton = <div className={`image-generation-controls${active ? "" : " image-generation-controls--split"}`}>
+  const generateButton = <div ref={generationControls} className={`image-generation-controls${active ? "" : " image-generation-controls--split"}`}>
     <button type="button" className="primary-button image-generate-button" data-tooltip={inputBlocked ?? effectsBlocked ?? (imageRoot ? editingBlocked : null) ?? editPlan?.error ?? undefined}
       disabled={generateDisabled || (!active && !validCount)} onClick={() => {
         if (active) { attempt(() => onCancel(work.id)); return; }
@@ -632,8 +634,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       }}>{active ? <Stop14 aria-hidden="true" /> : <Sparkle16 aria-hidden="true" />}{active ? work.cancelling ? "Cancelling?" : "Cancel" : count > 1 && validCount ? `Generate (${count})` : "Generate"}</button>
     {!active && <button ref={generationOptionsButton} type="button" className="primary-button image-generation-options" aria-label="Generation options"
       aria-haspopup="dialog" aria-expanded={generationOptionsOpen} data-tooltip="Generation options" disabled={generateDisabled}
-      onClick={() => setGenerationOptionsOpen(!generationOptionsOpen)}><ChevronDown14 aria-hidden="true" /></button>}
-    <Flyout open={generationOptionsOpen && !active} anchor={generationOptionsButton} initialFocus={generationCountInput} onClose={() => setGenerationOptionsOpen(false)} placement="top-end" width={240} aria-label="Generation options" className="image-generation-options-panel">
+      onClick={() => {
+        setGenerationOptionsWidth(generationControls.current?.getBoundingClientRect().width);
+        setGenerationOptionsOpen(!generationOptionsOpen);
+      }}><ChevronDown14 aria-hidden="true" /></button>}
+    <Flyout open={generationOptionsOpen && !active} anchor={generationOptionsButton} initialFocus={generationCountInput} onClose={() => setGenerationOptionsOpen(false)} placement="top-end" width={generationOptionsWidth} aria-label="Generation options" className="image-generation-options-panel">
       <PropRow label="Count" tooltip="Different seeds for each image. Resets after generating." htmlFor={rootField("generation-count")}>
         <input ref={generationCountInput} id={rootField("generation-count")} className="text-field" type="number" min={1} max={MAX_IMAGE_BATCH_COUNT} step={1}
           value={generationCount} aria-invalid={!validCount} aria-describedby={!validCount ? rootField("generation-count-help") : undefined} onChange={(event) => setGenerationCount(event.target.value)} />
