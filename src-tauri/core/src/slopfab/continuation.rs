@@ -328,6 +328,7 @@ pub(super) mod tests {
         let plan = resolve_plan(&request, &settings, &ReferenceVideos::default()).unwrap();
         assert_eq!(plan.aligned_frames, 175);
         assert_eq!(plan.model_evaluations, 8);
+        assert!(plan.description.contains("one call-only video latent; front restored before output"));
         assert_eq!(std::fs::read(&source).unwrap(), source_bytes);
         assert_eq!(std::fs::read(&context).unwrap(), context_bytes);
         for steps in [2, 3, 4, 5, 6, 9] {

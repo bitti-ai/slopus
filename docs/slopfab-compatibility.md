@@ -1,21 +1,32 @@
 # Slopfab compatibility
 
-## Bundled runtime (API 1.43.0)
+## Bundled runtime (API 1.46.0)
 
-Windows and Linux runtimes use SlopFab commit `bf952e73efd66901ebe0558a6c8535ce3a2b0a3e`
+Windows and Linux runtimes use SlopFab commit `700affae5b01e4e09af4ecb15289bfd43952e1a5`
 from `D:\Projects\slopfab`, with CUDA and Vulkan enabled and FFmpeg disabled.
-This update adds standalone saved-latent upscaling with in-process video/audio decoding.
-Single Shot uses latent boundary anchors and fresh middle noise. LAN protocol is 22. Restart Slopus and
-update workers to load the new runtime.
+This update keeps Keystone and delayed Capstone context inside sampling: the
+original front latent is restored before output, and Capstone adds one clean
+video latent only during model calls. It does not replace generated end frames
+or add hidden tail frames. Saved joined output preserves the previous clip.
+TAEH3 generation previews and saved-latent upscaling remain supported.
 
-The Linux runtime passes C API and embedded-tokenizer checks. Slopus core and desktop
-project tests pass against the Windows DLL. Linux retains the Fibo text-renderer
-linker workaround documented below and passes unresolved-symbol checks.
+LAN protocol is 24. Single Shot automatically shortens its preferred four-update
+Capstone delay when the resolved video schedule is shorter, without changing the
+LoRA recipe. Restart Slopus and update workers to load the new runtime.
+
+Both platform builds pass C API and embedded-tokenizer checks. Slopus core tests
+pass against the Windows DLL. Linux retains the Fibo text-renderer linker
+workaround documented below.
 
 ## Single Shot
 
-Single Shot has one reference-aware prompt, an optional ending prompt and an
-optional starting scene of any type with saved video latents. Its full clip's
+With Context video selected, Single Shot continues from Previous video's saved
+latents while using the sequence's first video as its persistent Keystone and
+Capstone source. It runs one generation pass; native joining handles the overlap
+without extra tail trimming. Both sources must have matching latent geometry.
+
+Without Context video, Single Shot has one reference-aware prompt, an optional
+ending prompt and an optional previous scene of any type with saved video latents. Its full clip's
 ending context guides the new beginning. An empty ending prompt uses the main prompt.
 Both stages share the same ordered reference bindings, generator settings and
 seed. Generate all orders starting scenes before their dependents and rejects
@@ -37,7 +48,7 @@ final duration; Single Shot requires at least two seconds.
 Only the final joined output and latents enter scene history. Timeline ranges
 identify each scene's own portion, retaining the shared decode at joins.
 Temporary endings are removed on success, failure and cancellation. Starting
-scenes must use compatible original latent resolutions. Protocol 22 also requires
+scenes must use compatible original latent resolutions. Protocol 24 also requires
 workers to support saved-latent upscale requests.
 
 Single Shot disables `slopfab_request_set_continuation_source_init` in both

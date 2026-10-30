@@ -4,6 +4,8 @@ Changes since 0.3.2.
 
 ## What's new
 
+- **Single Shot continuity.** Updated SlopFab keeps Keystone and Capstone context inside sampling, restores the original beginning before output, and avoids replacing generated end frames or adding hidden tail frames.
+
 - **LoRA controls.** Enable MiniMax H3 LoRAs globally, drag the library to set application order, and add scene overrides in Generation. Global adapters remain active and appear read only in scenes. Step counts and sampling recipes follow the effective stack, with conflicting recipes blocked.
 
 - **Generation previews.** Download TAEH3 from Other weights to play silent MiniMax H3 previews in scene cards during generation, locally or on a worker. A Settings switch controls previews; final videos use the generator's selected VAE.
