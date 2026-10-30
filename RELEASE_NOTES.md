@@ -4,6 +4,8 @@ Changes since 0.3.2.
 
 ## What's new
 
+- **MiniMax Music3 precision.** Added FP16 transformer downloads for GPUs with at least 5 GB VRAM and FP32 for at least 10 GB, alongside the 3 GB INT8 variant.
+
 - **Download memory warnings.** MiniMax generators and shared weights now have minimum VRAM limits. Downloads warn when no variant of a needed weight fits the detected GPU, with Cancel and Download anyway options. Existing downloads and custom limits are preserved.
 
 - **Single Shot continuity.** With Context video, use the Clown Context overlap recipe: hold the first 22 frames of Previous video's 39-frame tail, regenerate the final 17, and replace the overlap in joined video and audio. Keystone and Capstone remain sampling context; original source files stay intact. Requires updated workers.

@@ -199,7 +199,13 @@ Bundled MiniMax weights declare these minimum GPU memory capacities:
 | H3 video VAE FP16 / INT8 | 6 / 3 |
 | Sol H3 VAE | 6 |
 | H3 audio VAE FP32 | 1 |
-| MiniMax Music3 transformer / text encoder / audio VAE | 3 / 9 / 1 |
+| MiniMax Music3 transformer INT8 / FP16 / FP32 | 3 / 5 / 10 |
+| MiniMax Music3 text encoder / audio VAE | 9 / 1 |
+
+MiniMax Music3 selects FP32 at 10 GB or more, FP16 at 5 GB or more, and INT8
+below 5 GB. Its text encoder still requires 9 GB; smaller GPUs receive the
+download warning even if the transformer fits. Existing Music3 templates gain
+the new variants once, preserving downloaded files and customized sources.
 
 Before a generator or shared-component download starts transferring files, Slopus
 warns if all GPU-compatible variants for any needed weight exceed the detected
