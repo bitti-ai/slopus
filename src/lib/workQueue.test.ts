@@ -345,6 +345,8 @@ it.each([false, true])("chains Single Shots with persistent context %s while cap
   expect(requests[0].singleShot).toBeUndefined();
   expect(requests[1].continuationRelativePath).toBe(`latents/${ids[0]}.safetensors`);
   expect(requests[2].continuationRelativePath).toBe(`latents/${ids[1]}.safetensors`);
+  expect(requests[1].continuationOverlapFrames).toBe(context ? 39 : 22);
+  expect(requests[2].continuationOverlapFrames).toBe(context ? 39 : 22);
   if (context) {
     expect(requests[1].keystoneRelativePath).toBe(`latents/${ids[0]}.safetensors`);
     expect(requests[2].keystoneRelativePath).toBe(`latents/${ids[0]}.safetensors`);

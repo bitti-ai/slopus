@@ -4,7 +4,7 @@ Changes since 0.3.2.
 
 ## What's new
 
-- **Single Shot continuity.** Updated SlopFab keeps Keystone and Capstone context inside sampling, restores the original beginning before output, and avoids replacing generated end frames or adding hidden tail frames.
+- **Single Shot continuity.** With Context video, use the Clown Context overlap recipe: hold the first 22 frames of Previous video's 39-frame tail, regenerate the final 17, and replace the overlap in joined video and audio. Keystone and Capstone remain sampling context; original source files stay intact. Requires updated workers.
 
 - **LoRA controls.** Enable MiniMax H3 LoRAs globally, drag the library to set application order, and add scene overrides in Generation. Global adapters remain active and appear read only in scenes. Step counts and sampling recipes follow the effective stack, with conflicting recipes blocked.
 

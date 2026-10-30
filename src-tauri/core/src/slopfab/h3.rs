@@ -159,9 +159,14 @@ pub(super) fn configure_request(
         api.set_continuation_file(
             handle,
             opening.as_ref().map_or(path.as_path(), |file| file.as_ref()),
-            request.continuation_overlap_frames.unwrap_or(crate::models::H3_CAPABILITIES.continuation_overlap),
+            if request.keystone_path.is_some() { 39 } else { request.continuation_overlap_frames.unwrap_or(crate::models::H3_CAPABILITIES.continuation_overlap) },
         )?;
         api.set_continuation_lock_overlap(handle, lock_overlap)?;
+        if request.keystone_path.is_some() {
+            // Keep the first 22 frames of the previous 39-frame
+            // tail, regenerate its last 17, then replace the complete overlap.
+            api.set_continuation_regenerate_frames(handle, 17)?;
+        }
     }
     if let Some(path) = request.single_shot.as_ref().and_then(|single| single.ending_path.as_ref()) {
         api.set_end_anchor_file(handle, path)?;

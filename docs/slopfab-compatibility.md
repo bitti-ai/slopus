@@ -1,19 +1,21 @@
 # Slopfab compatibility
 
-## Bundled runtime (API 1.46.0)
+## Bundled runtime (API 1.47.0)
 
-Windows and Linux runtimes use SlopFab commit `2beebd6be5e0c69411e7670e53a789cab9109b6c`
+Windows and Linux runtimes use SlopFab commit `65898fd02797e148c86c10384cf341eca6aa8c7f`
 from `D:\Projects\slopfab`, with CUDA and Vulkan enabled and FFmpeg disabled.
 This update keeps Keystone and delayed Capstone context inside sampling: the
 original front latent is restored before output, and Capstone adds one clean
 video latent only during model calls. It does not replace generated end frames
-or add hidden tail frames. Saved joined output preserves the previous clip.
+or add hidden tail frames. Single Shot with Context video now replaces a
+39-frame overlap: it holds the earlier 22 frames, regenerates the trailing 17,
+and splices the complete sampled window into the joined video and audio.
 TAEH3 now also decodes single-frame MiniMax image previews on CUDA and Vulkan.
 Video previews autoplay and loop inside the existing shot card player; image
 previews update the image canvas and thumbnail. Both use the generation previews
 setting and require the optional TAEH3 weights. Saved-latent upscaling remains supported.
 
-LAN protocol is 25 so workers also support still-image previews. Single Shot automatically shortens its preferred four-update
+LAN protocol is 26 so workers use the same overlap replacement behavior. Single Shot automatically shortens its preferred four-update
 Capstone delay when the resolved video schedule is shorter, without changing the
 LoRA recipe. Restart Slopus and update workers to load the new runtime.
 
@@ -26,8 +28,15 @@ workaround documented below.
 
 With Context video selected, Single Shot continues from Previous video's saved
 latents while using the sequence's first video as its persistent Keystone and
-Capstone source. It runs one generation pass; native joining handles the overlap
-without extra tail trimming. Both sources must have matching latent geometry.
+Capstone source. It runs one generation pass. The last 39 frames of Previous
+video form the overlap; the first 22 remain locked and the last 17 are generated
+again. Native joining replaces that overlap in both video and audio, preserving
+the source archive and restoring the real front latent after Keystone sampling.
+The released tail is also excluded from the continuation guide. Previous video
+must contain at least 39 frames and both sources need matching latent geometry.
+Scene duration continues to mean newly added timeline frames; the sampling window
+includes the 39-frame overlap. Cumulative audio boundaries avoid rounding drift.
+This change does not select ER-SDE, beta scheduling or the example's LoRAs.
 
 Without Context video, Single Shot has one reference-aware prompt, an optional
 ending prompt and an optional previous scene of any type with saved video latents. Its full clip's

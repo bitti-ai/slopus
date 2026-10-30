@@ -82,9 +82,12 @@ pub(super) fn validate_generation_controls(request: &GenerationRequest) -> Resul
         if request.music.is_some() || request.still_image || request.image_edit.is_some() || request.video_transition.is_some() || request.latent_bridge.is_some()
             || request.frames < 48 || (request.keystone_path.is_none() && single.ending_prompt.trim().is_empty()) || single.ending_prompt.contains('\0') || single.ending_prompt.len() > 1024 * 1024
             || request.continuation_from.as_deref().is_some_and(|from| from != "end")
-            || request.continuation_overlap_frames.is_some_and(|frames| frames != 22) {
+            || request.continuation_overlap_frames.is_some_and(|frames| frames != 22 && !(request.keystone_path.is_some() && frames == 39)) {
             return Err("Single Shot requires a video of at least 2 seconds, an ending prompt or Context video, and optional ending latents from a Previous video.".into());
         }
+    }
+    if request.keystone_path.is_some() && request.continuation_source_frames.is_some_and(|frames| frames < 39) {
+        return Err("Previous video needs at least 39 frames for Single Shot with Context video.".into());
     }
     if let Some(music) = &request.music { return music.validate(); }
     if let Some(scale) = request.guidance_scale { crate::models::validate_cfg_scale(f64::from(scale))?; }

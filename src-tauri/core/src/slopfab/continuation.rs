@@ -329,6 +329,12 @@ pub(super) mod tests {
         assert_eq!(plan.aligned_frames, 175);
         assert_eq!(plan.model_evaluations, 8);
         assert!(plan.description.contains("one call-only video latent; front restored before output"));
+        assert!(plan.description.contains("39 frames; hold 22, regenerate 17"));
+        request.continuation_overlap_frames = Some(39);
+        assert_eq!(resolve_plan(&request, &settings, &ReferenceVideos::default()).unwrap().aligned_frames, 175);
+        request.continuation_source_frames = Some(34);
+        assert!(resolve_plan(&request, &settings, &ReferenceVideos::default()).unwrap_err().contains("at least 39"));
+        request.continuation_source_frames = Some(124);
         assert_eq!(std::fs::read(&source).unwrap(), source_bytes);
         assert_eq!(std::fs::read(&context).unwrap(), context_bytes);
         for steps in [2, 3, 4, 5, 6, 9] {
@@ -375,6 +381,7 @@ pub(super) mod tests {
                     let description = api.describe(&handle).unwrap();
                     assert!(description.contains(&format!("capstone locks after {delay} video updates")));
                     assert!(description.contains(&format!("modality updates    video {updates}")));
+                    assert!(description.contains("39 frames; hold 22, regenerate 17"));
                 }
             }
         }

@@ -29,7 +29,8 @@ pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 // v23 carries Single Shot's persistent context archive; older workers ignore Keystone.
 // v24 adapts capstone locking to the resolved video schedule, including short LoRA grids.
 // v25 emits MiniMax still-image previews as well as video previews.
-pub const PROTOCOL_VERSION: u32 = 25;
+// v26 replaces Single Shot's 39-frame overlap, holding 22 and regenerating 17.
+pub const PROTOCOL_VERSION: u32 = 26;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -384,7 +385,7 @@ mod tests {
         let single = restored.single_shot.unwrap();
         assert_eq!(single.ending_prompt, "The subject waves goodbye");
         assert!(single.ending_path.is_none());
-        assert_eq!(PROTOCOL_VERSION, 25);
+        assert_eq!(PROTOCOL_VERSION, 26);
     }
 
     #[test]

@@ -127,6 +127,7 @@ pub struct Api {
     set_continuation_source_init: Option<unsafe extern "C" fn(*mut Request, i32, f32) -> i32>,
     set_latent_bridge_files: Option<unsafe extern "C" fn(*mut Request, *const c_char, *const c_char, i32, i32, i32) -> i32>,
     set_continuation_lock_overlap: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
+    set_continuation_regenerate_frames: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_video_transition: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
     set_steps: unsafe extern "C" fn(*mut Request, i32) -> i32,
     set_audio_steps: Option<unsafe extern "C" fn(*mut Request, i32) -> i32>,
@@ -310,6 +311,9 @@ impl Api {
                 set_continuation_source_init: library.get::<unsafe extern "C" fn(*mut Request, i32, f32) -> i32>(b"slopfab_request_set_continuation_source_init\0").ok().map(|symbol| *symbol),
                 set_continuation_lock_overlap: library
                     .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_continuation_lock_overlap\0")
+                    .ok().map(|symbol| *symbol),
+                set_continuation_regenerate_frames: library
+                    .get::<unsafe extern "C" fn(*mut Request, i32) -> i32>(b"slopfab_request_set_continuation_regenerate_frames\0")
                     .ok().map(|symbol| *symbol),
                 add_refmod: library
                     .get::<unsafe extern "C" fn(*mut Request, *const c_char, f32, i32) -> i32>(
@@ -713,6 +717,10 @@ impl Api {
             return if enabled { Err("Lock Overlap requires SlopFab API 1.23 or later. Update the generation runtime.".into()) } else { Ok(()) };
         };
         self.error(unsafe { set(r, i32::from(enabled)) })
+    }
+    pub fn set_continuation_regenerate_frames(&self, r: *mut Request, frames: i32) -> Result<(), String> {
+        let set = self.set_continuation_regenerate_frames.ok_or("Single Shot overlap replacement requires SlopFab API 1.47 or newer. Update the app and workers.")?;
+        self.error(unsafe { set(r, frames) })
     }
     #[cfg(test)]
     pub fn disable_lora_preparation_for_test(&mut self) {

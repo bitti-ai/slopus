@@ -208,6 +208,10 @@ impl Api {
         self.check(r)?;
         self.inner.set_continuation_lock_overlap(r.pointer.as_ptr(), enabled)
     }
+    pub fn set_continuation_regenerate_frames(&self, r: &RequestHandle, frames: i32) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_continuation_regenerate_frames(r.pointer.as_ptr(), frames)
+    }
     pub fn set_seed(&self, r: &RequestHandle, v: u64) -> Result<(), String> {
         self.check(r)?;
         self.inner.set_seed(r.pointer.as_ptr(), v)
