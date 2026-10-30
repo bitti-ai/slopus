@@ -13,7 +13,7 @@
  * silently drops that path.
  */
 import { isSigmaShift, type SigmaShifts } from "./sampling";
-import { normalizeH3Library, resolveH3Components, type H3Components } from "./h3Components";
+import { initialH3Components, normalizeH3Library, resolveH3Components, type H3Components } from "./h3Components";
 import { generatorModel } from "./generatorModels";
 export { generatorModel, GENERATOR_MODELS } from "./generatorModels";
 import { latentUpscalerPath, otherWeightPaths, TAEH3_URL } from "./upscalers";
@@ -275,7 +275,7 @@ export function musicTemplates(): GeneratorTemplate[] {
         // Selection rounds detected GiB up: a minimum tier of 9 means strictly
         // more than 8 GiB, keeping 8 GiB cards on the INT8 fallback.
         ...(modelType === "yue2" && id === "transformer" ? [{ url: "https://huggingface.co/Comfy-Org/YuE2/resolve/main/checkpoints/yue2_3b_bf16.safetensors", gpuModel: "", minVramGb: 9 }] : []),
-        { url, gpuModel: "", minVramGb: 0 },
+        { url, gpuModel: "", minVramGb: modelType === "minimax_music3" ? id === "transformer" ? 3 : id === "textEncoder" ? 9 : 1 : 0 },
       ]])) };
   });
 }
@@ -323,10 +323,10 @@ export function minimaxOriginalTemplate(): GeneratorTemplate {
     videoVae: `${root}vae/minimax_h3_video_vae_fp16.safetensors`,
     audioVae: `${root}vae/minimax_h3_audio_vae_fp32.safetensors`, tokenizer: "",
   };
-  const sources: GeneratorTemplate["sources"] = Object.fromEntries(ENGINE_PATH_FIELDS.filter(({ id }) => paths[id]).map(({ id }) => [id, [{ url: paths[id], gpuModel: "", minVramGb: 0 }]]));
+  const sources: GeneratorTemplate["sources"] = Object.fromEntries(ENGINE_PATH_FIELDS.filter(({ id }) => paths[id]).map(({ id }) => [id, [{ url: paths[id], gpuModel: "", minVramGb: id === "textEncoder" ? 16 : id === "videoVae" ? 6 : id === "audioVae" ? 1 : 0 }]]));
   sources.transformer = [
     { url: paths.transformer, gpuModel: "", minVramGb: 21 },
-    { url: MINIMAX_FL2VA_W4A8_URL, gpuModel: "", minVramGb: 0 },
+    { url: MINIMAX_FL2VA_W4A8_URL, gpuModel: "", minVramGb: 12 },
   ];
   return { id: "minimax-h3-original", name: "First/Last Frame", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: 20, attention: "sage2", paths, sources };
 }
@@ -345,7 +345,7 @@ export function minimaxReferencesTemplate(): GeneratorTemplate {
     "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors");
   return { ...template, sources: { ...template.sources, transformer: [
     { url: template.paths.transformer, gpuModel: "", minVramGb: 21 },
-    { url: MINIMAX_REF2VA_W4A8_URL, gpuModel: "", minVramGb: 0 },
+    { url: MINIMAX_REF2VA_W4A8_URL, gpuModel: "", minVramGb: 12 },
   ] } };
 }
 
@@ -356,8 +356,8 @@ export function minimaxFastTemplate(): GeneratorTemplate {
   return { ...template,
     paths: { ...template.paths, videoVae },
     sources: { ...template.sources,
-      transformer: [{ url: template.paths.transformer, gpuModel: "", minVramGb: 0 }],
-      videoVae: [{ url: videoVae, gpuModel: "", minVramGb: 0 }] },
+      transformer: [{ url: template.paths.transformer, gpuModel: "", minVramGb: 22 }],
+      videoVae: [{ url: videoVae, gpuModel: "", minVramGb: 3 }] },
   };
 }
 
@@ -367,7 +367,7 @@ export function minimaxSingularityTemplate(): GeneratorTemplate {
   return { ...template, id: "minimax-h3-singularity", name: "Singularity", defaultSteps: 4,
     loras: [{ loraId: TURBO_LORA.id, enabled: true, strength: 1 }],
     paths: { ...template.paths, transformer },
-    sources: { ...template.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 0 }] },
+    sources: { ...template.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 21 }] },
   };
 }
 
@@ -378,14 +378,14 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
     additionalSafetensors: [{ id: "animate-conditioning", name: "Animate conditioning", url: ANIMATE_CONDITIONING_URL, role: "promptEmbedding" }],
     loras: [{ loraId: VIGGLE_ANIMATE_LORA.id, enabled: true, strength: 1 }],
     paths: { ...template.paths, transformer },
-    sources: { ...template.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 0 }] },
+    sources: { ...template.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 21 }] },
   };
 }
 
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => normalizeTemplateSettings({
   templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates()],
   defaultTemplateId: "default",
-  catalogVersion: 17,
+  catalogVersion: 18,
 })!;
 
 const normalizeTemplateSettings = (value: unknown, shareComponents = true): GeneratorTemplateSettings | null => {
@@ -452,7 +452,7 @@ const normalizeTemplateSettings = (value: unknown, shareComponents = true): Gene
     ...shared,
     defaultTemplateId: !shareComponents ? requestedDefault : shared.templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? shared.templates.find(templateUsable)?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -662,6 +662,29 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
             return { ...template, sources: { ...template.sources, transformer: [bf16, ...sources] } };
           });
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 17 }, false)!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
+        if ((normalized.catalogVersion ?? 0) < 18) {
+          const canonical = (url: string) => url.trim().replace("/blob/", "/resolve/");
+          const bundled = [minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), ...musicTemplates()];
+          const limits = new Map([
+            ...bundled.flatMap((template) => Object.values(template.sources ?? {}).flat()),
+            ...initialH3Components().templates.flatMap((entry) => entry.sources),
+          ].map((source) => [canonical(source.url), source.minVramGb]));
+          // Only replace the old unrestricted defaults; retain user limits, GPU
+          // rules, custom URLs and downloaded paths, including shared components.
+          const upgrade = (source: WeightSource): WeightSource => {
+            const minimum = limits.get(canonical(source.url));
+            return minimum && source.minVramGb === 0 && !source.gpuModel.trim()
+              ? { ...source, minVramGb: minimum } : source;
+          };
+          normalized.templates = normalized.templates.map((template) => ({ ...template,
+            sources: Object.fromEntries(Object.entries(template.sources ?? {}).map(([field, sources]) => [field, sources!.map(upgrade)])),
+          }));
+          if (normalized.h3Components) normalized.h3Components = { ...normalized.h3Components,
+            templates: normalized.h3Components.templates.map((entry) => ({ ...entry, sources: entry.sources.map(upgrade) })),
+          };
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 18 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         const shared = normalizeTemplateSettings(normalized)!;

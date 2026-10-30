@@ -9,6 +9,7 @@ import { ANIMATE_CONDITIONING_URL, mossImageTemplate, fiboImageTemplate, engineP
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 vi.mock("./persistence", () => ({ isTauri: () => true }));
+vi.mock("./nativeShell", () => ({ askNative: vi.fn(async () => true) }));
 const files = new Set<string>();
 const source = (url: string, gpuModel = "", minVramGb = 0): WeightSource => ({ url, gpuModel, minVramGb });
 const saved = () => loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")!;

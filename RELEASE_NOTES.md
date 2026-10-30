@@ -4,6 +4,8 @@ Changes since 0.3.2.
 
 ## What's new
 
+- **Download memory warnings.** MiniMax generators and shared weights now have minimum VRAM limits. Downloads warn when no variant of a needed weight fits the detected GPU, with Cancel and Download anyway options. Existing downloads and custom limits are preserved.
+
 - **Single Shot continuity.** With Context video, use the Clown Context overlap recipe: hold the first 22 frames of Previous video's 39-frame tail, regenerate the final 17, and replace the overlap in joined video and audio. Keystone and Capstone remain sampling context; original source files stay intact. Requires updated workers.
 
 - **LoRA controls.** Enable MiniMax H3 LoRAs globally, drag the library to set application order, and add scene overrides in Generation. Global adapters remain active and appear read only in scenes. Step counts and sampling recipes follow the effective stack, with conflicting recipes blocked.

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isTauri } from "./persistence";
+import { askNative } from "./nativeShell";
 import { OTHER_WEIGHT_TEMPLATES, refreshOtherWeights, otherWeightPaths, saveOtherWeightPath } from "./upscalers";
 import { effectiveLoras, downloadableTemplateLoras, loadLoras, saveLoras, type Lora } from "./loras";
 import { chooseWeightSource, ENGINE_PATH_FIELDS, generatorPathFields, isDownloadUrl, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, templateNeedsDownload,
@@ -9,6 +10,32 @@ import { chooseWeightSource, ENGINE_PATH_FIELDS, generatorPathFields, isDownload
 export type { WeightGpu } from "./settings";
 import { h3ComponentForField, type H3ComponentTemplate } from "./h3Components";
 export { chooseWeightSource };
+
+const gpuSources = (sources: WeightSource[], devices: WeightGpu[]) => sources.filter((source) =>
+  !source.gpuModel.trim() || devices.some((gpu) => gpu.name.toLowerCase().includes(source.gpuModel.trim().toLowerCase())));
+
+// Downloads may proceed after a VRAM warning. Unknown hardware also uses the
+// smallest variant, but GPU model restrictions still apply.
+function chooseDownloadSource(sources: WeightSource[], devices: WeightGpu[]): WeightSource | null {
+  return chooseWeightSource(sources, devices)
+    ?? gpuSources(sources, devices).sort((a, b) => a.minVramGb - b.minVramGb)[0] ?? null;
+}
+
+async function confirmDownloadVram(name: string, weights: { label: string; sources: WeightSource[] }[], devices: WeightGpu[]): Promise<boolean> {
+  const known = devices.filter((gpu) => Number.isFinite(gpu.memoryBytes) && gpu.memoryBytes > 0);
+  if (!known.length) return true;
+  const shortages = weights.flatMap(({ label, sources }) => {
+    const candidates = gpuSources(sources, known);
+    if (!candidates.length || chooseWeightSource(candidates, known)) return [];
+    const minimum = Math.min(...candidates.map((source) => source.minVramGb));
+    return [`${label}: at least ${minimum} GB VRAM`];
+  });
+  if (!shortages.length) return true;
+  return askNative({ title: "Not enough GPU memory", kind: "warning",
+    message: `${name} has weights whose download variants all require more VRAM than the matching GPU has.\n\nDetected GPU capacity:\n${known.map((gpu) => `${gpu.name}: ${Math.ceil(gpu.memoryBytes / 1024 ** 3)} GB VRAM`).join("\n")}\n\n${shortages.join("\n")}\n\nGeneration may run out of GPU memory. Download anyway?`,
+    okLabel: "Download anyway", cancelLabel: "Cancel" });
+}
+
 export interface DownloadState {
   templateId: string;
   otherWeightId?: string;
@@ -127,7 +154,7 @@ async function refreshH3Components() {
       downloadedPath: source.downloadedPath && exists?.[source.downloadedPath] !== false ? source.downloadedPath : found?.[source.url] }));
     let path = entry.path;
     if (!path || isDownloadUrl(path) || exists?.[path] === false) {
-      const source = chooseWeightSource(sources, devices ?? []);
+      const source = chooseDownloadSource(sources, devices ?? []);
       path = source?.downloadedPath ?? source?.url ?? (exists?.[path] === false ? "" : path);
     }
     const tokenizer = entry.tokenizerUrl && (!entry.tokenizer || isDownloadUrl(entry.tokenizer) || exists?.[entry.tokenizer] === false)
@@ -151,13 +178,18 @@ export function downloadH3Component(id: string): Promise<void> {
       const entry = loadGeneratorTemplateSettings().h3Components!.templates.find((item) => item.id === id);
       if (!entry) throw new Error("This template was removed.");
       const devices = await invoke<WeightGpu[]>("weight_download_hardware");
-      const source = chooseWeightSource(entry.sources, devices ?? []);
+      const source = chooseDownloadSource(entry.sources, devices ?? []);
       const downloads: { source: WeightSource; tokenizer: boolean }[] = [];
       if (!entry.path || isDownloadUrl(entry.path)) {
         if (!source) throw new Error("No download source matches this GPU and its memory.");
         downloads.push({ source, tokenizer: false });
       }
       if (entry.tokenizer && isDownloadUrl(entry.tokenizer)) downloads.push({ source: { url: entry.tokenizer, gpuModel: "", minVramGb: 0 }, tokenizer: true });
+      if (downloads.length && !await confirmDownloadVram(entry.name, [{ label: entry.name, sources: entry.sources }], devices ?? [])) {
+        publish({ ...state!, active: false });
+        return;
+      }
+      if (cancelled) throw new Error("Download cancelled.");
       publish({ ...state!, files: downloads.length });
       unlisten = await listen<{ requestId: string; downloaded: number; total: number | null }>("weight-download-progress", ({ payload }) => {
         if (payload.requestId === requestId && state?.active) publish({ ...state, downloaded: payload.downloaded, total: payload.total });
@@ -218,7 +250,7 @@ export function refreshDownloadedWeights(): Promise<void> {
           return downloadedPath ? { ...remaining, downloadedPath } : remaining;
         });
         if (!restored.paths[id].trim() || isDownloadUrl(restored.paths[id])) {
-          const selected = chooseWeightSource(restored.sources[id]!, devices ?? []);
+          const selected = chooseDownloadSource(restored.sources[id]!, devices ?? []);
           if (selected?.downloadedPath) { restored.paths[id] = selected.downloadedPath; changed = true; }
         }
       }
@@ -258,12 +290,26 @@ async function runTemplateDownload(templateId: string): Promise<void> {
       const sources = template.sources?.[id] ?? [];
       if (!sources.length && required && template.modelType === "minimax-h3" && id !== "transformer") throw new Error(`Choose a ${label} template with a local file or download URL.`);
       if (!sources.length) return [];
-      const source = chooseWeightSource(sources, devices ?? []);
+      const source = chooseDownloadSource(sources, devices ?? []);
       if (!source) throw new Error(`No ${ENGINE_PATH_FIELDS.find((field) => field.id === id)?.label} download matches this GPU and its memory.`);
       return [{ field: id, source, originalPath: template.paths[id], component: h3ComponentForField(template, id, loadGeneratorTemplateSettings().h3Components!) }];
     });
     const loraDownloads = downloadableTemplateLoras(effectiveLoras(template.loras, [], template.modelType));
     const additionalDownloads = (template.additionalSafetensors ?? []).filter((file) => !file.downloadedPath);
+    const weights = generatorPathFields(template).map(({ id, label }) => {
+      const path = template.paths[id].trim();
+      const sources = template.sources?.[id] ?? [];
+      // A known local weight still constrains the generator. Unidentified local
+      // files have no trustworthy minimum and must not inherit a URL's limit.
+      return { label, sources: path && !isDownloadUrl(path)
+        ? sources.filter((source) => source.downloadedPath === path) : sources };
+    });
+    if (downloads.length + loraDownloads.length + additionalDownloads.length
+      && !await confirmDownloadVram(template.name, weights, devices ?? [])) {
+      publish({ ...state!, active: false });
+      return;
+    }
+    if (cancelled) throw new Error("Download cancelled.");
     publish({ ...state!, files: downloads.length + loraDownloads.length + additionalDownloads.length });
     unlisten = await listen<{ requestId: string; downloaded: number; total: number | null }>("weight-download-progress", ({ payload }) => {
       if (payload.requestId === requestId && state?.active) publish({ ...state, downloaded: payload.downloaded, total: payload.total });

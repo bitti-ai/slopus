@@ -66,7 +66,7 @@ describe("generator templates", () => {
       sources: { transformer: [{ ...int8, downloadedPath: cached }] } };
     saveGeneratorTemplateSettings({ templates: [previous], defaultTemplateId: previous.id, catalogVersion: 16 });
     const upgraded = loadGeneratorTemplateSettings();
-    expect(upgraded.catalogVersion).toBe(17);
+    expect(upgraded.catalogVersion).toBe(18);
     expect(upgraded.templates[0]).toMatchObject({ name: "My music", paths: { transformer: cached },
       sources: { transformer: [template.sources!.transformer![0], { ...int8, downloadedPath: cached }] } });
     expect(loadGeneratorTemplateSettings()).toEqual(upgraded);
@@ -252,7 +252,7 @@ describe("generator templates", () => {
     expect(original.name).toBe("First/Last Frame");
     expect(references).toEqual({ ...original, id: "minimax-h3-references", name: "References",
       paths: { ...original.paths, transformer },
-      sources: { ...original.sources, transformer: [{ ...original.sources!.transformer![0], url: transformer }, { url: "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors", gpuModel: "", minVramGb: 0 }] },
+      sources: { ...original.sources, transformer: [{ ...original.sources!.transformer![0], url: transformer }, { url: "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors", gpuModel: "", minVramGb: 12 }] },
     });
     expect(loadGeneratorTemplateSettings().templates.map(({ name }) => name)).toEqual(["Default", "First/Last Frame", "References", "FastH3 Omni", "Singularity", "Animate", "MOSS Image", "Fibo 2.0 Edit Turbo", "Fibo 2.0 Base", "YuE2", "MiniMax Music3"]);
   });
@@ -271,7 +271,7 @@ describe("generator templates", () => {
     expect(generatorOwned(settings.templates[2])).toEqual(generatorOwned(minimaxFastTemplate()));
     expect(generatorOwned(settings.templates[3])).toEqual(generatorOwned(minimaxSingularityTemplate()));
     expect(settings.defaultTemplateId).toBe(template.id);
-    expect(settings.catalogVersion).toBe(17);
+    expect(settings.catalogVersion).toBe(18);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [settings.templates[0]] });
     expect(loadGeneratorTemplateSettings().templates).toHaveLength(1);
@@ -292,7 +292,7 @@ describe("generator templates", () => {
     const settings = loadGeneratorTemplateSettings();
     expect(generatorOwned(settings.templates)).toEqual(generatorOwned([custom, minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates()]));
     expect(settings.defaultTemplateId).toBe(custom.id);
-    expect(settings.catalogVersion).toBe(17);
+    expect(settings.catalogVersion).toBe(18);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [custom] });
     expect(generatorOwned(loadGeneratorTemplateSettings().templates)).toEqual(generatorOwned([custom]));
@@ -334,8 +334,8 @@ describe("generator templates", () => {
     const videoVae = "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors";
     expect(fast).toEqual({ ...original, id: "minimax-h3-fast", name: "FastH3 Omni", defaultSteps: 8,
       paths: { ...original.paths, transformer, videoVae },
-      sources: { ...original.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 0 }],
-        videoVae: [{ url: videoVae, gpuModel: "", minVramGb: 0 }] },
+      sources: { ...original.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 22 }],
+        videoVae: [{ url: videoVae, gpuModel: "", minVramGb: 3 }] },
     });
     saveGeneratorTemplateSettings({ templates: [fast], defaultTemplateId: "", catalogVersion: 4 });
     expect(loadGeneratorTemplateSettings().templates[0].defaultSteps).toBe(8);
@@ -357,7 +357,7 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 8 }));
     const settings = loadGeneratorTemplateSettings();
     expect(generatorOwned(settings.templates)).toEqual(generatorOwned([minimaxFastTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates()]));
-    expect(settings.catalogVersion).toBe(17);
+    expect(settings.catalogVersion).toBe(18);
     expect(templateNeedsDownload(settings.templates[0])).toBe(true);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
   });
@@ -372,7 +372,7 @@ describe("generator templates", () => {
     const otherPaths = { ...template.paths };
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 10 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.catalogVersion).toBe(17);
+    expect(settings.catalogVersion).toBe(18);
     expect(settings.templates).toHaveLength(5);
     expect(settings.templates[0]).toMatchObject({ id: template.id, name: "FastH3 Omni", defaultSteps: 8,
       paths: { ...otherPaths, transformer: minimaxFastTemplate().paths.transformer },
@@ -395,7 +395,7 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template, references, fast], catalogVersion: 12 }));
     const settings = loadGeneratorTemplateSettings();
     const migrated = settings.templates[0];
-    expect(migrated.sources!.transformer).toContainEqual({ url: expectedUrl, gpuModel: "", minVramGb: 0 });
+    expect(migrated.sources!.transformer).toContainEqual({ url: expectedUrl, gpuModel: "", minVramGb: 12 });
     expect(migrated.sources!.transformer!.some((source) => source.url.includes("ref2va") || source.downloadedPath === oldFallback.downloadedPath)).toBe(false);
     expect(migrated.paths.transformer).toBe(selection === "url" || selection === "downloaded" ? expectedUrl : previousPath);
     expect(migrated.name).toBe(template.name);
@@ -424,7 +424,7 @@ describe("generator templates", () => {
     expect(migrated.name).toBe("My Omni");
     expect(migrated.defaultSteps).toBe(12);
     expect(migrated.sources!.transformer!.map((source) => source.url)).not.toContain(fallback.url);
-    expect(migrated.sources!.transformer).toContainEqual(expect.objectContaining({ url: omniUrl, gpuModel: "", minVramGb: 0 }));
+    expect(migrated.sources!.transformer).toContainEqual(expect.objectContaining({ url: omniUrl, gpuModel: "", minVramGb: 22 }));
     expect(migrated.sources!.transformer).toContainEqual({ url: "https://example.com/custom.safetensors", gpuModel: "Custom GPU", minVramGb: 8 });
     expect(migrated.paths.transformer).toBe(selection === "custom" ? "D:/custom.safetensors" : selection === "cached omni" ? "D:/weights/omni.safetensors" : omniUrl);
     expect(settings.defaultTemplateId).toBe(selection === "custom" || selection === "cached omni" ? template.id : "");
@@ -468,7 +468,7 @@ describe("generator templates", () => {
     template.paths[field] = downloadedPath;
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 1 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.catalogVersion).toBe(17);
+    expect(settings.catalogVersion).toBe(18);
     expect(settings.templates[0].paths[field]).toBe(downloadedPath);
     expect(settings.templates[0].sources![field]).toEqual(minimaxOriginalTemplate().sources![field]!.map((source, index) =>
       index === 0 ? { ...source, downloadedPath } : source));
@@ -503,9 +503,9 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 2 }));
     const settings = loadGeneratorTemplateSettings();
     const migrated = settings.templates[0];
-    expect(settings.catalogVersion).toBe(17);
+    expect(settings.catalogVersion).toBe(18);
     expect(migrated.sources!.textEncoder).toEqual([
-      { url: originalUrl, gpuModel: "", minVramGb: 0, ...(selection === "cached original" ? { downloadedPath: cachedOriginal } : {}) },
+      { url: originalUrl, gpuModel: "", minVramGb: 16, ...(selection === "cached original" ? { downloadedPath: cachedOriginal } : {}) },
       custom,
     ]);
     expect(migrated.paths.textEncoder).toBe(selection === "url" || selection === "downloaded" ? originalUrl

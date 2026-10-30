@@ -29,7 +29,8 @@ export function initialH3Components(): H3Components {
     { id: H3_FAST_VIDEO_VAE_ID, name: "MiniMax H3 Video VAE INT8", type: "video", path: root + "vae/minimax_h3_video_vae_int8_convrot.safetensors" },
     { id: H3_AUDIO_VAE_ID, name: "MiniMax H3 Audio VAE", type: "audio", path: root + "vae/minimax_h3_audio_vae_fp32.safetensors" },
     { id: H3_TEXT_ENCODER_ID, name: "Qwen3 VL 32B MiniMax H3", type: "textEncoder", path: root + "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors" },
-  ].map((entry) => ({ ...entry, type: entry.type as H3ComponentType, sources: [{ url: entry.path, gpuModel: "", minVramGb: 0 }] })) };
+  ].map((entry) => ({ ...entry, type: entry.type as H3ComponentType, sources: [{ url: entry.path, gpuModel: "",
+    minVramGb: entry.type === "textEncoder" ? 16 : entry.type === "audio" ? 1 : entry.id === H3_FAST_VIDEO_VAE_ID ? 3 : 6 }] })) };
 }
 
 function normalizeComponents(value: unknown): H3Components {

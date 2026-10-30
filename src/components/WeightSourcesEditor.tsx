@@ -11,6 +11,7 @@ export function WeightSourcesEditor({ label, sources, disabled, onChange }: {
   const update = (index: number, patch: Partial<WeightSource>) => onChange(sources.map((source, i) => i === index ? { ...source, ...patch } : source));
   return <Expander className="weight-sources" header={`Download variants${sources.length > 0 ? ` (${sources.length})` : ""}`}
     description="Among matching GPUs, the highest minimum VRAM that fits is used">
+    <p className="settings-caption">If no variant fits the detected VRAM, downloading asks for confirmation. Zero leaves a variant unrestricted.</p>
     <p className="settings-caption">GPU model matches part of the device name, such as “RTX 5090”. Leave it blank for any GPU.</p>
     {sources.map((source, index) => <div className="weight-source" key={`${index}-${source.url}`}>
       <label>Download URL<input className="text-field" aria-label={`${label} variant ${index + 1} URL`} defaultValue={source.url} disabled={disabled} onBlur={(event) => {

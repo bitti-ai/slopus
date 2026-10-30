@@ -186,6 +186,34 @@ FastH3 Omni uses its Omni transformer on all GPUs, without a W4A8 fallback.
 Saved Fast templates using the old fallback switch to Omni; an existing Omni download is reused when available.
 Other local weights and customized download variants are preserved.
 
+Bundled MiniMax weights declare these minimum GPU memory capacities:
+
+| Weight | Minimum VRAM (GB) |
+| --- | ---: |
+| First/Last Frame W4A8 / INT8 | 12 / 21 |
+| References hybrid W4A8 / INT8 | 12 / 21 |
+| FastH3 Omni INT8 | 22 |
+| Singularity INT8 | 21 |
+| Animate INT8 | 21 |
+| H3 Qwen3-VL 32B text encoder | 16 |
+| H3 video VAE FP16 / INT8 | 6 / 3 |
+| Sol H3 VAE | 6 |
+| H3 audio VAE FP32 | 1 |
+| MiniMax Music3 transformer / text encoder / audio VAE | 3 / 9 / 1 |
+
+Before a generator or shared-component download starts transferring files, Slopus
+warns if all GPU-compatible variants for any needed weight exceed the detected
+GPU capacity. The warning lists the GPUs and the unmet minimums, with **Cancel**
+and **Download anyway** actions. Continuing selects the smallest GPU-compatible
+variant when none fits. A known downloaded dependency is also checked when
+downloading the rest of a generator. For example, H3's shared 16 GB text encoder
+still triggers a warning on a 12 GB GPU even though its W4A8 transformer fits.
+Capacities are not added across GPUs or across model files. Unknown GPU capacity
+does not trigger a low-memory warning and uses the smallest compatible variant.
+This checks GPU capacity, not the memory currently free while other apps run.
+Existing unrestricted bundled sources receive these limits once; custom positive
+limits, GPU rules, URLs and downloaded paths are preserved.
+
 Templates awaiting downloads appear under **Download**. Once their
 weights are downloaded, they move into **Generators**. Removing or losing their
 downloaded files moves them back to **Download**.
@@ -197,6 +225,8 @@ prefers a matching GPU-specific variant, then the highest memory tier that fits;
 ties preserve the listed order. Leave the GPU field blank and VRAM at zero for a
 universal fallback. Windows hardware detection includes NVIDIA, AMD, and Intel.
 Memory tiers account for the small amount of VRAM reserved by the driver.
+If every compatible variant exceeds the detected capacity, downloading requires
+accepting the memory warning. A zero minimum leaves that variant unrestricted.
 
 Click the template's download icon or **Download weights** in its editor to
 download missing weights. Files go into `weights` beside `Slopus.exe`. If that
