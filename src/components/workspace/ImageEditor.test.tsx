@@ -581,7 +581,7 @@ it.each([false, true])("retains a renamed image root after switching images and 
     scene: { ...snapshot.scene, nodes: snapshot.scene.nodes.map((node) => node.kind === "root" ? { ...node, name: "Cover image" } : node) } });
 });
 
-it("restores the hierarchy, prompts, settings and generator when selecting a saved result", () => {
+it("restores saved image settings while keeping the active generator until explicitly changed", () => {
   const initial = parseProjectConfig(fixture);
   const original = imageGenerationSnapshot(initial, "Original prompt", defaultGeneratorTemplate().id);
   const saved = imageGenerationSnapshotSchema.parse(snapshotFixture);
@@ -593,7 +593,8 @@ it("restores the hierarchy, prompts, settings and generator when selecting a sav
   fireEvent.click(screen.getByRole("button", { name: "View Result 1" }));
   expect(promptValue(screen.getByLabelText("Prompt (high-level description)"))).toBe(saved.scene.nodes[0].description);
   expect(screen.getByLabelText("Steps")).toHaveValue(30);
-  expect(comboValue(screen.getByRole("combobox", { name: "Generator" }))).toBe(saved.generatorTemplateId);
+  expect(comboValue(screen.getByRole("combobox", { name: "Generator" }))).toBe(original.generatorTemplateId);
+  expect(screen.getByLabelText("Used generator")).toHaveValue("Lantern generator");
   expect(screen.getByRole("button", { name: "Lantern" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Lettering" })).toBeInTheDocument();
   expect(current().references).toEqual(saved.references);
@@ -608,6 +609,9 @@ it("restores the hierarchy, prompts, settings and generator when selecting a sav
   fireEvent.click(screen.getByRole("button", { name: "View Result 1" }));
   expect(current().imageScene).toEqual({ ...saved.scene, outputAssetId: "result-1" });
   expect(current().assets[1].imageGeneration).toEqual(saved);
+  fireEvent.click(screen.getByRole("button", { name: "Use this generator" }));
+  expect(comboValue(screen.getByRole("combobox", { name: "Generator" }))).toBe(saved.generatorTemplateId);
+  expect(current().imageScene).toEqual({ ...saved.scene, outputAssetId: "result-1" });
   expect(current().settings).toEqual(initial.settings);
   expect(current().brief.resolution).toBe(initial.brief.resolution);
   expect(current().brief.aspectRatio).toBe(initial.brief.aspectRatio);

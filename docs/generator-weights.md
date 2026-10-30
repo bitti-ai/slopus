@@ -5,6 +5,11 @@ Generator templates open in a popup over the page and save edits immediately.
 Escape or the popup's close button returns to the generator list. From Settings,
 **Back** or Escape returns to the previous screen, preserving project edits.
 
+Video, Image and Music remember separate active generators across navigation and
+restarts. Browsing saved results or changing scene types does not switch them.
+The **Used seed** and **Used generator** rows describe the selected video take or
+image result; use the button beside **Used generator** to select it for future runs.
+
 **Reference icon generator** chooses the template used for automatic, manually
 regenerated, and built-in reference icons, independently of the video generator.
 Only available text-prompt templates appear; Animate cannot generate still icons.

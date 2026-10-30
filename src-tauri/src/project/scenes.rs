@@ -255,6 +255,8 @@ pub(crate) struct SceneGenerationHistory {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SceneGenerationVersion {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) generator_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) original_latent_relative_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) upscale_factor: Option<f64>,

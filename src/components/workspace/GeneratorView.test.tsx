@@ -15,6 +15,7 @@ import { choose, chooseOption, comboValue, optionNames } from "./comboTestUtils"
 import { chooseReference, changePromptChip, insertPromptReference, placePromptCaret, typePrompt } from "./promptTestUtils";
 import { saveLoras } from "../../lib/loras";
 import { createGeneratorTemplate, mossImageTemplate, saveGeneratorTemplateSettings, minimaxOriginalTemplate, viggleAnimateTemplate, saveDebugOptionsEnabled } from "../../lib/settings";
+import { saveActiveGeneratorId, loadActiveGeneratorId } from "../../lib/settings";
 
 vi.mock("../../lib/nativeShell", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../lib/nativeShell")>(),
@@ -83,6 +84,22 @@ it.each(["scene", "shot"])("generates only the selected scene from the %s inspec
   fireEvent.click(panel.getByRole("button", { name: "Generate" }));
   expect(state.latest().generationJobs.map((job) => job.status)).toEqual(["draft", "queued"]);
   expect(panel.getByRole("button", { name: "Cancel" })).toBeEnabled();
+});
+
+it("uses the active video generator for every submitted scene instead of their saved generators", () => {
+  const saved = createGeneratorTemplate("Saved generator"), active = createGeneratorTemplate("Active generator");
+  saveGeneratorTemplateSettings({ templates: [saved, active], defaultTemplateId: saved.id });
+  saveActiveGeneratorId("video", active.id);
+  const config = project();
+  config.generationJobs = config.generationJobs.map((job) => ({ ...job, generatorTemplateId: saved.id }));
+  const generate = vi.fn();
+  render(<GeneratorView config={config} folderPath="C:/project" runtime={readyRuntime} onChange={() => {}} onOpenTimeline={() => {}} onGenerate={generate} />);
+  fireEvent.click(screen.getByRole("button", { name: "Select scene Second scene" }));
+  expect(screen.getByRole("combobox", { name: /Video generator template/ })).toHaveTextContent(active.name);
+  fireEvent.click(screen.getByRole("button", { name: "Generate all" }));
+  expect(generate).toHaveBeenCalledOnce();
+  expect(generate.mock.calls[0][0]).toHaveLength(config.generationJobs.length);
+  expect(generate.mock.calls[0][0].every((submission: { template: { id: string } }) => submission.template.id === active.id)).toBe(true);
 });
 
 it.each([
@@ -1090,7 +1107,8 @@ describe("Generator scene controls", () => {
 
     await waitFor(() => expect(document.querySelector(".generator-runtime--modelsMissing > i")).not.toBeNull());
     expect(getEngineStatus).toHaveBeenCalledWith(expect.objectContaining({ transformer: "draft.safetensors" }), "sage2", [], "prompt", [], true, expect.anything(), "minimax-h3");
-    expect(JSON.parse(localStorage.getItem("slopus.generator-templates.v1")!).defaultTemplateId).toBe("draft");
+    expect(loadActiveGeneratorId("video")).toBe("draft");
+    expect(JSON.parse(localStorage.getItem("slopus.generator-templates.v1")!).defaultTemplateId).toBe("quality");
     expect(within(screen.getByRole("region", { name: "Generator status" })).getByText("Video model files missing")).toBeInTheDocument();
     expect(template.closest(".generator-runtime--modelsMissing")).not.toBeNull();
   });
@@ -1486,12 +1504,48 @@ it("restores older takes and drafts, makes a take primary, removes history and d
 });
 
 
-it("keeps scene-type changes when automatically choosing a compatible generator", async () => {
+it("keeps the active generator when changing to an incompatible scene type", async () => {
   vi.mocked(getEngineStatus).mockResolvedValue(readyRuntime);
   const prompt = { ...minimaxOriginalTemplate(), id: "prompt-template", name: "Prompt template", sources: {}, paths: { transformer: "prompt-transformer", textEncoder: "text", videoVae: "vae", audioVae: "audio", tokenizer: "tokens" } };
   const animate = { ...viggleAnimateTemplate(), id: "animate-template", name: "Animate template", sources: {}, loras: [], additionalSafetensors: [], paths: { transformer: "animate-transformer", textEncoder: "text", videoVae: "vae", audioVae: "audio", tokenizer: "tokens" } };
   saveGeneratorTemplateSettings({ templates: [prompt, animate], defaultTemplateId: prompt.id, catalogVersion: 17 });
   const state = setup();
   choose("Scene type", "Animate");
-  await waitFor(() => expect(state.latest().generationJobs[0]).toMatchObject({ sceneType: "animate", generatorTemplateId: "animate-template" }));
+  await waitFor(() => expect(state.latest().generationJobs[0]).toMatchObject({ sceneType: "animate" }));
+  expect(screen.getByRole("combobox", { name: /Video generator template/ })).toHaveTextContent("Prompt template");
+});
+
+it("keeps the active video generator while browsing takes and restores the used generator explicitly", async () => {
+  vi.mocked(getEngineStatus).mockResolvedValue(readyRuntime);
+  const first = createGeneratorTemplate("Original generator"), second = createGeneratorTemplate("Current generator");
+  saveGeneratorTemplateSettings({ templates: [first, second], defaultTemplateId: first.id });
+  saveActiveGeneratorId("video", second.id);
+  let config = project();
+  const id = config.generationJobs[0].id;
+  for (const [index, template] of [first, second].entries()) {
+    const job = { ...config.generationJobs[0], seed: -1, generatorTemplateId: template.id };
+    config = { ...config, generationJobs: config.generationJobs.map((current) => current.id === id ? job : current) };
+    config = completeSceneGeneration(config, id, { id: `take-${index}`, scene: sceneInput(job),
+      generatorName: template.name, generationSnapshot: JSON.stringify({ seed: 100 + index }), createdAt: config.createdAt,
+      media: { id: `asset-${id}`, kind: "generated", name: job.title, mimeType: "video/mp4", relativePath: `media/take-${index}.mp4`, createdAt: config.createdAt } });
+  }
+  const state = setup(config);
+  expect(screen.getByLabelText("Used seed")).toHaveValue("101");
+  expect(screen.getByLabelText("Used generator")).toHaveValue(second.name);
+  fireEvent.click(screen.getByRole("button", { name: "Generation 1 of First scene" }));
+  expect(screen.getByLabelText("Used seed")).toHaveValue("100");
+  expect(screen.getByLabelText("Used generator")).toHaveValue(first.name);
+  expect(screen.getByRole("combobox", { name: /Video generator template/ })).toHaveTextContent(second.name);
+  const before = state.latest();
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  fireEvent.click(screen.getByRole("button", { name: "Copy used seed" }));
+  expect(writeText).toHaveBeenCalledWith("100");
+  fireEvent.click(screen.getByRole("button", { name: "Use this generator" }));
+  expect(loadActiveGeneratorId("video")).toBe(first.id);
+  expect(screen.getByRole("combobox", { name: /Video generator template/ })).toHaveTextContent(first.name);
+  expect(state.latest()).toEqual(before);
+  cleanup();
+  setup(config);
+  expect(screen.getByRole("combobox", { name: /Video generator template/ })).toHaveTextContent(first.name);
 });

@@ -1,4 +1,5 @@
 import { GenerationEffects } from "./GenerationEffects";
+import { UsedSeed, UsedGenerator } from "./UsedGeneration";
 import { SceneLoras } from "./SceneLoras";
 import { generatorModel } from "../../lib/generatorModels";
 import { DEFAULT_VIDEO_SIGMA_SHIFT, DEFAULT_AUDIO_SIGMA_SHIFT } from "../../lib/sampling";
@@ -317,7 +318,10 @@ const SCENE_TYPE_DESCRIPTIONS: Record<SceneType, string> = {
  *  §4.1), and the two sound fields defined per prompt (§4.6, §4.7). Length
  *  lives in the scene header where it stays visible. Simple label + control
  *  pairs are inspector rows; the free-text fields stay full width. */
-export function SceneInspector({ job, shots, references, folderPath = "", scenes = [], neighborScenes = scenes, defaultSteps, effectiveSteps, template, defaultLook, defaultLookSource = "project", disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = sceneTypeFor(job) }: {
+export function SceneInspector({ job, shots, references, folderPath = "", scenes = [], neighborScenes = scenes, defaultSteps, effectiveSteps, template, usedGeneration, onUseGenerator, onCopyError, defaultLook, defaultLookSource = "project", disabled, importAvailable, importError, onAddStartFrame, onAddEndFrame, onChange, onShots, sceneType = sceneTypeFor(job) }: {
+  usedGeneration?: { seed?: number; generatorName?: string };
+  onUseGenerator?: () => void;
+  onCopyError?: (message: string) => void;
   sceneType?: SceneType;
   defaultLook?: string | null;
   defaultLookSource?: "project" | "Video";
@@ -580,6 +584,10 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
             onCommit={(value) => onChange({ seed: value })}
           />
         </PropRow>
+        {usedGeneration && <>
+          <UsedSeed id={`${id}-used-seed`} seed={usedGeneration.seed} onError={onCopyError ?? (() => {})} />
+          <UsedGenerator id={`${id}-used-generator`} name={usedGeneration.generatorName} onUse={onUseGenerator} />
+        </>}
         <PropRow label="Advanced options" htmlFor={`${id}-advanced-options`} tooltip="Show sigma shifts, a separate audio step count and LoRAs.">
           <ToggleSwitch id={`${id}-advanced-options`} aria-label="Advanced options" checked={job.audioSteps != null} disabled={disabled}
             onChange={(checked) => onChange({ audioSteps: checked ? Math.min(sceneGenerationSteps(job, defaultSteps), MAX_AUDIO_GENERATION_STEPS) : undefined })} />

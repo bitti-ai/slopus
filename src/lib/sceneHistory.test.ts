@@ -1,9 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { createProjectConfig, generationAssetId, parseProjectConfig, type ProjectConfig, type SceneGenerationVersion } from "./project";
-import { completeSceneGeneration, duplicateScene, makeSceneGenerationPrimary, removeSceneDraft, removeSceneGeneration, saveSceneDrafts, sceneInput, selectSceneGeneration, SCENE_GENERATION_HISTORY_LIMIT } from "./sceneHistory";
+import { completeSceneGeneration, duplicateScene, makeSceneGenerationPrimary, removeSceneDraft, removeSceneGeneration, saveSceneDrafts, sceneInput, selectSceneGeneration, sceneUsedSeed, SCENE_GENERATION_HISTORY_LIMIT } from "./sceneHistory";
 import { ProjectSession } from "./projectSession";
 
 const initial = () => createProjectConfig({ name: "History", prompt: "A quiet scene", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 5 });
+
+it("reports recorded seeds, falls back to legacy fixed seeds and leaves unknown random seeds unset", () => {
+  const version = take(initial(), "seed-test");
+  expect(sceneUsedSeed({ ...version, scene: { ...version.scene, seed: -1 }, generationSnapshot: '{"seed":123}' })).toBe(123);
+  expect(sceneUsedSeed({ ...version, scene: { ...version.scene, seed: 42 }, generationSnapshot: "legacy" })).toBe(42);
+  expect(sceneUsedSeed({ ...version, scene: { ...version.scene, seed: -1 }, generationSnapshot: '{"seed":-1}' })).toBeUndefined();
+});
 
 it("keeps original reference latents across upscaled primaries, history pruning and reloads", () => {
   let config = finish(initial(), "original");

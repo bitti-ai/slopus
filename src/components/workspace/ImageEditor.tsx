@@ -17,6 +17,8 @@ import { createEmptyImage, imageFamily, imageFamilyRoot, makeImagePrimary, remov
 import { isTauri } from "../../lib/persistence";
 import { createDraftGenerationJob, isVideoReference, PROJECT_RESOLUTIONS, referenceTypeLabel, type ProjectConfig, type ProjectReference } from "../../lib/project";
 import { defaultGeneratorTemplate, selectedImageGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, MINIMAX_H3_MODEL_TYPE, generatorModel, templateSupportsImages, templateSupportsEditing, templateSupportsOutpainting, subscribeDebugOptions, subscribeGeneratorTemplates, templateUsable, type GeneratorTemplate } from "../../lib/settings";
+import { loadActiveGeneratorId, saveActiveGeneratorId, subscribeActiveGenerators } from "../../lib/settings";
+import { UsedSeed, UsedGenerator } from "./UsedGeneration";
 import { isWorkActive, MAX_IMAGE_BATCH_COUNT, type WorkItem } from "../../lib/workQueue";
 import type { ConfigUpdate } from "./TimelineView";
 import { ReferenceImage } from "./ReferenceImage";
@@ -43,16 +45,6 @@ import "../../styles/image-editor.css";
 
 const MIN_IMAGE_ZOOM = 0.1;
 const MAX_IMAGE_ZOOM = 8;
-
-function UsedImageSeed({ id, seed, onError }: { id: string; seed: number | undefined; onError: (message: string) => void }) {
-  return <PropRow label="Used seed" htmlFor={id}>
-    <input id={id} className="text-field" readOnly value={seed ?? "Not recorded"} />
-    <button type="button" className="icon-button" aria-label="Copy used seed" data-tooltip="Copy used seed" disabled={seed === undefined} onClick={async () => {
-      try { await navigator.clipboard.writeText(String(seed)); }
-      catch { onError("Could not copy the seed. Select and copy it from the field."); }
-    }}><Copy16 aria-hidden="true" /></button>
-  </PropRow>;
-}
 
 export function ImageEditor({ config, folderPath, onChange: changeConfig, onGenerate, onGenerateCharacterSheet, onGenerateExtend, onCancel, onOpenGenerator, onOpenReferences, workItems = [], openImage, onImageOpened, onBackNavigationChange }: {
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate) => void;
@@ -102,9 +94,10 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const inspectorPane = usePaneSize("image.inspector", 300, { min: 240, max: 520 });
   const clipboard = useSyncExternalStore(subscribeImageNodeClipboard, getImageNodeClipboard);
   const [templates, setTemplates] = useState(loadGeneratorTemplateSettings);
-  const [templateId, setTemplateId] = useState(() => selectedImageGeneratorTemplate().id);
+  const templateId = useSyncExternalStore(subscribeActiveGenerators, () => loadActiveGeneratorId("image"));
   const imageTemplates = templates.templates.filter(templateSupportsImages);
-  const template = imageTemplates.find((candidate) => candidate.id === templateId) ?? imageTemplates.find(templateUsable) ?? imageTemplates[0];
+  const template = imageTemplates.find((candidate) => candidate.id === templateId) ?? imageTemplates.find((candidate) => candidate.id === selectedImageGeneratorTemplate(templates).id) ?? imageTemplates[0];
+  const usedGenerator = imageTemplates.find((candidate) => candidate.id === generatedImage?.imageGeneration?.generatorTemplateId);
   const model = generatorModel(template?.modelType);
   const cfgDefault = template ? imageCfgScale(template.modelType, undefined, template.kreaVariant) ?? 0 : 0;
   const editPlan = useMemo(() => {
@@ -270,10 +263,6 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
     undo.current = []; redo.current = []; historyChanged((value) => value + 1);
     pointer.current = null; setDraftBox(null); setDraftLasso(null); setDrawKind(null); setRenaming(null);
     setCollapsed(new Set()); setSelection(snapshot?.scene.nodes.find((node) => node.kind === "root")?.id ?? "image-root");
-    if (snapshot && imageTemplates.some((candidate) => candidate.id === snapshot.generatorTemplateId)) {
-      setTemplateId(snapshot.generatorTemplateId);
-      localStorage.setItem("slopus.image-generator-template.v1", snapshot.generatorTemplateId);
-    }
   };
   const selectImage = (id: string) => {
     resetImageEditing(id);
@@ -660,7 +649,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
             disabled={Boolean(active) || !imageTemplates.length}
             placeholder="No image generators"
             options={generatorOptions(imageTemplates, (item) => ({ disabled: !templateUsable(item) || (imageRoot && !templateSupportsEditing(item)), description: imageRoot && !templateSupportsEditing(item) ? "Does not support editing" : !templateUsable(item) ? "Download in Settings" : undefined }))}
-            onChange={(id) => { setTemplateId(id); localStorage.setItem("slopus.image-generator-template.v1", id); const next = imageTemplates.find((candidate) => candidate.id === id); if (next) commit({ ...scene, steps: next.defaultSteps }); }}
+            onChange={(id) => { saveActiveGeneratorId("image", id); const next = imageTemplates.find((candidate) => candidate.id === id); if (next) commit({ ...scene, steps: next.defaultSteps }); }}
           />
       </div>
       <div className="image-tools__center">
@@ -859,7 +848,11 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
                 onCommit={(value) => commit({ ...scene, cfgScales: { ...scene.cfgScales, [template.modelType]: value } })} />
             </PropRow>}
             <PropRow label="Seed" htmlFor={rootField("seed")} tooltip="-1 picks a random seed"><input id={rootField("seed")} className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} value={scene.seed} onChange={(event) => { const value = Number(event.target.value); if (Number.isSafeInteger(value) && value >= -1) commit({ ...scene, seed: value }); }} /></PropRow>
-            {generatedImage && <UsedImageSeed id={rootField("used-seed")} seed={usedSeed} onError={setError} />}
+            {generatedImage && <>
+              <UsedSeed id={rootField("used-seed")} seed={usedSeed} onError={setError} />
+              <UsedGenerator id={rootField("used-generator")} name={usedGenerator?.name ?? generatedImage.imageGeneration?.template?.generatorName ?? generatedImage.imageGeneration?.generatorTemplateId}
+                onUse={usedGenerator && templateUsable(usedGenerator) ? () => saveActiveGeneratorId("image", usedGenerator.id) : undefined} />
+            </>}
             {!imageRoot && <PropRow label="Aspect ratio" htmlFor={rootField("ratio")}><ComboBox id={rootField("ratio")} aria-label="Aspect ratio" value={settings.aspectRatio} options={["16:9", "9:16", "1:1", "4:5"].map((ratio) => ({ value: ratio, label: ratio }))} onChange={(value) => { const aspectRatio = value as ProjectConfig["settings"]["aspectRatio"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), aspectRatio } })); }} /></PropRow>}
             {imageRoot ? editSize && <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={sizeValue(editSize)} options={editSizes.map((size) => ({ value: sizeValue(size), label: `${size.width} × ${size.height}` }))} onChange={(value) => { const size = editSizes.find((size) => sizeValue(size) === value); if (size) commit({ ...scene, outputSize: size }); }} /></PropRow> : <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={settings.resolution} options={[...new Set([...PROJECT_RESOLUTIONS, settings.resolution])].map((resolution) => { const size = outputDimensions(resolution, settings.aspectRatio); return { value: resolution, label: `${size.width} × ${size.height}` }; })} onChange={(value) => { const resolution = value as ProjectConfig["settings"]["resolution"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), resolution } })); }} /></PropRow>}
           </PropSection>

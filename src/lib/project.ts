@@ -646,6 +646,7 @@ export const sceneInputSchema = generationJobBaseSchema.omit({ id: true, status:
 export type SceneInput = z.infer<typeof sceneInputSchema>;
 export const sceneGenerationVersionSchema = z.object({
   id: idSchema, createdAt: isoDateSchema, scene: sceneInputSchema, media: projectAssetSchema,
+  generatorName: z.string().optional(),
   generationSnapshot: z.string().nullish(), latentRelativePath: projectRelativePathSchema.nullish(),
   originalLatentRelativePath: projectRelativePathSchema.nullish(),
   upscaleFactor: z.number().refine(value => [1.5, 2, 4].includes(value)).optional(),

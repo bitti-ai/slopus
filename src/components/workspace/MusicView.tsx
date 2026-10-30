@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { loadActiveGeneratorId, saveActiveGeneratorId, selectedGeneratorTemplate, subscribeActiveGenerators } from "../../lib/settings";
 import type { ProjectAsset, ProjectConfig } from "../../lib/project";
 import { isTauri, readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateSupportsMusic, templateUsable, generatorPathFields, type GeneratorTemplate } from "../../lib/settings";
@@ -49,8 +50,9 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
   const [selectedId, setSelectedId] = useState(config.musicSongs?.[0]?.id);
   useEffect(() => { if (openSong) { setFolderId(config.musicSongs?.find((song) => song.id === openSong.id)?.folderId ?? null); setSelectedId(openSong.id); onSongOpened?.(); } }, [openSong]);
   const selected = visibleSongs.find((song) => song.id === selectedId) ?? visibleSongs[0];
-  const [newGeneratorId, setNewGeneratorId] = useState(templates[0]?.id ?? "");
-  const template = templates.find((item) => item.id === (selected?.generatorId ?? newGeneratorId)) ?? templates[0];
+  const activeGeneratorId = useSyncExternalStore(subscribeActiveGenerators, () => loadActiveGeneratorId("music"));
+  const chosenTemplate = selectedGeneratorTemplate("music", loadGeneratorTemplateSettings(), activeGeneratorId);
+  const template = templates.find((item) => item.id === chosenTemplate.id) ?? templates[0];
   const [view, setView] = useState<"grid" | "list">(() => localStorage.getItem("slopus.music.view") === "list" ? "list" : "grid");
   const inspector = usePaneSize("music.inspector", 340, { min: 280, max: 560 });
   const menu = useContextMenu();
@@ -122,7 +124,7 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
   });
   const chooseGenerator = (id: string) => {
     const next = templates.find((item) => item.id === id);
-    setNewGeneratorId(id);
+    saveActiveGeneratorId("music", id);
     if (next && selected) edit({ generatorId: id, steps: Math.min(100, next.defaultSteps), settings: musicSettingsForModel(selected.settings, next.modelType) });
   };
   const generate = () => {

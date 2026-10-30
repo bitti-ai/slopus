@@ -328,7 +328,7 @@ mod history_tests {
         job.generator_template_id = Some("generator-original".into());
         job.generation_history = Some(SceneGenerationHistory {
             versions: vec![SceneGenerationVersion { id: "take-one".into(), created_at: job.created_at.clone(), scene: input.clone(),
-                media: config.assets.iter().find(|a| a.kind == "generated").unwrap().clone(), generation_snapshot: Some("saved-inputs".into()), latent_relative_path: Some("latents/one.safetensors".into()), original_latent_relative_path: None, upscale_factor: None }],
+                media: config.assets.iter().find(|a| a.kind == "generated").unwrap().clone(), generator_name: Some("Saved generator".into()), generation_snapshot: Some("saved-inputs".into()), latent_relative_path: Some("latents/one.safetensors".into()), original_latent_relative_path: None, upscale_factor: None }],
             primary_id: Some("take-one".into()), selected_id: None, draft: Some(input),
         });
         config

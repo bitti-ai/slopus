@@ -786,8 +786,36 @@ export function saveGeneratorTemplateSettings(settings: GeneratorTemplateSetting
   queueMicrotask(() => window.dispatchEvent(new Event(GENERATOR_TEMPLATES_EVENT)));
 }
 
-export function defaultGeneratorTemplate(settings = loadGeneratorTemplateSettings(), medium?: "video" | "image"): GeneratorTemplate {
-  const eligible = settings.templates.filter((template) => medium === "video" ? templateSupportsVideo(template) : medium === "image" ? templateSupportsImages(template) : true);
+export type GeneratorMedium = "video" | "image" | "music";
+const ACTIVE_GENERATOR_EVENT = "slopus:active-generator-changed";
+const activeGeneratorKey = (medium: GeneratorMedium) => `slopus.${medium}-generator-template.v1`;
+const activeGeneratorFallback: Partial<Record<GeneratorMedium, string>> = {};
+
+export function loadActiveGeneratorId(medium: GeneratorMedium): string {
+  if (activeGeneratorFallback[medium] !== undefined) return activeGeneratorFallback[medium]!;
+  try { return localStorage.getItem(activeGeneratorKey(medium)) ?? ""; } catch { return ""; }
+}
+
+export function saveActiveGeneratorId(medium: GeneratorMedium, id: string) {
+  try { localStorage.setItem(activeGeneratorKey(medium), id); delete activeGeneratorFallback[medium]; }
+  catch { activeGeneratorFallback[medium] = id; }
+  window.dispatchEvent(new Event(ACTIVE_GENERATOR_EVENT));
+}
+
+export function subscribeActiveGenerators(listener: () => void) {
+  const storage = (event: StorageEvent) => {
+    if (event.key === null || (["video", "image", "music"] as const).some((medium) => event.key === activeGeneratorKey(medium))) listener();
+  };
+  window.addEventListener(ACTIVE_GENERATOR_EVENT, listener);
+  window.addEventListener("storage", storage);
+  return () => { window.removeEventListener(ACTIVE_GENERATOR_EVENT, listener); window.removeEventListener("storage", storage); };
+}
+
+const supportsMedium = (template: GeneratorTemplate, medium?: GeneratorMedium) =>
+  medium === "video" ? templateSupportsVideo(template) : medium === "image" ? templateSupportsImages(template) : medium === "music" ? templateSupportsMusic(template) : true;
+
+export function defaultGeneratorTemplate(settings = loadGeneratorTemplateSettings(), medium?: GeneratorMedium): GeneratorTemplate {
+  const eligible = settings.templates.filter((template) => supportsMedium(template, medium));
   return eligible.find((template) => template.id === settings.defaultTemplateId && templateUsable(template))
     ?? eligible.find(templateUsable)
     ?? { id: "", name: "No downloaded generators", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(EMPTY_ENGINE_SETTINGS) };
@@ -795,9 +823,12 @@ export function defaultGeneratorTemplate(settings = loadGeneratorTemplateSetting
 
 /** Match the image page's remembered selection when initializing new images. */
 export function selectedImageGeneratorTemplate(settings = loadGeneratorTemplateSettings()): GeneratorTemplate {
-  const id = localStorage.getItem("slopus.image-generator-template.v1");
-  return settings.templates.find((template) => template.id === id && templateSupportsImages(template))
-    ?? defaultGeneratorTemplate(settings, "image");
+  return selectedGeneratorTemplate("image", settings);
+}
+
+export function selectedGeneratorTemplate(medium: GeneratorMedium, settings = loadGeneratorTemplateSettings(), id = loadActiveGeneratorId(medium)): GeneratorTemplate {
+  return settings.templates.find((template) => template.id === id && supportsMedium(template, medium))
+    ?? defaultGeneratorTemplate(settings, medium);
 }
 
 export function loadDefaultGenerationSteps(): number {

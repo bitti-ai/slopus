@@ -21,6 +21,7 @@ Changes since 0.3.2.
 
 - Improved video playback, thumbnails, Back navigation and dependent-generation queues. Non-primary takes can be removed during generation.
 - Image edits preserve their sources and settings; Krea no longer inherits unsupported LoRAs. Generator lists and inspector controls are more compact and consistently ordered.
+- Video, image and music remember separate active generators. Saved takes show the used seed and generator, with a button to select that generator again.
 - Corrected First/Last Frame prompts, added custom speech languages, cached VAE checks across restarts and fixed AppImage launcher permissions.
 
 Update LAN workers alongside the app.

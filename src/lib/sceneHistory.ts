@@ -29,6 +29,13 @@ export function sceneHistory(job: GenerationJob, assets: readonly ProjectAsset[]
   return { versions: [version], primaryId: version.id, selectedId: version.id, draft: null };
 }
 
+export function sceneUsedSeed(version: SceneGenerationVersion): number | undefined {
+  let seed: unknown;
+  try { seed = JSON.parse(version.generationSnapshot ?? "null")?.seed; } catch { /* Legacy result. */ }
+  seed ??= version.scene.seed;
+  return typeof seed === "number" && Number.isSafeInteger(seed) && seed >= 0 ? seed : undefined;
+}
+
 /** Also called by sessions, so agent edits and edits during rendering create a
  * draft just like inspector changes. Merely browsing a take is not an edit. */
 export function saveSceneDrafts(config: ProjectConfig, previous?: ProjectConfig): ProjectConfig {

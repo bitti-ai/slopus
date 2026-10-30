@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { localGeneratorTemplate as createGeneratorTemplate } from "./h3TestUtils";
+import { saveActiveGeneratorId, loadActiveGeneratorId, selectedGeneratorTemplate } from "./settings";
 import { beforeEach, describe, expect, it } from "vitest";
 import { TURBO_LORA, VIGGLE_ANIMATE_LORA, loadLoras, saveLoras } from "./loras";
 import {
@@ -36,6 +37,22 @@ function generatorOwned(value: any): any {
 
 describe("generator templates", () => {
   beforeEach(() => localStorage.clear());
+
+  it("remembers independent active generators and falls back only when the selected template is removed", () => {
+    const video = createGeneratorTemplate("Video"), image = createGeneratorTemplate("Image"), music = musicTemplates()[0];
+    const settings = { templates: [video, image, music], defaultTemplateId: video.id };
+    saveActiveGeneratorId("video", video.id);
+    saveActiveGeneratorId("image", image.id);
+    saveActiveGeneratorId("music", music.id);
+    for (const [medium, template] of [["video", video], ["image", image], ["music", music]] as const) {
+      expect(loadActiveGeneratorId(medium)).toBe(template.id);
+      expect(selectedGeneratorTemplate(medium, settings).id).toBe(template.id);
+    }
+    saveActiveGeneratorId("video", image.id);
+    expect(selectedGeneratorTemplate("music", settings).id).toBe(music.id);
+    expect(selectedImageGeneratorTemplate(settings).id).toBe(image.id);
+    expect(selectedImageGeneratorTemplate({ ...settings, templates: [video, music] }).id).toBe(video.id);
+  });
 
   it("adds Krea Turbo and Raw once with three weights, preserving custom templates and removal", () => {
     const [turbo, raw] = kreaImageTemplates();

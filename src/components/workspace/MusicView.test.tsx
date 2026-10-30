@@ -298,6 +298,13 @@ it("copies generated music to a draft when changing its generator", () => {
   expect(latest.musicSongs).toHaveLength(2);
   expect(latest.musicSongs![0]).toEqual(original);
   expect(latest.musicSongs![1]).toMatchObject({ generatorId: "other-music", steps: 16, status: "draft", assetId: null });
+  fireEvent.click(screen.getByRole("button", { name: "Select Evening" }));
+  expect(screen.getByRole("combobox", { name: "Generator" })).toHaveAttribute("data-value", "other-music");
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  expect(generate).toHaveBeenCalledWith(original.id, expect.objectContaining({ id: "other-music" }));
+  const saved = latest;
+  cleanup(); render(<Harness initial={saved} />);
+  expect(screen.getByRole("combobox", { name: "Generator" })).toHaveAttribute("data-value", "other-music");
 });
 
 it.each(["Grid", "List"])("distinguishes playable songs from drafts and missing audio in %s view", (view) => {

@@ -71,6 +71,27 @@ const finish = async (queue: WorkQueue, id: string) => {
   await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === id)?.status).toBe("completed"));
 };
 
+it("records the actual random video seed and generator name without changing the scene's random setting", async () => {
+  const { queue, first } = setup();
+  const run = submission(first);
+  run.job = { ...run.job, seed: -1 };
+  run.request.seed = -1;
+  const template = loadGeneratorTemplateSettings().templates[0];
+  queue.enqueue(first, [run], template);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+  expect(Number.isSafeInteger(request.seed)).toBe(true);
+  expect(request.seed).toBeGreaterThanOrEqual(0);
+  expect(vi.mocked(resolveSlopfabPlan).mock.calls[0][0].seed).toBe(request.seed);
+  await finish(queue, request.jobId);
+  const job = parseProjectConfig(first.getSnapshot().config).generationJobs[0];
+  const take = job.generationHistory!.versions[0];
+  expect(job.seed).toBe(-1);
+  expect(take.scene).toMatchObject({ seed: -1, generatorTemplateId: template.id });
+  expect(JSON.parse(take.generationSnapshot!).seed).toBe(request.seed);
+  expect(take.generatorName).toBe(template.name);
+});
+
 const coverTemplate = () => {
   const template = kreaImageTemplates()[0];
   return { ...template, sources: {}, paths: { ...template.paths, transformer: "C:/weights/krea.safetensors", textEncoder: "C:/weights/text.safetensors", videoVae: "C:/weights/vae.safetensors" } };
@@ -146,7 +167,7 @@ it("captures global order and scene overrides before queued generation and keeps
   const options = captured.providerSettings.slopfab.options;
   expect(options.motionCache).toBeUndefined();
   expect(JSON.parse(options.loras as string)).toEqual([{ path: "D:/dmad", strength: 1 }, { path: "D:/style", strength: 0.6 }]);
-  expect(first.getSnapshot().config.generationJobs[0].generationSnapshot).toBe(snapshot);
+  expect(JSON.parse(first.getSnapshot().config.generationJobs[0].generationSnapshot!)).toEqual({ ...JSON.parse(snapshot), seed: sent.seed });
   await finish(queue, id);
   expect(first.getSnapshot().config.generationJobs[0].generationHistory?.versions[0].scene.loraOverrides).toEqual(job.loraOverrides);
 });

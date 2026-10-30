@@ -73,6 +73,7 @@ export interface WorkItem {
   settings: { frames: number; steps: number; audioSteps?: number; videoSigmaShift?: number; audioSigmaShift?: number; latentUpscale?: boolean; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
+  generatorName?: string;
   albumCoverSongId?: string;
   upscaleSource?: import("./project").SceneGenerationVersion;
   music?: MusicSong;
@@ -255,11 +256,11 @@ export class WorkQueue {
       ids.push(id);
       let finish!: () => void;
       const done = new Promise<void>((resolve) => { finish = resolve; });
-      const request = structuredClone({ ...submission.request, jobId: id, loraSnapshot: loraSnapshot(effectiveLoras(chosen.loras, submission.job.loraOverrides ?? [], chosen.modelType)), ...(!submission.upscaleSource ? { steps: generationStepsWithLoras(submission.request.steps, config),
+      const request = structuredClone({ ...submission.request, jobId: id, seed: submission.upscaleSource ? submission.request.seed : imageGenerationSeed(submission.request.seed), loraSnapshot: loraSnapshot(effectiveLoras(chosen.loras, submission.job.loraOverrides ?? [], chosen.modelType)), ...(!submission.upscaleSource ? { steps: generationStepsWithLoras(submission.request.steps, config),
         ...generationSigmaShiftsWithLoras(submission.request, config) } : {}) });
-      const snapshot = !submission.upscaleSource && (request.loraSnapshot.length || submission.request.loraSnapshot?.length)
+      const snapshot = !submission.upscaleSource && (request.seed !== submission.request.seed || request.loraSnapshot.length || submission.request.loraSnapshot?.length)
         ? sceneGenerationSnapshot(captured, request) : submission.snapshot;
-      this.work.set(id, { id, session, sceneId: submission.job.id, sceneInput: structuredClone(submission.upscaleSource?.scene ?? sceneInput(captured)), upscaleSource: submission.upscaleSource && structuredClone(submission.upscaleSource), request, config, snapshot, cancelled: false, submitted: false, done, finish });
+      this.work.set(id, { id, generatorName: submission.upscaleSource ? submission.upscaleSource.generatorName : chosen.name, session, sceneId: submission.job.id, sceneInput: structuredClone(submission.upscaleSource?.scene ?? sceneInput(captured)), upscaleSource: submission.upscaleSource && structuredClone(submission.upscaleSource), request, config, snapshot, cancelled: false, submitted: false, done, finish });
       this.items = [...this.items, {
         id, generationGroupId: id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
         sceneId: submission.job.id, title: submission.job.title, submittedAt: new Date().toISOString(),
@@ -894,6 +895,7 @@ export class WorkQueue {
         } : undefined);
       const media = { kind: "generated" as const, relativePath: saved.relativePath, sourcePath: null, mimeType: "video/mp4", hasAudio: saved.hasAudio ?? null, width: saved.width ?? work.request.canvasWidth, height: saved.height ?? work.request.canvasHeight, durationMs: saved.durationMs ?? Math.round(totalFrames / GENERATION_FRAME_RATE * 1000), sceneSegments };
       const version = { id: work.id, createdAt: new Date().toISOString(), scene: work.sceneInput!,
+        generatorName: work.generatorName,
         media: { ...media, id: assetId, name: work.sceneInput!.title, createdAt: new Date().toISOString() },
         generationSnapshot: work.snapshot, latentRelativePath: generationLatentPath(work.id),
         ...(work.upscaleSource ? { originalLatentRelativePath: work.upscaleSource.originalLatentRelativePath ?? work.upscaleSource.latentRelativePath,
