@@ -26,7 +26,7 @@ Slopus combines an AI assistant, local image, video and music generation, reusab
 
 - **Agent.** Plan scenes, generate media, inspect frames and song inputs, and match Motions to music with Claude Code, Codex, OpenRouter or a local OpenAI-compatible model. Toggle the pane with Ctrl+Shift+A.
 - **Video.** Organize Videos → Scenes → Shots in folders, share prompts and timed references, and generate with [multiple scene types](docs/scene-types.md). Keep four takes plus a Draft, upscale saved Takes 1.5x/2x/4x from Generate's dropdown, and choose the timeline take with **Make Primary**.
-- **Images.** Generate with MiniMax H3, MOSS Image or Fibo 2.0. Use whole-image, box, lasso and Zoom edits where supported, with drafts and versions in the image bar.
+- **Images.** Generate with MiniMax H3, MOSS Image, Krea 2 or Fibo 2.0. Use whole-image, box, lasso and Zoom edits where supported, with drafts and versions in the image bar.
 - **Music.** Generate with YuE2 or MiniMax Music3, edit lyrics and style, organize songs in folders, browse grid/list views, and play songs in sequence or reuse them as references and timeline audio.
 - **References.** Reuse descriptions, images, trimmed video clips and [H3 RefMods](docs/refmods.md) across scenes.
 - **Generators.** Manage model weights, supported LoRAs, attention and generation effects. Share [generator templates](docs/generator-weights.md#sharing-generator-templates) as `.slop` bundles or run jobs on LAN workers.

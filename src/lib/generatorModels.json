@@ -120,5 +120,31 @@
     "negativePrompt": false,
     "negativePromptDisabledReason": null,
     "musicGeneration": true
+  },
+  "krea2": {
+    "label": "Krea 2",
+    "description": "Text-to-image generation on CUDA or Vulkan",
+    "imageGeneration": true,
+    "videoGeneration": false,
+    "imageEditing": false,
+    "imageReferences": false,
+    "loras": false,
+    "motionCache": false,
+    "generationEffects": false,
+    "cfg": {
+      "default": 0
+    },
+    "imageOutpainting": false,
+    "characterSheets": false,
+    "requiresImageInput": false,
+    "editImageReferences": false,
+    "maxImageReferences": 0,
+    "refmods": false,
+    "sigmaShifts": true,
+    "cudaOnly": false,
+    "imageCompositionCreation": true,
+    "negativePrompt": true,
+    "negativePromptDisabledReason": null,
+    "musicGeneration": false
   }
 }

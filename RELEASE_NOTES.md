@@ -4,6 +4,8 @@ Changes since 0.3.2.
 
 ## What's new
 
+- **Krea 2 images.** Added Turbo and Raw generators with CFG, negative prompts and image sigma shift controls. Turbo defaults to 8 steps; Raw uses 52 steps, CFG 3.5 and a resolution-dependent shift. Both generate new images without editing or image references, on updated CUDA and Vulkan runtimes.
+
 - **MiniMax Music3 precision.** Added FP16 transformer downloads for GPUs with at least 5 GB VRAM and FP32 for at least 10 GB, alongside the 3 GB INT8 variant.
 
 - **Download memory warnings.** MiniMax generators and shared weights now have minimum VRAM limits. Downloads warn when no variant of a needed weight fits the detected GPU, with Cancel and Download anyway options. Existing downloads and custom limits are preserved.

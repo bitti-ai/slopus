@@ -661,12 +661,12 @@ impl Api {
     }
     #[cfg(test)]
     pub fn disable_image_guidance_for_test(&mut self) { self.set_image_guidance = None; }
-    pub fn set_image_guidance(&self, r: *mut Request, scale: f32, negative_prompt: &str) -> Result<(), String> {
+    pub fn set_image_guidance(&self, r: *mut Request, scale: f32, negative_prompt: &str, skip_layers: &[i32]) -> Result<(), String> {
         let set = self.set_image_guidance.ok_or("Configurable CFG requires SlopFab API 1.30 or newer. Update the runtime on the machine running generation.")?;
-        // Preserve MOSS's default negative-branch skip layer.
+        // MOSS uses layer 22; Krea requires no unconditional layer skipping.
         let negative = CString::new(negative_prompt).map_err(|_| "Negative prompt cannot contain null characters.")?;
-        let skip_layers = [22_i32];
-        self.error(unsafe { set(r, scale, negative.as_ptr(), skip_layers.as_ptr(), 1) })
+        let layers = if skip_layers.is_empty() { std::ptr::null() } else { skip_layers.as_ptr() };
+        self.error(unsafe { set(r, scale, negative.as_ptr(), layers, skip_layers.len() as i32) })
     }
     pub fn set_music_settings(&self, r: *mut Request, settings: &str) -> Result<(), String> {
         let set = self.set_music_settings.ok_or("Music requires SlopFab API 1.38 or newer. Update the app and workers.")?;
@@ -674,7 +674,7 @@ impl Api {
         self.error(unsafe { set(r, json.as_ptr()) })
     }
     pub fn set_vulkan_portable(&self, r: *mut Request) -> Result<(), String> {
-        let set = self.set_vulkan_arithmetic.ok_or("Music requires SlopFab API 1.38 or newer.")?;
+        let set = self.set_vulkan_arithmetic.ok_or("Portable Vulkan requires SlopFab API 1.38 or newer.")?;
         self.error(unsafe { set(r, 1) })
     }
     pub fn set_model_family(&self, r: *mut Request, family: &str) -> Result<(), String> {

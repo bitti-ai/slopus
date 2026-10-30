@@ -31,6 +31,51 @@ fn music_plans_on_cuda_and_vulkan_without_video_controls() {
 }
 
 #[test]
+fn krea_plans_turbo_and_raw_on_cuda_and_vulkan() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
+    let api = ffi::Api::load(&path).unwrap();
+    for raw in [false, true] {
+        let mut configuration = Configuration::from_settings(&BTreeMap::new());
+        configuration.model_type = "krea2".into();
+        configuration.krea_raw = raw;
+        configuration.attention = "flash2";
+        let mut request = GenerationRequest { still_image: true, frames: 1, steps: if raw { 52 } else { 8 },
+            prompt: "A red apple".into(), negative_prompt: Some("watermark".into()),
+            canvas_width: 1024, canvas_height: 1024, ..Default::default() };
+        for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+            for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+                let handle = RequestHandle::new(&api).unwrap();
+                configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+                let plan = api.resolve(&handle).unwrap();
+                assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames), (1024, 1024, 1));
+                let description = api.describe(&handle).unwrap();
+                assert!(description.contains("Krea 2"));
+                assert!(description.contains(if raw { "52 Euler updates (shift 2.48)" } else { "8 Euler updates (shift 3.16)" }), "{description}");
+                assert!(description.contains(if raw { "guidance    3.5" } else { "guidance    0" }), "{description}");
+            }
+        }
+        request.video_sigma_shift = Some(4.0);
+        request.guidance_scale = Some(2.5);
+        let handle = RequestHandle::new(&api).unwrap();
+        configure_request(&api, &handle, &request, &configuration, ComputePlatform::Vulkan, RequestPurpose::Plan, &ReferenceVideos::default()).unwrap();
+        assert!(api.describe(&handle).unwrap().contains("shift 4"));
+        request.guidance_scale = None;
+        request.negative_prompt = None;
+        request.still_image = false;
+        assert!(configuration.validate_inputs(&request).unwrap_err().contains("video generation"));
+        request.still_image = true;
+        request.image_edit = Some(serde_json::from_value(serde_json::json!({"sourceRelativePath":"media/apple.png", "edits":[]})).unwrap());
+        assert!(configuration.validate_inputs(&request).unwrap_err().contains("image editing"));
+        request.image_edit = None;
+        request.reference_paths.push("apple.png".into());
+        assert!(configuration.validate_inputs(&request).unwrap_err().contains("image references"));
+        request.reference_paths.clear();
+        request.audio_steps = Some(4);
+        assert!(configuration.validate_inputs(&request).unwrap_err().contains("without audio"));
+    }
+}
+
+#[test]
 fn moss_capabilities_reject_video_edits_and_references() {
     let mut configuration = Configuration::from_settings(&BTreeMap::new());
     configuration.model_type = "moss".into();

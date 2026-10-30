@@ -45,6 +45,7 @@ pub struct GeneratorPatch {
     pub name: Option<String>,
     pub model_type: Option<String>,
     pub editing_model: Option<bool>,
+    pub krea_variant: Option<String>,
     pub default_steps: Option<u32>,
     pub attention: Option<String>,
     pub mode: Option<String>,
@@ -262,23 +263,31 @@ pub(crate) fn prepare(
             return Err("A new generator needs a name.".into());
         }
         if let Some(model) = &patch.model_type {
-            if !["minimax-h3", "moss", "fibo2"].contains(&model.as_str()) {
+            if !["minimax-h3", "moss", "fibo2", "krea2"].contains(&model.as_str()) {
                 return Err("Unsupported generator model family.".into());
             }
             if model != "minimax-h3" && (add || template["modelType"] != model.as_str()) {
-                template["defaultSteps"] = json!(if model == "fibo2" { 4 } else { 50 });
+                template["defaultSteps"] = json!(if model == "fibo2" { 4 } else if model == "krea2" { 8 } else { 50 });
                 template["attention"] = json!("flash2");
                 template["mode"] = json!("prompt");
                 template["motionCache"] = json!(false);
                 template["loras"] = json!([]);
             }
             if add || template["modelType"] != model.as_str() {
-                template["editingModel"] = json!(model != "moss");
+                template["editingModel"] = json!(slopus_core::models::generator_features(model).image_editing);
+                template.as_object_mut().unwrap().remove("kreaVariant");
             }
             template["modelType"] = json!(model);
         }
         if let Some(editing) = patch.editing_model {
             template["editingModel"] = json!(editing);
+        }
+        if let Some(variant) = &patch.krea_variant {
+            if template["modelType"] != "krea2" || !["turbo", "raw"].contains(&variant.as_str()) {
+                return Err("kreaVariant must be turbo or raw for a Krea 2 generator.".into());
+            }
+            template["kreaVariant"] = json!(variant);
+            template["defaultSteps"] = json!(if variant == "raw" { 52 } else { 8 });
         }
         if let Some(steps) = patch.default_steps {
             if !(2..=i32::MAX as u32).contains(&steps) {

@@ -163,7 +163,7 @@ it("seeds all agreed minimums and upgrades old defaults once without losing cust
   localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ ...settings, catalogVersion: 17 }));
   const migrated = loadGeneratorTemplateSettings();
   const updated = migrated.templates.find(({ id }) => id === original.id)!;
-  expect(migrated.catalogVersion).toBe(19);
+  expect(migrated.catalogVersion).toBe(20);
   expect(updated.paths.transformer).toBe(original.paths.transformer);
   expect(updated.sources!.transformer!.map(({ minVramGb }) => minVramGb)).toEqual([21, 10, 0]);
   expect(updated.sources!.transformer![0].downloadedPath).toBe(original.paths.transformer);

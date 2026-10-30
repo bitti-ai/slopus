@@ -81,6 +81,30 @@ fn malformed_headers_are_reported_without_loading_payloads() {
 }
 
 #[test]
+fn krea_generator_recipes_are_generation_only_and_keep_explicit_steps() {
+    for (variant, default_steps) in [("turbo", 8), ("raw", 52)] {
+        let add = command(json!({"op":"generator.add","id":"krea","settings":{
+            "name":"Krea", "modelType":"krea2", "kreaVariant":variant
+        }}));
+        let context = prepare(&GeneratorContext::default(), &[add]).unwrap();
+        let template = &context.settings["templates"][0];
+        assert_eq!(template["defaultSteps"], default_steps);
+        assert_eq!(template["attention"], "flash2");
+        assert_eq!(template["editingModel"], false);
+        assert_eq!(template["kreaVariant"], variant);
+        let edit = command(json!({"op":"generator.set","id":"krea","settings":{
+            "kreaVariant":"raw", "defaultSteps":60
+        }}));
+        let changed = prepare(&context, &[edit]).unwrap();
+        assert_eq!(changed.settings["templates"][0]["defaultSteps"], 60);
+    }
+    let invalid = command(json!({"op":"generator.add","id":"bad","settings":{
+        "name":"Bad", "modelType":"moss", "kreaVariant":"raw"
+    }}));
+    assert!(prepare(&GeneratorContext::default(), &[invalid]).is_err());
+}
+
+#[test]
 fn command_batches_preserve_other_settings_and_are_atomic() {
     let add = command(
         json!({"op":"generator.add","id":"custom","settings":{"name":"Custom","attention":"sol","paths":{"transformer":"https://example.com/model.safetensors"}}}),

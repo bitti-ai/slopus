@@ -355,7 +355,7 @@ export class WorkQueue {
     const { width, height } = edit ? imageEditOutputSize(scene) : outputDimensions(imageSettings(current).resolution, imageSettings(current).aspectRatio);
     const id = `image-${crypto.randomUUID()}`;
     const negativePrompt = generatorModel(template.modelType).negativePrompt ? scene.negativePrompts?.[template.modelType] : undefined;
-    const guidanceScale = imageCfgScale(template.modelType, scene.cfgScales);
+    const guidanceScale = imageCfgScale(template.modelType, scene.cfgScales, template.kreaVariant);
     // Publish and select the job's own entry before generation starts. The
     // finished source stays untouched, and an existing empty draft is reused.
     session.update((config) => saveImageDraft({ ...config, imageScene: {

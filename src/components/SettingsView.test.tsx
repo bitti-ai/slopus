@@ -91,7 +91,7 @@ describe("the settings screen", () => {
     saveLoras([{ id: "future-adapter", name: "MOSS adapter", modelType: "moss", path: "D:/moss-adapter.safetensors" }]);
     open(null);
     const models = screen.getByRole("list", { name: "Generator models" });
-    expect(within(models).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["MiniMax H3", "MOSS", "Fibo 2.0", "YuE2", "MiniMax Music3", "Other"]);
+    expect(within(models).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["MiniMax H3", "MOSS", "Fibo 2.0", "YuE2", "MiniMax Music3", "Krea 2", "Other"]);
     expect(screen.queryByRole("button", { name: "Edit Default generator" })).toBeNull();
     fireEvent.click(within(models).getByRole("button", { name: "MiniMax H3" }));
     expect(screen.getByRole("button", { name: "Edit Default generator" })).toBeTruthy();
@@ -187,6 +187,20 @@ describe("the settings screen", () => {
     fireEvent.click(screen.getByRole("option", { name: /^MiniMax H3/ }));
     expect(screen.getByRole("combobox", { name: "Generator mode" })).toBeTruthy();
     expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "moss-image")?.modelType).toBe("minimax-h3");
+  });
+  it("offers Krea image-only templates and their sampling recipes", () => {
+    open("Krea 2");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Krea 2 Raw generator" }));
+    expect(combo("Generator model").getAttribute("data-value")).toBe("krea2");
+    expect(combo("Krea sampling defaults").getAttribute("data-value")).toBe("raw");
+    expect((screen.getByRole("spinbutton", { name: "Generator default steps" }) as HTMLInputElement).value).toBe("52");
+    expect((screen.getByRole("switch", { name: "Editing model" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("combobox", { name: "Generator mode" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "More options for Audio VAE weights" })).toBeNull();
+    expect(screen.getByRole("spinbutton", { name: "Generator image sigma shift" }).getAttribute("placeholder")).toBe("Auto");
+    fireEvent.click(combo("Krea sampling defaults"));
+    fireEvent.click(screen.getByRole("option", { name: "Turbo" }));
+    expect((screen.getByRole("spinbutton", { name: "Generator default steps" }) as HTMLInputElement).value).toBe("8");
   });
   it("remembers MotionCache per generator and disables it in Animate mode", () => {
     const view = open();

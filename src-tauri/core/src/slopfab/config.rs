@@ -26,6 +26,7 @@ pub(super) struct SigmaShifts {
 #[derive(Clone)]
 pub(super) struct Configuration {
     pub(super) model_type: String,
+    pub(super) krea_raw: bool,
     pub(super) editing_model: bool,
     pub(super) dll_path: PathBuf,
     pub(super) vulkan: bool,
@@ -69,6 +70,7 @@ impl Configuration {
         Self {
             editing_model: !matches!(slopfab.and_then(|setting| setting.options.get("editingModel")), Some(ProviderOption::Boolean(false))),
             model_type: string_option("modelType").unwrap_or("minimax-h3").to_owned(),
+            krea_raw: string_option("kreaVariant") == Some("raw"),
             sigma_shifts: (|| Ok(SigmaShifts { video: shift("videoSigmaShift")?, audio: shift("audioSigmaShift")?,
                 video_override: shift("videoSigmaShiftOverride")?, audio_override: shift("audioSigmaShiftOverride")? }))(),
             // `dllPath` is no longer written by the app and has no settings UI.
@@ -202,6 +204,18 @@ impl Configuration {
         if self.model_type == "moss" && (self.animate || request.latent_upscale || request.latent_bridge.is_some()
             || request.continuation_path.is_some() || request.continuation_relative_path.is_some()) {
             return Err("MOSS supports text-to-image generation only.".into());
+        }
+        if self.model_type == "krea2" {
+            let shifts = self.sigma_shifts.as_ref().map_err(Clone::clone)?;
+            if self.animate || request.latent_upscale || request.latent_bridge.is_some()
+                || request.continuation_path.is_some() || request.continuation_relative_path.is_some()
+                || request.save_latents_path.is_some() || request.keystone_path.is_some()
+                || request.video_transition.is_some() || !request.reference_video_ids.is_empty()
+                || !request.reference_audio_ids.is_empty() || request.audio_steps.is_some()
+                || shifts.audio.is_some() || shifts.audio_override.is_some() || request.audio_sigma_shift.is_some()
+                || self.sampling_preset.as_ref().map_err(Clone::clone)?.is_some() || self.attention != "flash2" {
+                return Err("Krea 2 requires Flash attention and text-to-image generation without audio or H3 conditioning.".into());
+            }
         }
         if let Some(mode) = request.video_transition.as_deref() {
             let expected = match mode {

@@ -1,4 +1,4 @@
-import { FIBO_MODEL_TYPE, MOSS_MODEL_TYPE, generatorModel } from "./settings";
+import { FIBO_MODEL_TYPE, MOSS_MODEL_TYPE, KREA_MODEL_TYPE, generatorModel } from "./settings";
 import { imageSettings } from "./imageSettings";
 import { createImageScene, imageScenePromptParts, imageScenePromptText } from "./imageScene";
 import { actionReferenceIds, activeReferenceRefmods, isVideoReference, referenceDefinition, referenceImages, splitActionText, type ProjectConfig } from "./project";
@@ -37,7 +37,7 @@ export function compileImagePrompt(config: ProjectConfig, options: { modelType?:
     }));
     return { prompt: splitActionText(authored).map((part) => part.kind === "text" ? part.value : descriptions.get(part.value)!).join(""), references };
   }
-  if (options.modelType === MOSS_MODEL_TYPE) {
+  if (options.modelType === MOSS_MODEL_TYPE || options.modelType === KREA_MODEL_TYPE) {
     const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")?.options.find((option) => option.id === imageSettings(config).defaultLook)?.label;
     const parts = imageScenePromptParts(scene, look);
     const prompt = parts ? [parts.style, parts.composition].filter(Boolean).join("\n") : "";

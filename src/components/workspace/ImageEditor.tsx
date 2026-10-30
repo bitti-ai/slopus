@@ -1,3 +1,4 @@
+import { imageCfgScale } from "../../lib/generatorModels";
 import { activeGenerationEffects } from "../../lib/generationEffects";
 import { GenerationEffects } from "./GenerationEffects";
 import { generatorOptions } from "../generatorOptions";
@@ -105,6 +106,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const imageTemplates = templates.templates.filter(templateSupportsImages);
   const template = imageTemplates.find((candidate) => candidate.id === templateId) ?? imageTemplates.find(templateUsable) ?? imageTemplates[0];
   const model = generatorModel(template?.modelType);
+  const cfgDefault = template ? imageCfgScale(template.modelType, undefined, template.kreaVariant) ?? 0 : 0;
   const editPlan = useMemo(() => {
     if (!imageRoot) return null;
     try { return { ...compileImageEdits(config, { modelType: template?.modelType }), error: null }; }
@@ -824,7 +826,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
         {selected.kind === "text" && <PropRow label="Text to render" htmlFor={rootField("text")}><input id={rootField("text")} className="text-field" value={selected.text} onChange={(event) => patchNode({ text: event.target.value })} /></PropRow>}
         {selected.kind === "root" && <>
           {(model.negativePrompt || model.negativePromptDisabledReason) && <div className="image-inspector__area">
-            <label htmlFor={rootField("negative-prompt")} tabIndex={0} data-tooltip={model.negativePromptDisabledReason ?? "Describe what to avoid. MOSS uses this with CFG; CFG 1 uses only the positive prompt."}>Negative prompt</label>
+            <label htmlFor={rootField("negative-prompt")} tabIndex={0} data-tooltip={model.negativePromptDisabledReason ?? (template?.modelType === "krea2" ? "Describe what to avoid. Krea uses this when CFG is greater than 0." : "Describe what to avoid. MOSS uses this with CFG; CFG 1 uses only the positive prompt.")}>Negative prompt</label>
             <textarea id={rootField("negative-prompt")} className="text-field" rows={3} disabled={!model.negativePrompt}
               placeholder={model.negativePromptDisabledReason ? "Not supported by Fibo 2.0 Turbo" : undefined}
               value={scene.negativePrompts?.[template?.modelType ?? ""] ?? ""}
@@ -832,8 +834,8 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           </div>}
           <PropSection title="Image generation" persistKey="image.generation" summary={`${generationStepsForTemplate(scene.steps, template)} steps`}>
             <PropRow label="Steps" htmlFor={rootField("steps")}><SliderNumberInput id={rootField("steps")} aria-label="Steps" {...GENERATION_STEPS_RANGE} disabled={active} value={scene.steps} onCommit={(steps) => commit({ ...scene, steps })} /></PropRow>
-            {model.cfg && template && <PropRow label="CFG" htmlFor={rootField("cfg")} tooltip="Classifier-free guidance. 1 uses only the positive prompt; higher values strengthen guidance." value={scene.cfgScales?.[template.modelType] ?? model.cfg.default} defaultValue={model.cfg.default} onReset={active ? undefined : () => commit({ ...scene, cfgScales: { ...scene.cfgScales, [template.modelType]: model.cfg!.default } })}>
-              <SliderNumberInput id={rootField("cfg")} aria-label="CFG" {...CFG_RANGE} disabled={active} value={scene.cfgScales?.[template.modelType] ?? model.cfg.default}
+            {model.cfg && template && <PropRow label="CFG" htmlFor={rootField("cfg")} tooltip={template.modelType === "krea2" ? "Classifier-free guidance. 0 uses only the positive prompt; higher values strengthen guidance." : "Classifier-free guidance. 1 uses only the positive prompt; higher values strengthen guidance."} value={scene.cfgScales?.[template.modelType] ?? cfgDefault} defaultValue={cfgDefault} onReset={active ? undefined : () => commit({ ...scene, cfgScales: { ...scene.cfgScales, [template.modelType]: cfgDefault } })}>
+              <SliderNumberInput id={rootField("cfg")} aria-label="CFG" {...CFG_RANGE} disabled={active} value={scene.cfgScales?.[template.modelType] ?? cfgDefault}
                 onCommit={(value) => commit({ ...scene, cfgScales: { ...scene.cfgScales, [template.modelType]: value } })} />
             </PropRow>}
             <PropRow label="Seed" htmlFor={rootField("seed")} tooltip="-1 picks a random seed"><input id={rootField("seed")} className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} value={scene.seed} onChange={(event) => { const value = Number(event.target.value); if (Number.isSafeInteger(value) && value >= -1) commit({ ...scene, seed: value }); }} /></PropRow>

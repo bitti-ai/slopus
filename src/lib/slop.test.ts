@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { importGeneratorSlop, MAX_SLOP_BYTES, mergeGeneratorSlop, parseGeneratorSlop, portableGenerator, serializeGeneratorSlop } from "./slop";
-import { createGeneratorTemplate, mossImageTemplate, fiboBaseTemplate, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, viggleAnimateTemplate } from "./settings";
+import { createGeneratorTemplate, kreaImageTemplates, mossImageTemplate, fiboBaseTemplate, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, viggleAnimateTemplate } from "./settings";
 import { loadLoras, saveLoras, TURBO_LORA } from "./loras";
 
 beforeEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
 
 describe("portable generator bundles", () => {
+  it.each(kreaImageTemplates())("round trips $name with its recipe and VRAM limits", (template) => {
+    const data = parseGeneratorSlop(serializeGeneratorSlop([template])).items[0].data;
+    expect(data).toMatchObject({ modelType: "krea2", editingModel: false, kreaVariant: template.kreaVariant, defaultSteps: template.defaultSteps, sources: template.sources });
+    expect(Object.keys(data.sources).sort()).toEqual(["textEncoder", "transformer", "videoVae"]);
+  });
   it("round trips MOSS with its three weights and required tokenizer, without audio", () => {
     const data = parseGeneratorSlop(serializeGeneratorSlop([mossImageTemplate()])).items[0].data;
     expect(data.modelType).toBe("moss");

@@ -260,7 +260,11 @@ impl Api {
     }
     pub fn set_image_guidance(&self, r: &RequestHandle, scale: f32, negative_prompt: &str) -> Result<(), String> {
         self.check(r)?;
-        self.inner.set_image_guidance(r.pointer.as_ptr(), scale, negative_prompt)
+        self.inner.set_image_guidance(r.pointer.as_ptr(), scale, negative_prompt, &[22])
+    }
+    pub fn set_krea_guidance(&self, r: &RequestHandle, scale: f32, negative_prompt: &str) -> Result<(), String> {
+        self.check(r)?;
+        self.inner.set_image_guidance(r.pointer.as_ptr(), scale, negative_prompt, &[])
     }
     pub fn set_music_settings(&self, r: &RequestHandle, settings: &str) -> Result<(), String> {
         self.check(r)?; self.inner.set_music_settings(r.pointer.as_ptr(), settings)

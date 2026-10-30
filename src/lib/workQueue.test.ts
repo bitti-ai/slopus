@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { installH3TestDependencies } from "./h3TestUtils";
-import { mossImageTemplate, fiboImageTemplate, fiboBaseTemplate } from "./settings";
+import { kreaImageTemplates, mossImageTemplate, fiboImageTemplate, fiboBaseTemplate } from "./settings";
 import { waitFor } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -834,19 +834,19 @@ describe("image generation work", () => {
     await queue.cancel(queue.getSnapshot()[0].id);
   });
 
-  it("routes MOSS text-to-image requests and refuses video and editing work", async () => {
+  it.each([mossImageTemplate(), ...kreaImageTemplates()])("routes $name text-to-image requests and refuses video and editing work", async (base) => {
     const { queue, first } = setup();
-    const moss = { ...mossImageTemplate(), sources: {}, paths: { transformer: "moss", textEncoder: "qwen", videoVae: "flux", tokenizer: "tokenizer.json", audioVae: "" } };
+    const moss = { ...base, sources: {}, paths: { transformer: "moss", textEncoder: "qwen", videoVae: "flux", tokenizer: base.modelType === "moss" ? "tokenizer.json" : "", audioVae: "" } };
     expect(() => queue.enqueue(first, [submission(first)], moss)).toThrow(/supports video/);
     const session = queue.project(imageProject());
     queue.enqueueImage(session, moss);
     await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
     const [request, config] = vi.mocked(enqueueSlopfabGeneration).mock.calls[0];
-    expect(request).toMatchObject({ stillImage: true, frames: 1, referencePaths: [], guidanceScale: 3 });
-    expect(config.imageScene?.cfgScales?.moss).toBe(3);
+    expect(request).toMatchObject({ stillImage: true, frames: 1, referencePaths: [], guidanceScale: base.modelType === "moss" ? 3 : base.kreaVariant === "raw" ? 3.5 : 0 });
+    expect(config.imageScene?.cfgScales?.[base.modelType]).toBe(request.guidanceScale);
     expect(request.prompt).toContain("An ocean poster");
     expect(request.prompt).not.toContain("overall_soundscape");
-    expect(config.providerSettings.slopfab.options).toMatchObject({ modelType: "moss", attention: "flash2", tokenizer: "tokenizer.json" });
+    expect(config.providerSettings.slopfab.options).toMatchObject({ modelType: base.modelType, attention: "flash2" });
     expect(config.providerSettings.slopfab.options).not.toHaveProperty("audioVae");
     await queue.cancel(queue.getSnapshot()[0].id);
     session.update((current) => ({ ...current, imageScene: createImageEditScene({ name: "Source", relativePath: "media/source.png", width: 512, height: 512 }, current.imageScene!) }));

@@ -140,6 +140,25 @@ serialization, mask validation, calibration cancellation and callback panic
 containment through the bundled DLL. Full generation and visual LCS quality
 with model weights were not evaluated in this integration.
 
+## Krea 2 image generation
+
+Bundled Windows and Linux runtimes include Krea 2 on CUDA and Vulkan. Krea uses
+the `krea2` model family, Flash attention, embedded Qwen tokenizer, text encoder
+and image VAE slots. Vulkan requests explicitly select portable arithmetic.
+The app exposes text-to-image controls and rejects editing, image references,
+video, audio and H3-only conditioning before submitting requests.
+
+Turbo uses 8 steps and CFG 0. Raw carries `kreaVariant: "raw"` in the template
+and provider settings, defaults to 52 steps and CFG 3.5, and computes
+`exp(0.5 + (image_tokens - 256) * 0.65 / (6400 - 256))`, where
+`image_tokens = (width / 16) * (height / 16)`, unless an image sigma shift is
+supplied. Krea guidance calls pass no unconditional skip layers; MOSS retains
+its layer-22 setting. Krea prompts use plain image descriptions.
+
+Validation covers native request planning for both recipes on CUDA and Vulkan,
+frontend routing and controls, download limits, template migration and portable
+recipe serialization. Full model inference was not run for this integration.
+
 ## MOSS image generation (API 1.30+)
 
 The bundled Windows and Linux libraries expose SlopFab API 1.40.0, including

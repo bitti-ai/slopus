@@ -9,7 +9,7 @@ import { ImageEditor } from "./ImageEditor";
 import { choose, comboValue } from "./comboTestUtils";
 import { imageGenerationSnapshotSchema, parseProjectConfig, referenceImages, sceneFrameInputs, type ProjectConfig } from "../../lib/project";
 import { completeImageDraft, createTemplateImageDraft, imageGenerationSnapshot, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
-import { createGeneratorTemplate, mossImageTemplate, fiboImageTemplate, fiboBaseTemplate, defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
+import { createGeneratorTemplate, kreaImageTemplates, mossImageTemplate, fiboImageTemplate, fiboBaseTemplate, defaultGeneratorTemplate, saveGeneratorTemplateSettings } from "../../lib/settings";
 import { createImageEditScene, createImageScene, imageScenePrompt } from "../../lib/imageScene";
 import type { WorkItem } from "../../lib/workQueue";
 import { compileImageEdits } from "../../lib/imageEditing";
@@ -106,14 +106,14 @@ it("allows Fibo text-to-image and editing while disabling unsupported templates"
   expect(screen.getByRole("menuitem", { name: "Character sheet" })).toBeDisabled();
 });
 
-it("offers MOSS for new images and disables editing and reference templates", () => {
+it.each([mossImageTemplate(), ...kreaImageTemplates()])("offers $name for new images and disables editing and reference templates", (base) => {
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
-  const moss = { ...mossImageTemplate(), sources: {}, paths: { transformer: "moss", textEncoder: "qwen", videoVae: "flux", tokenizer: "tokenizer.json", audioVae: "" } };
+  const moss = { ...base, sources: {}, paths: { transformer: "model", textEncoder: "qwen", videoVae: "vae", tokenizer: base.modelType === "moss" ? "tokenizer.json" : "", audioVae: "" } };
   saveGeneratorTemplateSettings({ templates: [moss], defaultTemplateId: moss.id, catalogVersion: 17 });
   const initial = parseProjectConfig(fixture);
   initial.imageScene = createImageScene("A red apple");
   setup(initial);
-  expect(screen.getByRole("combobox", { name: "Generator" })).toHaveTextContent("MOSS Image");
+  expect(screen.getByRole("combobox", { name: "Generator" })).toHaveTextContent(base.name);
   expect(screen.getByRole("button", { name: "Generate" })).toBeEnabled();
   cleanup();
   const source = { id: "source", kind: "image" as const, name: "Apple", mimeType: "image/png", relativePath: "media/apple.png", width: 512, height: 512, createdAt: initial.createdAt };
@@ -122,7 +122,7 @@ it("offers MOSS for new images and disables editing and reference templates", ()
   setup(initial);
   expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
   expect(screen.getByRole("radio", { name: "Edit Box" })).toBeDisabled();
-  expect(screen.getByRole("status")).toHaveTextContent("MOSS Image does not support image editing");
+  expect(screen.getByRole("status")).toHaveTextContent(`${base.name} does not support image editing`);
   fireEvent.click(screen.getByRole("button", { name: "Template" }));
   expect(screen.getByRole("menuitem", { name: "Zoom" })).toBeDisabled();
   expect(screen.getByRole("menuitem", { name: "Character sheet" })).toBeDisabled();

@@ -8,7 +8,7 @@ export function generatorModel(modelType?: string): GeneratorModel {
 }
 
 /** Keep authored CFG values per model; unsupported models never submit one. */
-export function imageCfgScale(modelType: string, scales?: Record<string, number>): number | undefined {
+export function imageCfgScale(modelType: string, scales?: Record<string, number>, kreaVariant?: "raw" | "turbo"): number | undefined {
   const cfg = generatorModel(modelType).cfg;
-  return cfg ? scales?.[modelType] ?? cfg.default : undefined;
+  return cfg ? scales?.[modelType] ?? (modelType === "krea2" && kreaVariant === "raw" ? 3.5 : cfg.default) : undefined;
 }

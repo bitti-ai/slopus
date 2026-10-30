@@ -28,7 +28,7 @@ import { retryWeightDownload } from "../lib/weightDownloads";
 import { getQueuedWeightDownloads, cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress, type DownloadState } from "../lib/weightDownloads";
 import { CHECKING_PROVIDERS, chooseEnginePath, getAgentModels, getEngineStatus, type ProviderStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
 import {
-  EMPTY_ENGINE_SETTINGS, generatorPathFields, generatorModel, GENERATOR_MODELS, MOSS_MODEL_TYPE, FIBO_MODEL_TYPE,
+  EMPTY_ENGINE_SETTINGS, generatorPathFields, generatorModel, GENERATOR_MODELS, MOSS_MODEL_TYPE, FIBO_MODEL_TYPE, KREA_MODEL_TYPE,
   createGeneratorTemplate, defaultGeneratorTemplate,
   isEndpointProviderConfigured, loadAgentEndpointSettings,
   loadGeneratorTemplateSettings, saveAgentEndpointSettings, saveGeneratorTemplateSettings,
@@ -456,7 +456,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     probe({ ...EMPTY_ENGINE_SETTINGS });
   };
 
-  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "videoVaeId" | "audioVaeId" | "editingModel" | "modelType" | "name" | "defaultSteps" | "videoSigmaShift" | "audioSigmaShift" | "attention" | "motionCache" | "loras" | "mode" | "additionalSafetensors">>) => {
+  const updateTemplate = (updates: Partial<Pick<typeof selectedTemplate, "kreaVariant" | "videoVaeId" | "audioVaeId" | "editingModel" | "modelType" | "name" | "defaultSteps" | "videoSigmaShift" | "audioSigmaShift" | "attention" | "motionCache" | "loras" | "mode" | "additionalSafetensors">>) => {
     setTemplateSettings((current) => {
       const next = {
         ...current,
@@ -586,8 +586,13 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
         <ComboBox aria-label="Generator model" value={selectedTemplate.modelType} options={[
           ...GENERATOR_MODELS,
           ...(!GENERATOR_MODELS.some(({ value }) => value === selectedTemplate.modelType) ? [{ value: selectedTemplate.modelType, label: selectedTemplate.modelType }] : []),
-        ]} onChange={(modelType) => updateTemplate({ modelType, editingModel: generatorModel(modelType).imageEditing, ...(modelType === MOSS_MODEL_TYPE || modelType === FIBO_MODEL_TYPE || generatorModel(modelType).musicGeneration ? { mode: "prompt", attention: "flash2", defaultSteps: modelType === "yue2" ? 32 : modelType === "minimax_music3" ? 30 : modelType === FIBO_MODEL_TYPE ? 4 : 50, motionCache: false, loras: [], audioSigmaShift: undefined, ...(modelType === FIBO_MODEL_TYPE || generatorModel(modelType).musicGeneration ? { videoSigmaShift: undefined } : {}) } : {}) })} />
+        ]} onChange={(modelType) => updateTemplate({ modelType, editingModel: generatorModel(modelType).imageEditing, kreaVariant: undefined, ...(modelType === MOSS_MODEL_TYPE || modelType === FIBO_MODEL_TYPE || modelType === KREA_MODEL_TYPE || generatorModel(modelType).musicGeneration ? { mode: "prompt", attention: "flash2", defaultSteps: modelType === KREA_MODEL_TYPE ? 8 : modelType === "yue2" ? 32 : modelType === "minimax_music3" ? 30 : modelType === FIBO_MODEL_TYPE ? 4 : 50, motionCache: false, loras: [], audioSigmaShift: undefined, ...(modelType === FIBO_MODEL_TYPE || generatorModel(modelType).musicGeneration ? { videoSigmaShift: undefined } : {}) } : {}) })} />
       </SettingsCard>
+      {selectedTemplate.modelType === KREA_MODEL_TYPE && <SettingsCard icon={<Steps20 />} header="Sampling defaults" description="Match the recipe to your transformer weights. Raw uses CFG 3.5 and a resolution-dependent sigma shift; Turbo uses CFG 0.">
+        <ComboBox aria-label="Krea sampling defaults" value={selectedTemplate.kreaVariant ?? "turbo"}
+          options={[{ value: "turbo", label: "Turbo" }, { value: "raw", label: "Raw" }]}
+          onChange={(value) => updateTemplate({ kreaVariant: value === "raw" ? "raw" : "turbo", defaultSteps: value === "raw" ? 52 : 8, videoSigmaShift: undefined })} />
+      </SettingsCard>}
       {generatorModel(selectedTemplate.modelType).videoGeneration && <SettingsCard icon={<Video20 />} header="Mode">
         <ComboBox aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"} onChange={(value) => updateTemplate({ mode: value === "animate" ? "animate" : "prompt" })}
           options={[{ value: "prompt", label: "Text prompt" }, { value: "animate", label: "Animate (reference video)" }]} />
@@ -607,11 +612,11 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
 
     {generatorModel(selectedTemplate.modelType).sigmaShifts && <SettingsGroup heading="Sampling">
       {(["videoSigmaShift", "audioSigmaShift"] as const).filter((key) => generatorModel(selectedTemplate.modelType).sigmaShifts && (generatorModel(selectedTemplate.modelType).videoGeneration || key !== "audioSigmaShift")).map((key) => {
-        const label = `${key === "videoSigmaShift" ? selectedTemplate.modelType === MOSS_MODEL_TYPE ? "Image" : "Video" : "Audio"} sigma shift`;
-        const fallback = selectedTemplate.modelType === MOSS_MODEL_TYPE ? 5 : key === "audioSigmaShift" ? DEFAULT_AUDIO_SIGMA_SHIFT : selectedTemplate.mode === "animate" ? 3 : DEFAULT_VIDEO_SIGMA_SHIFT;
+        const label = `${key === "videoSigmaShift" ? !generatorModel(selectedTemplate.modelType).videoGeneration ? "Image" : "Video" : "Audio"} sigma shift`;
+        const fallback = selectedTemplate.modelType === KREA_MODEL_TYPE ? Math.exp(1.15) : selectedTemplate.modelType === MOSS_MODEL_TYPE ? 5 : key === "audioSigmaShift" ? DEFAULT_AUDIO_SIGMA_SHIFT : selectedTemplate.mode === "animate" ? 3 : DEFAULT_VIDEO_SIGMA_SHIFT;
         return <SettingsCard key={key} icon={<Steps20 />} header={label} description="Default for this generator. Scene values and active LoRA overrides take priority. Leave blank for the model default.">
           <input className="text-field settings-field settings-field--number" aria-label={`Generator ${label.toLowerCase()}`} type="number" min={MIN_SIGMA_SHIFT} max={MAX_SIGMA_SHIFT} step={0.1}
-            placeholder={String(fallback)} value={selectedTemplate[key] ?? ""} onChange={(event) => {
+            placeholder={selectedTemplate.modelType === KREA_MODEL_TYPE && selectedTemplate.kreaVariant === "raw" ? "Auto" : String(fallback)} value={selectedTemplate[key] ?? ""} onChange={(event) => {
               const value = Number(event.target.value);
               if (!event.target.value || isSigmaShift(value)) updateTemplate({ [key]: event.target.value ? value : undefined });
             }} />
@@ -622,7 +627,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     <SettingsGroup heading="Performance">
       <SettingsCard icon={<Gauge20 />} header="Attention" description={selectedTemplate.attention === "sol" ? "Sol attention requires a CUDA GPU on the machine running generation." : undefined}>
         <ComboBox aria-label="Generator attention" value={selectedTemplate.attention} onChange={(value) => updateTemplate({ attention: value as AttentionMode })}
-          options={generatorModel(selectedTemplate.modelType).cudaOnly || generatorModel(selectedTemplate.modelType).musicGeneration ? [{ value: "flash2", label: "Flash attention" }] : [{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }, { value: "sol", label: "Sol attention" }]} />
+          options={selectedTemplate.modelType === KREA_MODEL_TYPE || generatorModel(selectedTemplate.modelType).cudaOnly || generatorModel(selectedTemplate.modelType).musicGeneration ? [{ value: "flash2", label: "Flash attention" }] : [{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }, { value: "sol", label: "Sol attention" }]} />
       </SettingsCard>
       {generatorModel(selectedTemplate.modelType).motionCache && <SettingsCard icon={<Flash20 />} header="Enable MotionCache" description={<span id="motion-cache-help">{selectedTemplate.mode === "animate" ? "Unavailable in Animate mode" : "Reuses similar denoising results to reduce computation. May affect detail and motion."}</span>}>
         <ToggleSwitch aria-label="Enable MotionCache" aria-describedby="motion-cache-help"

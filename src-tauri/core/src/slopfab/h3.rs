@@ -28,6 +28,10 @@ pub(super) fn configure_request(
         }
         api.set_model_family(handle, &configuration.model_type)?;
     }
+    if configuration.model_type == "krea2" {
+        api.set_model_family(handle, "krea2")?;
+        if platform == ComputePlatform::Vulkan { api.set_vulkan_portable(handle)?; }
+    }
     if configuration.attention == "sol" && platform == ComputePlatform::Vulkan {
         return Err("Sol attention requires CUDA. Select a CUDA GPU or worker, or choose another attention mode in Settings.".into());
     }
@@ -64,7 +68,7 @@ pub(super) fn configure_request(
     // Ending-anchor APIs count new lead-in/gap frames, while Slopus scene
     // duration includes the short ending. Planning uses equivalent full geometry.
     api.set_frames(handle, if request.single_shot.as_ref().is_some_and(|single| single.ending_path.is_some()) { frames - 22 } else { frames })?;
-    if request.still_image && !matches!(configuration.model_type.as_str(), "moss" | "fibo2") {
+    if request.still_image && !matches!(configuration.model_type.as_str(), "moss" | "fibo2" | "krea2") {
         api.set_still_image(handle)?;
     }
     let video_steps = configuration.generation_steps(request.steps)?;
@@ -77,13 +81,24 @@ pub(super) fn configure_request(
         }
     } else {
         let shifts = configuration.sigma_shifts.as_ref().map_err(Clone::clone)?;
-        api.set_sigma_shifts(handle, shifts.video_override.or(request.video_sigma_shift).or(shifts.video),
+        let krea_raw_shift = (configuration.model_type == "krea2" && configuration.krea_raw).then(|| {
+            let width = if request.canvas_width > 0 { request.canvas_width } else { 1024 };
+            let height = if request.canvas_height > 0 { request.canvas_height } else { 1024 };
+            let tokens = f64::from(width / 16) * f64::from(height / 16);
+            (0.5 + (tokens - 256.0) * 0.65 / (6400.0 - 256.0)).exp() as f32
+        });
+        api.set_sigma_shifts(handle, shifts.video_override.or(request.video_sigma_shift).or(shifts.video).or(krea_raw_shift),
             shifts.audio_override.or(request.audio_sigma_shift).or(shifts.audio))?;
     }
     // Sampling presets replace overrides, so apply the audio setting afterward.
     api.set_audio_steps(handle, request.audio_steps.unwrap_or(0))?;
     if let Some(cfg) = &crate::models::generator_features(&configuration.model_type).cfg {
-        api.set_image_guidance(handle, request.guidance_scale.unwrap_or(cfg.default), request.negative_prompt.as_deref().unwrap_or(""))?;
+        let negative = request.negative_prompt.as_deref().unwrap_or("");
+        if configuration.model_type == "krea2" {
+            api.set_krea_guidance(handle, request.guidance_scale.unwrap_or(if configuration.krea_raw { 3.5 } else { cfg.default }), negative)?;
+        } else {
+            api.set_image_guidance(handle, request.guidance_scale.unwrap_or(cfg.default), negative)?;
+        }
     }
     api.set_seed(handle, generation_seed(request.seed)?)?;
     if let Some(edit) = &request.image_edit {

@@ -224,6 +224,19 @@ Templates awaiting downloads appear under **Download**. Once their
 weights are downloaded, they move into **Generators**. Removing or losing their
 downloaded files moves them back to **Download**.
 
+**Krea 2 Turbo** and **Krea 2 Raw** are text-to-image generators without editing,
+image references, audio, LoRAs or MotionCache. Each downloads its matching INT8
+ConvRot transformer (14 GB minimum VRAM), the Qwen3-VL 4B INT8 ConvRot text encoder
+(5 GB), and Qwen-Image VAE (0 GB, unrestricted). The tokenizer is embedded in
+SlopFab. Both use Flash attention on CUDA or portable Vulkan.
+
+The Krea sampling recipe is saved with the template and exported in `.slop`
+bundles. Turbo defaults to 8 steps, CFG 0 and sigma shift `exp(1.15)`. Raw defaults
+to 52 steps and CFG 3.5; its automatic sigma shift depends on the canvas size.
+Authored CFG, step counts and image sigma shifts override the defaults. Negative
+prompts affect Krea generation when CFG is greater than zero. Existing catalogs
+receive the two templates once, preserving customized templates and later removal.
+
 Enable **Show advanced options** at the end of the template editor, then open
 **Download variants** under a weight to add alternative URLs. Each variant
 can specify part of a GPU model name and a minimum VRAM capacity in GB. Selection
