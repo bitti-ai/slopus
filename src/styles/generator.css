@@ -597,10 +597,12 @@
   transition: opacity var(--motion-fast) linear;
 }
 
+.shot-card:hover .shot-thumb__popout,
+.shot-card:hover .shot-thumb__play,
 .shot-thumb-frame:hover .shot-thumb__popout,
 .shot-thumb-frame:hover .shot-thumb__play,
-.shot-thumb-frame:focus-within .shot-thumb__popout,
-.shot-thumb-frame:focus-within .shot-thumb__play { opacity: 1; }
+.shot-thumb-frame:has(:focus-visible) .shot-thumb__popout,
+.shot-thumb-frame:has(:focus-visible) .shot-thumb__play { opacity: 1; }
 
 .shot-thumb__popout svg { width: 20px; height: 20px; }
 
@@ -686,7 +688,6 @@
 .shot-thumb--playable:hover .shot-thumb__play,
 .shot-thumb--playable:focus-visible .shot-thumb__play,
 .shot-thumb--playable .shot-thumb__play--loading,
-.shot-thumb--playable[aria-label^="Pause"] .shot-thumb__play,
 .shot-thumb--playable[aria-label^="Playback unavailable"] .shot-thumb__play {
   opacity: 1;
 }
