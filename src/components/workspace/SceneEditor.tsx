@@ -1,7 +1,8 @@
 import { GenerationEffects } from "./GenerationEffects";
+import { SceneLoras } from "./SceneLoras";
 import { generatorModel } from "../../lib/generatorModels";
 import { DEFAULT_VIDEO_SIGMA_SHIFT, DEFAULT_AUDIO_SIGMA_SHIFT } from "../../lib/sampling";
-import { sigmaShiftOverridesForTemplate, type GeneratorTemplate } from "../../lib/settings";
+import { generationStepsForTemplate, sigmaShiftOverridesForTemplate, type GeneratorTemplate } from "../../lib/settings";
 import { Audio16, Dismiss12, Image16, ImageAdd16, Text16, Video16 } from "../ui/icons";
 import { BACKDROP_OPTIONS, type BackdropColor } from "../../lib/backdrop";
 import { longShotPosition } from "../../lib/longShot";
@@ -361,6 +362,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
     onClick={onClick}
   ><ImageAdd16 aria-hidden="true" /></button>;
 
+  const forcedSteps = generationStepsForTemplate(0, template, job.loraOverrides ?? []);
   return <section className="scene-inspector" aria-label="This scene">
     <div role="region" aria-label="Scene" className="scene-settings">
       <PropSection title="Scene" persistKey="generator.scene" summary={SCENE_TYPES.find((type) => type.value === sceneType)?.label ?? "Long Shot (legacy)"}>
@@ -550,14 +552,14 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
     </div>
     <div role="region" aria-label="Generation" className="scene-settings">
       <PropSection title="Generation" persistKey="generator.generation" summary={`${effectiveSteps ?? sceneGenerationSteps(job, defaultSteps)} steps`}>
-        <PropRow label="Steps" htmlFor={`${id}-steps`}>
+        <PropRow label="Steps" htmlFor={`${id}-steps`} tooltip={forcedSteps ? "Set by active LoRAs." : undefined}>
           <SliderNumberInput
             id={`${id}-steps`}
             className="text-field"
             {...GENERATION_STEPS_RANGE}
-            value={sceneGenerationSteps(job, defaultSteps)}
+            value={forcedSteps || sceneGenerationSteps(job, defaultSteps)}
             integer
-            disabled={disabled}
+            disabled={disabled || !!forcedSteps}
             aria-label="Generation step count"
             onCommit={(value) => onChange({ steps: value })}
           />
@@ -588,6 +590,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
           </PropRow>
           <SceneSigmaShift stream="audio" job={job} template={template} disabled={disabled} onChange={onChange} />
         </>}
+        {generatorModel(template?.modelType).loras && <SceneLoras key={job.id} template={template} value={job.loraOverrides} disabled={disabled} onChange={(loraOverrides) => onChange({ loraOverrides })} />}
       </PropSection>
     </div>
     <GenerationEffects key={job.id} value={job.generationEffects} supported={generatorModel(template?.modelType).generationEffects} disabled={disabled} onChange={(generationEffects) => onChange({ generationEffects })} />
@@ -682,7 +685,7 @@ function SceneSigmaShift({ stream, job, template, disabled, onChange }: {
 }) {
   const id = useId();
   const key = stream === "video" ? "videoSigmaShift" : "audioSigmaShift";
-  const override = sigmaShiftOverridesForTemplate(template)[key];
+  const override = sigmaShiftOverridesForTemplate(template, job.loraOverrides ?? [])[key];
   const fallback = stream === "audio" ? DEFAULT_AUDIO_SIGMA_SHIFT : template?.mode === "animate" ? 3 : DEFAULT_VIDEO_SIGMA_SHIFT;
   const label = `${stream === "video" ? "Video" : "Audio"} sigma shift`;
   return <PropRow label={label} htmlFor={id} tooltip={override !== undefined ? "Set by active LoRAs. Edit the override in LoRA settings." : "Controls the distribution of denoising timesteps."}>

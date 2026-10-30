@@ -2,7 +2,7 @@ import { DEFAULT_VIDEO_SIGMA_SHIFT, DEFAULT_AUDIO_SIGMA_SHIFT, MIN_SIGMA_SHIFT, 
 import { Add20, ArrowDown16, ArrowUp16, Delete16, Download16, Lora20, Spinner16, Wrench16 } from "./ui/icons";
 import "../styles/loras.css";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { highestLoraStepOverride, loraSigmaShiftOverrides, isLoraStepOverride, loadLoras, saveLoras, subscribeLoras, type Lora, type TemplateLora } from "../lib/loras";
+import { effectiveLoras, selectionConflict, moveLibraryLora, highestLoraStepOverride, loraSigmaShiftOverrides, isLoraStepOverride, loadLoras, saveLoras, subscribeLoras, type Lora, type TemplateLora } from "../lib/loras";
 import { generatorModel } from "../lib/generatorModels";
 import { MAX_GENERATION_STEPS } from "../lib/project";
 import { isTauri } from "../lib/persistence";
@@ -24,6 +24,12 @@ export function LoraLibrary({ modelType, onAdd, onEdit }: { modelType: string; o
   const queuedDownloads = useSyncExternalStore(subscribeWeightDownloads, getQueuedWeightDownloads);
   const [error, setError] = useState<string | null>(null);
   const desktop = isTauri();
+  const dragged = useRef<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const updateGlobal = (id: string, patch: Partial<Lora>) => {
+    try { saveLoras(loadLoras().map((lora) => lora.id === id ? { ...lora, ...patch } : lora)); setError(null); }
+    catch (reason) { setError(String(reason)); }
+  };
   useEffect(() => {
     const refresh = () => { void refreshDownloadedLoras().catch((reason) => setError(String(reason))); };
     refresh();
@@ -32,19 +38,35 @@ export function LoraLibrary({ modelType, onAdd, onEdit }: { modelType: string; o
     return () => { window.removeEventListener("focus", refresh); window.clearInterval(timer); };
   }, []);
   return <SettingsGroup heading="LoRAs">
-    {supported ? <SettingsCard icon={<Add20 />} header="Add a LoRA" description="Download adapters or add local files, then turn them on in a generator">
+    {supported ? <SettingsCard icon={<Add20 />} header="Add a LoRA" description="Enable globally or choose LoRAs in generators and scenes. Drag to set their application order.">
       <button className="secondary-button" type="button" onClick={onAdd}>Add LoRA</button>
     </SettingsCard> : <p className="settings-caption">This model does not support LoRAs.</p>}
     <div className="settings-card-list" role="list" aria-label="LoRAs">
-      {loras.map((lora) => {
+      {loras.map((lora, index) => {
         const active = download?.active && download.loraId === lora.id;
         const queued = queuedDownloads.some((item) => item.loraId === lora.id);
         const preparing = active && download?.phase === "preparing";
         const percent = download ? Math.floor(weightDownloadProgress(download)) : 0;
+        const conflict = selectionConflict(effectiveLoras([], [{ loraId: lora.id, enabled: true, strength: 1 }], modelType));
         return <OpenableCard key={lora.id} icon={<Lora20 />} header={lora.name} openLabel={`Edit ${lora.name} LoRA`} onOpen={() => onEdit(lora.id)}
+          className={dropTarget === lora.id ? "lora-drop-target" : undefined}
+          dragProps={{ draggable: true,
+            onDragStart: (event) => { dragged.current = lora.id; event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/x-slopus-lora", lora.id); },
+            onDragOver: (event) => { if (dragged.current) { event.preventDefault(); setDropTarget(lora.id); } },
+            onDrop: (event) => { event.preventDefault(); if (dragged.current) moveLibraryLora(dragged.current, lora.id); dragged.current = null; setDropTarget(null); },
+            onDragEnd: () => { dragged.current = null; setDropTarget(null); } }}
           description={<span data-tooltip={lora.path || undefined}>{queued ? "Queued for download" : active ? preparing ? "Preparing…" : `Downloading · ${percent}%` : lora.needsPreparation ? "Needs preparation" : lora.path ? "Available" : "Not downloaded"}</span>}
           progress={active && !preparing && <ProgressBar className="settings-progress" value={weightDownloadProgress(download!)} aria-label={`Downloading ${lora.name}`} />}
           actions={<>
+            <button className="icon-button" type="button" aria-label={`Move ${lora.name} up`} disabled={index === 0} onClick={() => moveLibraryLora(lora.id, loras[index - 1].id)}><ArrowUp16 /></button>
+            <button className="icon-button" type="button" aria-label={`Move ${lora.name} down`} disabled={index === loras.length - 1} onClick={() => moveLibraryLora(lora.id, loras[index + 1].id)}><ArrowDown16 /></button>
+            {modelType === "minimax-h3" && <>
+              {lora.globallyEnabled && <label className="template-lora__strength">Strength<input type="number" className="text-field settings-field settings-field--number" step="0.1" aria-label={`${lora.name} global strength`} value={lora.globalStrength ?? 1}
+                onChange={(event) => { const strength = Number(event.target.value); if (event.target.value && Number.isFinite(strength) && strength !== 0) updateGlobal(lora.id, { globalStrength: strength }); }} /></label>}
+              <span data-tooltip={!lora.globallyEnabled ? conflict ?? "Always use this LoRA" : "Always used by MiniMax H3"}>
+                <ToggleSwitch aria-label={`Use ${lora.name} globally`} checked={lora.globallyEnabled ?? false} disabled={!lora.globallyEnabled && !!conflict} onChange={(globallyEnabled) => updateGlobal(lora.id, { globallyEnabled })} />
+              </span>
+            </>}
             {lora.path && <button className="icon-button" type="button" disabled={!desktop || active || queued} aria-label={`Prepare LoRA ${lora.name}`} data-tooltip="Prepare missing timestep grid"
               onClick={() => { setError(null); void prepareLora(lora).catch((reason) => setError(String(reason))); }}>{preparing ? <Spinner16 className="spin" /> : <Wrench16 />}</button>}
             {lora.url && !lora.path
@@ -130,18 +152,27 @@ export function LoraEditor({ loraId, modelType, onDone }: { loraId: string; mode
   </ContentDialog>;
 }
 
-export function TemplateLorasEditor({ modelType, value, onChange }: { modelType: string; value: TemplateLora[]; onChange: (value: TemplateLora[]) => void }) {
+export function TemplateLorasEditor({ modelType, value: selection, onChange }: { modelType: string; value: TemplateLora[]; onChange: (value: TemplateLora[]) => void }) {
   const library = useLoras();
-  const active = value.filter((entry) => entry.enabled && entry.strength !== 0);
+  const order = new Map(library.map((entry, index) => [entry.id, index]));
+  const value = [...selection].sort((a, b) => (order.get(a.loraId) ?? Infinity) - (order.get(b.loraId) ?? Infinity));
+  const effective = effectiveLoras(value, [], modelType, library);
+  const active = effective.filter((entry) => entry.enabled && entry.strength !== 0);
+  const conflict = selectionConflict(effective, library);
+  const conflictsWith = (next: TemplateLora[]) => selectionConflict(effectiveLoras(next, [], modelType, library), library);
   const dmad = active.some((entry) => library.find(({ id }) => id === entry.loraId)?.samplingPreset === "dmad-4step");
   const pika = active.some((entry) => library.find(({ id }) => id === entry.loraId)?.samplingPreset === "pika-6step");
   const stepOverride = highestLoraStepOverride(active
     .flatMap((entry) => library.filter(({ id }) => id === entry.loraId)));
   const shifts = loraSigmaShiftOverrides(active.flatMap((entry) => library.filter(({ id }) => id === entry.loraId)));
   const available = library.filter((entry) => (entry.modelType ?? "minimax-h3") === modelType && (entry.path || entry.url) && !value.some(({ loraId }) => loraId === entry.id));
-  const update = (index: number, patch: Partial<TemplateLora>) => onChange(value.map((entry, i) => i === index ? { ...entry, ...patch } : entry));
+  const update = (index: number, patch: Partial<TemplateLora>) => {
+    const next = value.map((entry, i) => i === index ? { ...entry, ...patch } : entry);
+    if (!conflictsWith(next) || patch.enabled === false || patch.strength === 0) onChange(next);
+  };
   const move = (index: number, delta: number) => {
     const next = [...value];
+    moveLibraryLora(next[index].loraId, next[index + delta].loraId);
     [next[index], next[index + delta]] = [next[index + delta], next[index]];
     onChange(next);
   };
@@ -156,16 +187,17 @@ export function TemplateLorasEditor({ modelType, value, onChange }: { modelType:
         <button className="icon-button" type="button" aria-label={`Move ${name} up`} data-tooltip="Move up" disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp16 /></button>
         <button className="icon-button" type="button" aria-label={`Move ${name} down`} data-tooltip="Move down" disabled={index === value.length - 1} onClick={() => move(index, 1)}><ArrowDown16 /></button>
         <button className="icon-button" type="button" aria-label={`Deactivate and remove ${name}`} data-tooltip="Remove" onClick={() => onChange(value.filter((_, i) => i !== index))}><Delete16 /></button>
-        <ToggleSwitch checked={entry.enabled} aria-label={`Enable ${name}`} onChange={(enabled) => update(index, { enabled })} />
+        <ToggleSwitch checked={entry.enabled} aria-label={`Enable ${name}`} disabled={!entry.enabled && !!conflictsWith(value.map((item, i) => i === index ? { ...item, enabled: true } : item))} onChange={(enabled) => update(index, { enabled })} />
       </SettingsCard>;
     })}
     <SettingsCard icon={<Add20 />} header="Add a LoRA" description="A strength of 0 turns an adapter off. Missing active LoRAs download with the generator.">
       <ComboBox aria-label="Add LoRA to generator" value="" disabled={!available.length} placeholder={available.length ? "Choose a LoRA" : "None available"}
         onChange={(loraId) => { if (loraId) onChange([...value, { loraId, enabled: true, strength: 1 }]); }}
-        options={available.map((lora) => ({ value: lora.id, label: lora.name }))} />
+        options={available.map((lora) => ({ value: lora.id, label: lora.name, disabled: !!conflictsWith([...value, { loraId: lora.id, enabled: true, strength: 1 }]) }))} />
     </SettingsCard>
     {(shifts.videoSigmaShift !== undefined || shifts.audioSigmaShift !== undefined) && <InfoBar severity="informational" message={`Active LoRA sigma shifts: ${[shifts.videoSigmaShift !== undefined ? `video ${shifts.videoSigmaShift}` : "", shifts.audioSigmaShift !== undefined ? `audio ${shifts.audioSigmaShift}` : ""].filter(Boolean).join(", ")}.`} />}
-    {dmad && pika ? <InfoBar severity="error" message="Choose either DMAD or Pika H3 Flex: their sampling recipes cannot be combined." />
+    <p className="settings-caption">Application order follows the LoRA library. Global LoRAs are always included.</p>
+    {conflict ? <InfoBar severity="error" message={conflict} />
       : pika ? <InfoBar severity="informational" message="Pika H3 Flex fixes generation to six re-noising evaluations and turns off MotionCache. Use FL2VA with First/Last Frame generators and Ref2VA with References generators." />
       : dmad ? <InfoBar severity="informational" message="DMAD fixes generation to four re-noising evaluations and turns off MotionCache." />
       : stepOverride !== undefined && <InfoBar severity="informational" message={`Active LoRAs set the scene's step count to ${stepOverride}, the highest selected override.`} />}

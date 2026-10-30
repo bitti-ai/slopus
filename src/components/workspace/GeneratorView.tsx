@@ -4,7 +4,7 @@ import { sceneUpscaleSubmission, selectedUpscaleTake } from "../../lib/sceneUpsc
 import { Flyout } from "../ui";
 import { ChevronDown14 } from "../ui/icons";
 import { duplicateScene, makeSceneGenerationPrimary, removeSceneDraft, removeSceneGeneration, saveSceneDrafts, selectSceneGeneration } from "../../lib/sceneHistory";
-import { sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "../../lib/sceneGeneration";
+import { sceneLoraBlocker, sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "../../lib/sceneGeneration";
 import { longShotBlocker, longShotDependencies, longShotPosition } from "../../lib/longShot";
 export { templateSceneBlocker } from "../../lib/sceneGeneration";
 import type { GenerationSubmission } from "../../lib/workQueue";
@@ -28,7 +28,7 @@ import { SceneInspector, ShotInspector, STEP_SECONDS, writeShots } from "./Scene
 import { STATUS_BADGE, type SceneIndicatorStatus } from "./sceneStatus";
 import { forgetShotPosters } from "./ShotThumbnail";
 import { purgeTimelineThumbnails } from "../../lib/timelineThumbnails";
-import { defaultGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateSupportsVideo, templateUsable } from "../../lib/settings";
+import { templateWithSceneLoras, defaultGeneratorTemplate, generationStepsForTemplate, loadDebugOptionsEnabled, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, subscribeDebugOptions, subscribeGeneratorTemplates, templateSupportsVideo, templateUsable } from "../../lib/settings";
 import { refreshDownloadedWeights } from "../../lib/weightDownloads";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 import { sceneVideoSettings, videoGuidedScene } from "../../lib/videoLibrary";
@@ -426,8 +426,8 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
   const visited = new Set<string>();
   const visiting = new Set<string>();
   const visitForBatch = (job: GenerationJob): boolean => {
-    if (job.generatorTemplateId && !templateSettings.templates.some(t => t.id === job.generatorTemplateId) || !templateUsable(templateFor(job))) return false;
-    if (continuationBlocker(job, config.generationJobs) || longShotBlocker(job, config, false) || templateSceneBlocker(sceneTypeFor(job), templateFor(job)) || sendBlocker(job, config.references, config)) return false;
+    if (job.generatorTemplateId && !templateSettings.templates.some(t => t.id === job.generatorTemplateId) || !templateUsable(templateWithSceneLoras(templateFor(job), job))) return false;
+    if (sceneLoraBlocker(job, templateFor(job)) || continuationBlocker(job, config.generationJobs) || longShotBlocker(job, config, false) || templateSceneBlocker(sceneTypeFor(job), templateFor(job)) || sendBlocker(job, config.references, config)) return false;
     if (visited.has(job.id)) return true;
     if (visiting.has(job.id)) return false;
     if (["queued", "generating", "ready"].includes(job.status)) { visited.add(job.id); return true; }
@@ -454,7 +454,9 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
 
   const generationBlocker = (job: GenerationJob): string | null => {
     if (job.generatorTemplateId && !templateSettings.templates.some(t => t.id === job.generatorTemplateId)) return "The saved generator is no longer available. Choose another generator.";
-    if (!templateUsable(templateFor(job))) return "Prepare this scene's generator weights before generating.";
+    const loraBlocker = sceneLoraBlocker(job, templateFor(job));
+    if (loraBlocker) return loraBlocker;
+    if (!templateUsable(templateWithSceneLoras(templateFor(job), job))) return "Prepare this scene's generator weights before generating.";
     if (!runtimeReady) return runtimeError ?? generatorRuntime?.detail ?? "The video generator is not ready.";
     if (job.status === "ready") return "Saving this scene.";
     const source = config.generationJobs.find((candidate) => candidate.id === continuationSceneId(job, config.generationJobs));
@@ -706,7 +708,7 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
               shots={selectedShots}
               template={selectedTemplate}
               defaultSteps={defaultGenerationSteps}
-              effectiveSteps={generationStepsForTemplate(sceneGenerationSteps(selected, defaultGenerationSteps), selectedTemplate)}
+              effectiveSteps={generationStepsForTemplate(sceneGenerationSteps(selected, defaultGenerationSteps), selectedTemplate, selected.loraOverrides ?? [])}
               defaultLook={inheritedSettings.defaultLook}
               defaultLookSource={parentVideo ? "Video" : "project"}
               disabled={false}

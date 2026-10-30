@@ -23,7 +23,7 @@ import { WeightSourcesEditor } from "./WeightSourcesEditor";
 import { LoraEditor, LoraLibrary, TemplateLorasEditor } from "./LoraSettings";
 import { OpenableCard } from "./OpenableCard";
 import { TitleBar } from "./TitleBar";
-import { downloadableTemplateLoras, loadLoras } from "../lib/loras";
+import { effectiveLoras, downloadableTemplateLoras, loadLoras } from "../lib/loras";
 import { retryWeightDownload } from "../lib/weightDownloads";
 import { getQueuedWeightDownloads, cancelWeightDownload, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, subscribeWeightDownloads, updateWeightPath, weightDownloadProgress, type DownloadState } from "../lib/weightDownloads";
 import { CHECKING_PROVIDERS, chooseEnginePath, getAgentModels, getEngineStatus, type ProviderStatus, type ModelStatus, type SlopfabStatus } from "../lib/runtime";
@@ -78,7 +78,7 @@ export function middleEllipsis(text: string, max = 64): string {
 }
 
 function templateSummary(template: GeneratorTemplate): string {
-  const loras = downloadableTemplateLoras(template.loras);
+  const loras = downloadableTemplateLoras(effectiveLoras(template.loras, [], template.modelType));
   const pendingModels = generatorPathFields(template).some(({ id }) => isDownloadUrl(template.paths[id])
     || (!template.paths[id].trim() && (template.sources?.[id]?.length ?? 0) > 0));
   return `${template.defaultSteps} steps${loras.length && !pendingModels ? ` · Needs ${loras.map(({ name }) => name).join(", ")} LoRA${loras.length > 1 ? "s" : ""}` : ""}`;

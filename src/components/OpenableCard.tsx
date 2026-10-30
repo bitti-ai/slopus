@@ -1,15 +1,16 @@
 import { ChevronRight16 } from "./ui/icons";
-import type { ReactNode } from "react";
+import type { ReactNode, HTMLAttributes } from "react";
 
 /* A settings card that opens something (a generator, a LoRA) AND carries its
    own buttons. A button cannot hold buttons, so the open action is a
    transparent button laid under the card, the way the SettingsExpander header
    is built; the trailing controls sit above it and take their own presses. */
-export function OpenableCard({ icon, header, description, progress, openLabel, onOpen, actions, className, openRef }: {
+export function OpenableCard({ icon, header, description, progress, openLabel, onOpen, actions, className, openRef, dragProps }: {
   icon: ReactNode; header: ReactNode; description?: ReactNode; progress?: ReactNode; openLabel: string; onOpen: () => void;
   actions?: ReactNode; className?: string; openRef?: string;
+  dragProps?: Pick<HTMLAttributes<HTMLDivElement>, "draggable" | "onDragStart" | "onDragOver" | "onDrop" | "onDragEnd">;
 }) {
-  return <div className={`ui-settings-card settings-open-card${className ? ` ${className}` : ""}`} role="listitem">
+  return <div {...dragProps} className={`ui-settings-card settings-open-card${className ? ` ${className}` : ""}`} role="listitem">
     <button type="button" className="settings-open-card__open" aria-label={openLabel} data-open-ref={openRef} onClick={onOpen} />
     <span className="ui-settings-card__icon" aria-hidden="true">{icon}</span>
     <span className="ui-settings-card__text">
