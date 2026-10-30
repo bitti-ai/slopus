@@ -1,3 +1,4 @@
+import { effectiveLoras, loraSnapshot } from "./loras";
 import { completeSceneGeneration, sceneInput } from "./sceneHistory";
 import { musicSongSchema, musicSettingsForModel, newSongVariation, updateSong, type MusicSong } from "./music";
 import { templateSupportsMusic } from "./settings";
@@ -244,7 +245,7 @@ export class WorkQueue {
       const chosen = template ?? submission.template ?? loadGeneratorTemplateSettings().templates.find(t => t.id === submission.job.generatorTemplateId) ?? defaultGeneratorTemplate(undefined, "video");
       if (!templateSupportsVideo(chosen)) throw new Error("Choose a generator that supports video generation.");
       const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
-        slopfab: engineProviderSetting(chosen.paths, current.providerSettings.slopfab, chosen.attention, chosen.loras ?? [], chosen.mode ?? "prompt", chosen.additionalSafetensors ?? [], chosen.motionCache ?? false, chosen.sources ?? {}, chosen),
+        slopfab: engineProviderSetting(chosen.paths, current.providerSettings.slopfab, chosen.attention, chosen.loras ?? [], chosen.mode ?? "prompt", chosen.additionalSafetensors ?? [], chosen.motionCache ?? false, chosen.sources ?? {}, chosen, submission.job.loraOverrides ?? []),
       } });
       const captured = submission.upscaleSource ? submission.job : { ...submission.job, generatorTemplateId: chosen.id || undefined, steps: submission.request.steps, seed: submission.request.seed };
       config.generationJobs = config.generationJobs.map(j => j.id === captured.id ? structuredClone(captured) : j);
@@ -252,9 +253,11 @@ export class WorkQueue {
       ids.push(id);
       let finish!: () => void;
       const done = new Promise<void>((resolve) => { finish = resolve; });
-      const request = structuredClone({ ...submission.request, jobId: id, ...(!submission.upscaleSource ? { steps: generationStepsWithLoras(submission.request.steps, config),
+      const request = structuredClone({ ...submission.request, jobId: id, loraSnapshot: loraSnapshot(effectiveLoras(chosen.loras, submission.job.loraOverrides ?? [], chosen.modelType)), ...(!submission.upscaleSource ? { steps: generationStepsWithLoras(submission.request.steps, config),
         ...generationSigmaShiftsWithLoras(submission.request, config) } : {}) });
-      this.work.set(id, { id, session, sceneId: submission.job.id, sceneInput: structuredClone(submission.upscaleSource?.scene ?? sceneInput(captured)), upscaleSource: submission.upscaleSource && structuredClone(submission.upscaleSource), request, config, snapshot: submission.snapshot, cancelled: false, submitted: false, done, finish });
+      const snapshot = !submission.upscaleSource && (request.loraSnapshot.length || submission.request.loraSnapshot?.length)
+        ? sceneGenerationSnapshot(captured, request) : submission.snapshot;
+      this.work.set(id, { id, session, sceneId: submission.job.id, sceneInput: structuredClone(submission.upscaleSource?.scene ?? sceneInput(captured)), upscaleSource: submission.upscaleSource && structuredClone(submission.upscaleSource), request, config, snapshot, cancelled: false, submitted: false, done, finish });
       this.items = [...this.items, {
         id, generationGroupId: id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
         sceneId: submission.job.id, title: submission.job.title, submittedAt: new Date().toISOString(),
@@ -263,7 +266,7 @@ export class WorkQueue {
         settings: { frames: request.frames, steps: request.steps, audioSteps: request.audioSteps, videoSigmaShift: request.videoSigmaShift, audioSigmaShift: request.audioSigmaShift, latentUpscale: request.latentUpscale, seed: request.seed, canvasWidth: request.canvasWidth, canvasHeight: request.canvasHeight },
       }];
       this.updateScene(this.work.get(id)!, { status: "queued", stage: "queued", progress: 0, error: null,
-        ...(!submission.upscaleSource ? { generationSnapshot: submission.snapshot, generatorTemplateId: captured.generatorTemplateId, steps: captured.steps, seed: captured.seed } : {}) });
+        ...(!submission.upscaleSource ? { generationSnapshot: snapshot, generatorTemplateId: captured.generatorTemplateId, steps: captured.steps, seed: captured.seed } : {}) });
     }
     // Link after the whole batch is present, including sources submitted in
     // earlier calls. Group IDs survive completed-work cleanup and draft edits.

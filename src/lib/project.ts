@@ -1,4 +1,5 @@
 import { motionSchema } from "./motion";
+import { loraStepOverride } from "./loras";
 import { generationEffectsSchema, activeGenerationEffects, type GenerationEffects } from "./generationEffects";
 import { MIN_SIGMA_SHIFT, MAX_SIGMA_SHIFT } from "./sampling";
 import { z } from "zod";
@@ -553,6 +554,8 @@ export function shotReferenceIds(shot: Pick<SceneShot, "action" | "speech">): st
 }
 
 const generationJobBaseSchema = z.object({
+  loraOverrides: z.array(z.object({ loraId: idSchema, enabled: z.boolean(), strength: z.number().finite().min(-3.4028234663852886e38).max(3.4028234663852886e38) })).max(256)
+    .refine((entries) => new Set(entries.map((entry) => entry.loraId)).size === entries.length, "LoRA overrides must be unique.").nullish(),
   generatorTemplateId: idSchema.nullish(),
   id: idSchema,
   sceneType: sceneTypeSchema.nullish(),
@@ -1255,6 +1258,7 @@ export function sceneGenerationSeed(job: GenerationJob): number {
 }
 
 export interface SceneGenerationInput {
+  loraSnapshot?: ReturnType<typeof import("./loras").loraSnapshot>;
   contextSceneId?: string;
   keystoneRelativePath?: string;
   singleShot?: { endingPrompt: string };
@@ -1301,12 +1305,13 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
   return JSON.stringify({
     ...(job.sceneType ? { sceneType: job.sceneType } : {}),
     prompt: input.prompt,
+    ...(input.loraSnapshot?.length ? { loras: input.loraSnapshot } : {}),
     ...(input.contextSceneId ? { contextSceneId: input.contextSceneId, keystoneRelativePath: input.keystoneRelativePath, capstoneLockAfter: 4 } : {}),
     ...(input.singleShot ? { singleShot: input.singleShot, ...(!input.contextSceneId ? { endingPrompt: job.endingPrompt ?? "" } : {}) } : {}),
     ...(input.videoTransition ? { videoTransition: input.videoTransition } : {}),
     ...(input.latentBridge ? { latentBridge: input.latentBridge } : {}),
     frames: input.frames,
-    steps: input.steps,
+    steps: loraStepOverride(input.loraSnapshot ?? []) ?? input.steps,
     ...(input.audioSteps !== undefined ? { audioSteps: input.audioSteps } : {}),
     ...(activeGenerationEffects(input.generationEffects) ? { generationEffects: activeGenerationEffects(input.generationEffects) } : {}),
     ...(input.videoSigmaShift !== undefined ? { videoSigmaShift: input.videoSigmaShift } : {}),

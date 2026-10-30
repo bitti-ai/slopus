@@ -1,4 +1,5 @@
 import { activeGenerationEffects } from "./generationEffects";
+import { effectiveLoras, loraSnapshot, loraStepOverride, selectionConflict } from "./loras";
 import { generationDimensions } from "./export";
 import { longShotContinuationInputs, longShotInputs } from "./longShot";
 import {
@@ -26,6 +27,7 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
   const longShot = longShotInputs(job, config);
   return {
     jobId: job.id,
+    loraSnapshot: loraSnapshot(effectiveLoras(template?.loras, job.loraOverrides ?? [], template?.modelType)),
     ...(job.sceneType === "single-shot" && job.contextSceneId ? { contextSceneId: job.contextSceneId,
       keystoneRelativePath: config.generationJobs.find((scene) => scene.id === job.contextSceneId)?.latentRelativePath ?? undefined } : {}),
     ...(job.sceneType === "single-shot" ? { singleShot: { endingPrompt: job.contextSceneId ? "" : job.endingPrompt?.trim()
@@ -126,6 +128,19 @@ export function templateSceneBlocker(type: SceneType, template: GeneratorTemplat
   if (type === "animate" && template.mode !== "animate") return "Select an Animate generator for this scene.";
   if (type !== "animate" && template.mode === "animate") return "Select a MiniMax prompt generator for this scene.";
   if ((type === "pose" || type === "character-replace" || type === "extend" || type === "bridge") && /fl2v/i.test(template.paths.transformer)) return `Select a References or Singularity generator for ${type === "pose" ? "Pose" : type === "character-replace" ? "Character Replace" : type === "extend" ? "Extend" : "Bridge"}.`;
+  return null;
+}
+
+export function sceneLoraBlocker(job: GenerationJob, template: GeneratorTemplate): string | null {
+  const selection = effectiveLoras(template.loras, job.loraOverrides ?? [], template.modelType);
+  const conflict = selectionConflict(selection);
+  if (conflict) return conflict;
+  if (job.sceneType === "single-shot" && job.contextSceneId) {
+    const active = loraSnapshot(selection);
+    const steps = loraStepOverride(active) ?? sceneGenerationSteps(job, template.defaultSteps);
+    const updates = active.some((lora) => lora.samplingPreset) ? steps : steps - 1;
+    if (updates <= 4) return "Context video needs more than four video sampling updates. Choose a longer sampling recipe or increase the step count.";
+  }
   return null;
 }
 

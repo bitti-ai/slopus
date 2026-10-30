@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isTauri } from "./persistence";
 import { OTHER_WEIGHT_TEMPLATES, refreshOtherWeights, otherWeightPaths, saveOtherWeightPath } from "./upscalers";
-import { downloadableTemplateLoras, loadLoras, saveLoras, type Lora } from "./loras";
+import { effectiveLoras, downloadableTemplateLoras, loadLoras, saveLoras, type Lora } from "./loras";
 import { chooseWeightSource, ENGINE_PATH_FIELDS, generatorPathFields, isDownloadUrl, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, templateNeedsDownload,
   type EnginePathId, type GeneratorTemplate, type WeightGpu, type WeightSource } from "./settings";
 
@@ -262,7 +262,7 @@ async function runTemplateDownload(templateId: string): Promise<void> {
       if (!source) throw new Error(`No ${ENGINE_PATH_FIELDS.find((field) => field.id === id)?.label} download matches this GPU and its memory.`);
       return [{ field: id, source, originalPath: template.paths[id], component: h3ComponentForField(template, id, loadGeneratorTemplateSettings().h3Components!) }];
     });
-    const loraDownloads = downloadableTemplateLoras(template.loras);
+    const loraDownloads = downloadableTemplateLoras(effectiveLoras(template.loras, [], template.modelType));
     const additionalDownloads = (template.additionalSafetensors ?? []).filter((file) => !file.downloadedPath);
     publish({ ...state!, files: downloads.length + loraDownloads.length + additionalDownloads.length });
     unlisten = await listen<{ requestId: string; downloaded: number; total: number | null }>("weight-download-progress", ({ payload }) => {

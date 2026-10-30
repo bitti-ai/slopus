@@ -10,6 +10,13 @@ fn validate_jobs(jobs: &mut [GenerationJob]) -> Result<(), String> {
     let mut previous_id = None;
     for job in jobs {
         validate_history(job)?;
+        if let Some(loras) = &job.lora_overrides {
+            let mut ids = BTreeSet::new();
+            if loras.len() > 256 || loras.iter().any(|lora| lora.lora_id.trim().is_empty() || !ids.insert(&lora.lora_id)
+                || !lora.strength.is_finite() || lora.strength.abs() > f64::from(f32::MAX)) {
+                return Err(format!("Scene '{}' has invalid LoRA overrides.", job.id));
+            }
+        }
         if job.generator_template_id.as_ref().is_some_and(|id| id.trim().is_empty()) { return Err("Scene generator template id cannot be empty.".into()); }
         if job.use_previous_scene_last_frame == Some(true)
             && matches!(job.scene_type.as_deref(), None | Some("first-last-frame")) {
@@ -280,6 +287,21 @@ fn validate_history(job: &mut GenerationJob) -> Result<(), String> {
 #[cfg(test)]
 mod history_tests {
     use super::*;
+    #[test]
+    fn scene_lora_overrides_roundtrip_and_validate_strengths_and_duplicates() {
+        let mut wire: serde_json::Value = serde_json::from_str(include_str!("../../../../fixtures/project-v1-complete.json")).unwrap();
+        let overrides = serde_json::json!([{ "loraId": "style", "enabled": false, "strength": 0.6 }]);
+        wire["generationJobs"][0]["loraOverrides"] = overrides.clone();
+        let mut config: ProjectConfig = serde_json::from_value(wire).unwrap();
+        validate(&mut config).unwrap();
+        assert_eq!(serde_json::to_value(&config).unwrap()["generationJobs"][0]["loraOverrides"], overrides);
+        let entries = config.generation_jobs[0].lora_overrides.as_mut().unwrap();
+        entries.push(entries[0].clone());
+        assert!(validate(&mut config).unwrap_err().contains("LoRA"));
+        let entries = config.generation_jobs[0].lora_overrides.as_mut().unwrap();
+        entries.pop(); entries[0].strength = 1e39;
+        assert!(validate(&mut config).unwrap_err().contains("LoRA"));
+    }
     #[test]
     fn single_shot_fields_survive_native_project_roundtrip() {
         let mut config: ProjectConfig = serde_json::from_str(include_str!("../../../../fixtures/project-v1-complete.json")).unwrap();

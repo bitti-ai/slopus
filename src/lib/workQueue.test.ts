@@ -27,6 +27,7 @@ import { completeSceneGeneration, sceneInput } from "./sceneHistory";
 import { newSong } from "./music";
 import { musicTemplates } from "./settings";
 import { bridgeGapFrames, currentLongShotArchives } from "./longShot";
+import { DMAD_LORA, saveLoras, loadLoras, moveLibraryLora } from "./loras";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
@@ -68,6 +69,31 @@ const finish = async (queue: WorkQueue, id: string) => {
   emit("slopfab-job", { jobId: id, state: "framesReady", detail: "Frames ready" });
   await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === id)?.status).toBe("completed"));
 };
+
+it("captures global order and scene overrides before queued generation and keeps globals active", async () => {
+  saveLoras([{ ...DMAD_LORA, path: "D:/dmad", globallyEnabled: true },
+    { id: "style", name: "Style", path: "D:/style" }, { id: "template", name: "Template", path: "D:/template" }]);
+  const { queue, first } = setup();
+  first.update((config) => ({ ...config, generationJobs: config.generationJobs.map((job) => ({ ...job,
+    loraOverrides: [{ loraId: DMAD_LORA.id, enabled: false, strength: 0 }, { loraId: "template", enabled: false, strength: 1 }, { loraId: "style", enabled: true, strength: 0.6 }] })) }));
+  const template = { ...loadGeneratorTemplateSettings().templates[0], loras: [{ loraId: "template", enabled: true, strength: 1 }], motionCache: true };
+  const config = first.getSnapshot().config, job = config.generationJobs[0];
+  const request = sceneGenerationRequest(job, config, first.record.folderPath, 30, template);
+  const snapshot = sceneGenerationSnapshot(job, request);
+  const [id] = queue.enqueue(first, [{ job, request, snapshot }], template);
+  moveLibraryLora("style", DMAD_LORA.id);
+  saveLoras(loadLoras().map((lora) => ({ ...lora, globallyEnabled: false })));
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(1));
+  const [sent, captured] = vi.mocked(enqueueSlopfabGeneration).mock.calls[0];
+  expect(sent.steps).toBe(4);
+  expect(sent.videoSigmaShift).toBe(12); expect(sent.audioSigmaShift).toBe(2);
+  const options = captured.providerSettings.slopfab.options;
+  expect(options.motionCache).toBeUndefined();
+  expect(JSON.parse(options.loras as string)).toEqual([{ path: "D:/dmad", strength: 1 }, { path: "D:/style", strength: 0.6 }]);
+  expect(first.getSnapshot().config.generationJobs[0].generationSnapshot).toBe(snapshot);
+  await finish(queue, id);
+  expect(first.getSnapshot().config.generationJobs[0].generationHistory?.versions[0].scene.loraOverrides).toEqual(job.loraOverrides);
+});
 
 it("isolates live previews by native job and clears them on disable, cancel and completion", async () => {
   const { queue, first, second } = setup();

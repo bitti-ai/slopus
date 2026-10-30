@@ -21,7 +21,7 @@ import { loadGenerationPreviewsEnabled } from "./generationPreviewSettings";
 import { DEFAULT_GENERATION_STEPS, MAX_GENERATION_STEPS, type ProjectConfig, type ProviderSetting } from "./project";
 // Type-only: erased at build time, so this does not close a cycle with runtime.ts.
 import type { ProviderId } from "./runtime";
-import { downloadableTemplateLoras, loadLoras, loraStepOverride, loraSigmaShiftOverrides, isLoraStepOverride, normalizeTemplateLoras, resolveTemplateLoras, subscribeLoras, TURBO_LORA, VIGGLE_ANIMATE_LORA, type TemplateLora } from "./loras";
+import { effectiveLoras, selectionConflict, downloadableTemplateLoras, loadLoras, loraStepOverride, loraSigmaShiftOverrides, isLoraStepOverride, normalizeTemplateLoras, resolveTemplateLoras, subscribeLoras, TURBO_LORA, VIGGLE_ANIMATE_LORA, type TemplateLora } from "./loras";
 import { remoteWorkerSelected, selectedWorker, WORKERS_EVENT } from "./workers";
 
 /* Light/dark appearance is machine-level for the same reason and lives in
@@ -157,14 +157,22 @@ export function chooseWeightSource(sources: WeightSource[], devices: WeightGpu[]
  *  worker downloads URL weights itself, so a template only needs a source or
  *  a local file for each model; this computer needs everything downloaded. */
 export function templateUsable(template: GeneratorTemplate): boolean {
-  if (!remoteWorkerSelected()) return !templateNeedsDownload(template);
+  if (selectionConflict(effectiveLoras(template.loras, [], template.modelType))) return false;
+  if (!remoteWorkerSelected()) {
+    try { resolveTemplateLoras(effectiveLoras(template.loras, [], template.modelType)); return !templateNeedsDownload(template); }
+    catch { return false; }
+  }
   if (!generatorPathFields(template).every(({ id, required }) => !required || template.paths[id].trim() || (template.sources?.[id]?.length ?? 0) > 0)) return false;
   try {
-    resolveTemplateLoras(template.loras, true);
+    resolveTemplateLoras(effectiveLoras(template.loras, [], template.modelType), true);
     return true;
   } catch {
     return false;
   }
+}
+
+export function templateWithSceneLoras(template: GeneratorTemplate, job?: { loraOverrides?: TemplateLora[] | null }): GeneratorTemplate {
+  return { ...template, loras: effectiveLoras(template.loras, job?.loraOverrides ?? [], template.modelType) };
 }
 
 /** Downloaded client weights do not pin a worker to the client's GPU variant.
@@ -182,7 +190,7 @@ export function templateNeedsDownload(template: GeneratorTemplate): boolean {
   return generatorPathFields(template).some(({ id }) => isDownloadUrl(template.paths[id])
     || (template.modelType === MINIMAX_H3_MODEL_TYPE && (id === "videoVae" && template.videoVaeId !== undefined || id === "audioVae" && template.audioVaeId !== undefined || id === "textEncoder" && template.videoVaeId !== undefined) && !template.paths[id].trim())
     || (!template.paths[id].trim() && (template.sources?.[id]?.length ?? 0) > 0))
-    || downloadableTemplateLoras(template.loras).length > 0
+    || downloadableTemplateLoras(effectiveLoras(template.loras, [], template.modelType)).length > 0
     || (template.additionalSafetensors ?? []).some((file) => !file.downloadedPath || isDownloadUrl(file.downloadedPath));
 }
 
@@ -724,7 +732,7 @@ export function saveEngineSettings(settings: EngineSettings): void {
 /** The `slopfab` provider setting these paths describe, with blanks dropped so
  *  an unset field falls through to whatever the project (or the Rust default)
  *  already had rather than overwriting it with "". */
-export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false, sources = defaultGeneratorTemplate().sources, shifts: SigmaShifts & { modelType?: string; editingModel?: boolean } = defaultGeneratorTemplate()): ProviderSetting {
+export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false, sources = defaultGeneratorTemplate().sources, shifts: SigmaShifts & { modelType?: string; editingModel?: boolean } = defaultGeneratorTemplate(), sceneLoras: TemplateLora[] = []): ProviderSetting {
   // Resolve again at submission: a queued generator may predate a default encoder change.
   if (shifts.modelType === MINIMAX_H3_MODEL_TYPE) {
     const library = loadGeneratorTemplateSettings().h3Components!;
@@ -776,7 +784,7 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
     const path = file?.downloadedPath && !isDownloadUrl(file.downloadedPath) ? file.downloadedPath : remote ? file?.url : undefined;
     if (path) options.promptEmbedding = path;
   }
-  const loras = resolveTemplateLoras(selection, remote);
+  const loras = resolveTemplateLoras(effectiveLoras(selection, sceneLoras, shifts.modelType), remote);
   if (loras.length) options.loras = JSON.stringify(loras.map(({ path, strength }) => ({ path, strength })));
   const shiftOverrides = loraSigmaShiftOverrides(loras);
   if (shiftOverrides.videoSigmaShift !== undefined) options.videoSigmaShiftOverride = shiftOverrides.videoSigmaShift;
@@ -804,20 +812,20 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
 }
 
 /** The effective count shown for the selected generator before submission. */
-export function generationStepsForTemplate(steps: number, template?: Pick<GeneratorTemplate, "loras">): number {
+export function generationStepsForTemplate(steps: number, template?: Pick<GeneratorTemplate, "loras" | "modelType">, overrides: TemplateLora[] = []): number {
   // Display metadata without resolving weight paths: a template awaiting a
   // download can still show its step count without throwing during render.
-  const activeIds = new Set(template?.loras?.filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
+  const activeIds = new Set(effectiveLoras(template?.loras, overrides, template?.modelType).filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
   return loraStepOverride(loadLoras().filter((lora) => activeIds.has(lora.id))) ?? steps;
 }
 
-export function sigmaShiftOverridesForTemplate(template?: Pick<GeneratorTemplate, "loras">): SigmaShifts {
-  const active = new Set(template?.loras?.filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
+export function sigmaShiftOverridesForTemplate(template?: Pick<GeneratorTemplate, "loras" | "modelType">, overrides: TemplateLora[] = []): SigmaShifts {
+  const active = new Set(effectiveLoras(template?.loras, overrides, template?.modelType).filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
   return loraSigmaShiftOverrides(loadLoras().filter((lora) => active.has(lora.id)));
 }
 
-export function generationSigmaShifts(shifts: { videoSigmaShift?: number | null; audioSigmaShift?: number | null }, template?: GeneratorTemplate): SigmaShifts {
-  const overrides = sigmaShiftOverridesForTemplate(template);
+export function generationSigmaShifts(shifts: { videoSigmaShift?: number | null; audioSigmaShift?: number | null; loraOverrides?: TemplateLora[] | null }, template?: GeneratorTemplate): SigmaShifts {
+  const overrides = sigmaShiftOverridesForTemplate(template, shifts.loraOverrides ?? []);
   return { videoSigmaShift: overrides.videoSigmaShift ?? shifts.videoSigmaShift ?? template?.videoSigmaShift,
     audioSigmaShift: overrides.audioSigmaShift ?? shifts.audioSigmaShift ?? template?.audioSigmaShift };
 }

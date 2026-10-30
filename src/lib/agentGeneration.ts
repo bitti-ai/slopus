@@ -6,8 +6,8 @@ import { imageScenePrompt } from "./imageScene";
 import { longShotBlocker } from "./longShot";
 import { continuationBlocker, continuationSceneId, generationAssetId, sceneGenerationPending, sceneGenerationSnapshot, sceneTypeFor } from "./project";
 import type { ProjectSession } from "./projectSession";
-import { sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "./sceneGeneration";
-import { generatorPathFields, loadGeneratorTemplateSettings, templateSupportsMusic, templateUsable } from "./settings";
+import { sceneLoraBlocker, sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "./sceneGeneration";
+import { templateWithSceneLoras, generatorPathFields, loadGeneratorTemplateSettings, templateSupportsMusic, templateUsable } from "./settings";
 import { isWorkActive, projectQueueKey, type WorkQueue } from "./workQueue";
 
 export interface SceneGenerateCommand { op: "scene.generate"; scene: string; template: string }
@@ -122,7 +122,9 @@ export async function generateAgentScene(queue: WorkQueue, session: ProjectSessi
   if (!job) throw new Error(`Scene '${command.scene}' no longer exists.`);
   const template = loadGeneratorTemplateSettings().templates.find((candidate) => candidate.id === command.template);
   if (!template) throw new Error(`Generator template '${command.template}' no longer exists.`);
-  if (!templateUsable(template)) throw new Error(`Generator '${template.name}' needs its weights or LoRAs prepared before generation.`);
+  const loraBlocker = sceneLoraBlocker(job, template);
+  if (loraBlocker) throw new Error(loraBlocker);
+  if (!templateUsable(templateWithSceneLoras(template, job))) throw new Error(`Generator '${template.name}' needs its weights or LoRAs prepared before generation.`);
   if (queue.getSnapshot().some((item) => item.projectKey === projectQueueKey(session.record) && item.sceneId === job.id && isWorkActive(item))) {
     throw new Error(`Scene '${job.title}' already has generation in progress. Do not submit it again.`);
   }

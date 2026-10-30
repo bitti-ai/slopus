@@ -4,8 +4,66 @@ import { beforeEach, expect, it } from "vitest";
 import { PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, DMAD_LORA, downloadableTemplateLoras, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
 import { createGeneratorTemplate, engineProviderSetting, generationSigmaShifts, generationStepsWithLoras, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, withEngineSettings } from "./settings";
 import { createProjectConfig } from "./project";
+import { effectiveLoras, moveLibraryLora, selectionConflict, loraSnapshot } from "./loras";
+import { generationStepsForTemplate, templateNeedsDownload } from "./settings";
+import { createDraftGenerationJob, parseProjectConfig, sceneGenerationSnapshot } from "./project";
+import { sceneLoraBlocker, sceneGenerationRequest } from "./sceneGeneration";
+import { sceneInput, duplicateScene } from "./sceneHistory";
 
 beforeEach(() => { localStorage.clear(); installH3TestDependencies(); });
+
+it("merges global, template and scene LoRAs once in library order and keeps globals active", () => {
+  saveLoras([{ id: "style", name: "Style", path: "D:/style", globallyEnabled: true, globalStrength: 0.7 },
+    { id: "template", name: "Template", path: "D:/template", stepOverride: 12 },
+    { ...PIKA_REF2VA_LORA, path: "D:/pika", globallyEnabled: true }]);
+  const template = createGeneratorTemplate();
+  template.loras = [{ loraId: "template", enabled: true, strength: 1 }, { loraId: "style", enabled: false, strength: 0 }];
+  const overrides = [{ loraId: "style", enabled: false, strength: 0 }, { loraId: "template", enabled: false, strength: 1 }];
+  const options = engineProviderSetting(template.paths, undefined, template.attention, template.loras, template.mode, [], true, {}, template, overrides).options;
+  expect(JSON.parse(options.loras as string)).toEqual([{ path: "D:/style", strength: 0.7 }, { path: "D:/pika", strength: 1 }]);
+  expect(options).toMatchObject({ stepOverride: 6, samplingPreset: "pika-6step", videoSigmaShiftOverride: 12, audioSigmaShiftOverride: 3 });
+  expect(options).not.toHaveProperty("motionCache");
+  expect(generationStepsForTemplate(30, template, overrides)).toBe(6);
+  expect(effectiveLoras([], [], "fibo2")).toEqual([]);
+  moveLibraryLora(PIKA_REF2VA_LORA.id, "style");
+  expect(effectiveLoras(template.loras, overrides).filter((entry) => entry.enabled).map((entry) => entry.loraId)).toEqual([PIKA_REF2VA_LORA.id, "style"]);
+});
+
+it("rejects incompatible global recipes and Pika variants without changing the saved library", () => {
+  saveLoras([{ ...DMAD_LORA, globallyEnabled: true }]);
+  expect(() => saveLoras(loadLoras().map((lora) => lora.id === PIKA_REF2VA_LORA.id ? { ...lora, globallyEnabled: true } : lora))).toThrow("different sampling recipes");
+  expect(loadLoras().find((lora) => lora.id === PIKA_REF2VA_LORA.id)?.globallyEnabled).toBeUndefined();
+  expect(selectionConflict([PIKA_REF2VA_LORA, PIKA_FL2VA_LORA].map((lora) => ({ loraId: lora.id, enabled: true, strength: 1 })))).toContain("one Pika");
+  expect(() => saveLoras([{ ...DMAD_LORA, globalStrength: 0 }])).toThrow("nonzero");
+  expect(templateNeedsDownload(createGeneratorTemplate())).toBe(true);
+});
+
+it("blocks a four-update global recipe for Single Shot context and permits Pika's six updates", () => {
+  saveLoras([{ ...DMAD_LORA, path: "D:/dmad", globallyEnabled: true }]);
+  const job = { ...createDraftGenerationJob("Continue", { sceneType: "single-shot" }), contextSceneId: "original" };
+  const template = createGeneratorTemplate();
+  expect(sceneLoraBlocker(job, template)).toContain("more than four");
+  saveLoras(loadLoras().map((lora) => ({ ...lora, globallyEnabled: lora.id === PIKA_REF2VA_LORA.id })));
+  expect(sceneLoraBlocker(job, template)).toBeNull();
+});
+
+it("persists scene overrides and records effective render settings without persisting machine paths", () => {
+  saveLoras([{ id: "style", name: "Style", path: "D:/private/style", stepOverride: 7 }]);
+  const config = createProjectConfig({ name: "Test", prompt: "", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 10 });
+  const job = { ...createDraftGenerationJob("Walk"), loraOverrides: [{ loraId: "style", enabled: true, strength: 0.4 }] };
+  config.generationJobs = [job];
+  const template = createGeneratorTemplate();
+  const request = sceneGenerationRequest(job, config, "D:/project", 30, template);
+  const snapshot = sceneGenerationSnapshot(job, request);
+  expect(JSON.parse(snapshot)).toMatchObject({ steps: 7, loras: [{ loraId: "style", strength: 0.4 }] });
+  expect(snapshot).not.toContain("private");
+  expect(sceneGenerationSnapshot(job, { ...request, steps: 7 })).toBe(snapshot);
+  expect(parseProjectConfig(JSON.parse(JSON.stringify(config))).generationJobs[0].loraOverrides).toEqual(job.loraOverrides);
+  expect(sceneInput(job).loraOverrides).toEqual(job.loraOverrides);
+  expect(duplicateScene(config, job.id)?.config.generationJobs[1].loraOverrides).toEqual(job.loraOverrides);
+  saveLoras(loadLoras().map((lora) => lora.id === "style" ? { ...lora, stepOverride: 8 } : lora));
+  expect(loraSnapshot(effectiveLoras([], job.loraOverrides))).not.toEqual(request.loraSnapshot);
+});
 
 it("ignores legacy library multipliers and uses template strengths directly", () => {
   localStorage.setItem("slopus.loras.v1", JSON.stringify([
@@ -123,7 +181,7 @@ it("round-trips template order, enabled flags and strengths, and sends only acti
   const config = createProjectConfig({ name: "Test", prompt: "", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 10 });
   const runtime = withEngineSettings(config);
   expect(JSON.parse(runtime.providerSettings.slopfab.options.loras as string)).toEqual([
-    { path: "D:/style.safetensors", strength: -0.5 }, { path: "C:/weights/TaoMate.safetensors", strength: 1 },
+    { path: "C:/weights/TaoMate.safetensors", strength: 1 }, { path: "D:/style.safetensors", strength: -0.5 },
   ]);
   expect(runtime.providerSettings.slopfab.options.stepOverride).toBe(3);
   expect(runtime.providerSettings.slopfab.options).not.toHaveProperty("schedule");

@@ -101,6 +101,7 @@ export interface AgentTurnResponse {
 }
 
 export interface SlopfabGenerationRequest {
+  loraSnapshot?: ReturnType<typeof import("./loras").loraSnapshot>;
   contextSceneId?: string;
   keystoneRelativePath?: string;
   singleShot?: { endingPrompt: string };

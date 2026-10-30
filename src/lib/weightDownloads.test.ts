@@ -157,6 +157,17 @@ it("preserves additional file edits while a download is in flight and retries fa
   expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 1, error: null });
 });
 
+it("downloads globally enabled LoRAs with a generator without baking them into its selection", async () => {
+  const template = createGeneratorTemplate();
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id, catalogVersion: 17 });
+  saveLoras([{ ...DMAD_LORA, globallyEnabled: true }]);
+  expect(templateNeedsDownload(loadGeneratorTemplateSettings().templates[0])).toBe(true);
+  await downloadTemplateWeights(template.id);
+  expect(invoke).toHaveBeenCalledWith("download_weight", { requestId: expect.any(String), url: DMAD_LORA.url });
+  expect(loadLoras().find((lora) => lora.id === DMAD_LORA.id)).toMatchObject({ globallyEnabled: true, path: expect.stringContaining("dmad") });
+  expect(loadGeneratorTemplateSettings().templates[0].loras ?? []).toEqual([]);
+});
+
 it.each([TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA])("downloads $name through the weight transfer and restores missing downloads", async (lora) => {
   const savedLora = () => loadLoras().find(({ id }) => id === lora.id)!;
   await downloadLora(lora.id);

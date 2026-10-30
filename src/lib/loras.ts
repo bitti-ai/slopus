@@ -14,6 +14,8 @@ export interface Lora {
   audioSigmaShiftOverride?: number;
   samplingPreset?: "dmad-4step" | "pika-6step";
   needsPreparation?: boolean;
+  globallyEnabled?: boolean;
+  globalStrength?: number;
 }
 export interface TemplateLora { loraId: string; enabled: boolean; strength: number }
 export const TAOMATE_LORA: Lora = {
@@ -68,6 +70,8 @@ export function loadLoras(): Lora[] {
         ...(isSigmaShift(entry.videoSigmaShiftOverride) ? { videoSigmaShiftOverride: entry.videoSigmaShiftOverride } : {}),
         ...(isSigmaShift(entry.audioSigmaShiftOverride) ? { audioSigmaShiftOverride: entry.audioSigmaShiftOverride } : {}),
         ...(entry.needsPreparation === true ? { needsPreparation: true } : {}),
+        ...(entry.globallyEnabled === true ? { globallyEnabled: true } : {}),
+        ...(isLoraStrength(entry.globalStrength) && entry.globalStrength !== 0 ? { globalStrength: entry.globalStrength } : {}),
         ...(typeof entry.url === "string" && /^https?:\/\//i.test(entry.url) ? { url: entry.url } : {}),
         ...(isLoraStepOverride(entry.stepOverride) ? { stepOverride: entry.stepOverride }
           : entry.stepOverride === undefined && entry.schedule === "taomate-3step" ? { stepOverride: 3 } : {}) }];
@@ -80,6 +84,10 @@ export function loadLoras(): Lora[] {
   } catch { return BUNDLED_LORAS.map((lora) => ({ ...lora })); }
 }
 export function saveLoras(loras: Lora[]): void {
+  if (loras.some((lora) => lora.globalStrength !== undefined && (!isLoraStrength(lora.globalStrength) || lora.globalStrength === 0)))
+    throw new Error("Global LoRA strength must be finite, nonzero and within the supported range.");
+  const conflict = loraConflict(loras.filter((lora) => lora.globallyEnabled && (lora.modelType ?? "minimax-h3") === "minimax-h3"));
+  if (conflict) throw new Error(conflict);
   if (loras.some((lora) => lora.stepOverride !== undefined && !isLoraStepOverride(lora.stepOverride))) {
     throw new Error(`Step override must be a whole number from 2 to ${MAX_GENERATION_STEPS}.`);
   }
@@ -94,6 +102,15 @@ export function subscribeLoras(listener: () => void) {
   window.addEventListener(EVENT, listener);
   window.addEventListener("storage", storage);
   return () => { window.removeEventListener(EVENT, listener); window.removeEventListener("storage", storage); };
+}
+
+export function moveLibraryLora(id: string, targetId: string): void {
+  const library = loadLoras();
+  const from = library.findIndex((lora) => lora.id === id), to = library.findIndex((lora) => lora.id === targetId);
+  if (from < 0 || to < 0 || from === to) return;
+  const [entry] = library.splice(from, 1);
+  library.splice(to, 0, entry);
+  saveLoras(library);
 }
 export function normalizeTemplateLoras(value: unknown): TemplateLora[] {
   const ids = new Set<string>();
@@ -115,6 +132,8 @@ export function downloadableTemplateLoras(selection: TemplateLora[] = []): Lora[
  *  URL adapters itself, so only adapters with neither a file nor a URL fail. */
 export function resolveTemplateLoras(selection: TemplateLora[] = [], worker = false) {
   const library = loadLoras();
+  const conflict = selectionConflict(selection, library);
+  if (conflict) throw new Error(conflict);
   return selection.filter((entry) => entry.enabled && entry.strength !== 0).flatMap((entry) => {
     const lora = library.find(({ id }) => id === entry.loraId);
     const strength = entry.strength;
@@ -131,6 +150,40 @@ export function resolveTemplateLoras(selection: TemplateLora[] = [], worker = fa
       throw new Error(`Download or locate LoRA ${lora?.name ?? entry.loraId}, or disable it in the generator template.`);
     }
     return [{ path: lora.path.trim(), strength, stepOverride: lora.stepOverride, samplingPreset: lora.samplingPreset, videoSigmaShiftOverride: lora.videoSigmaShiftOverride, audioSigmaShiftOverride: lora.audioSigmaShiftOverride }];
+  });
+}
+
+/** Scene choices override templates; global adapters are always applied last.
+ * The library order is the execution order, independent of the selection source. */
+export function effectiveLoras(selection: TemplateLora[] = [], overrides: TemplateLora[] = [], modelType = "minimax-h3", library = loadLoras()): TemplateLora[] {
+  const chosen = new Map(selection.map((entry) => [entry.loraId, entry]));
+  for (const entry of overrides) chosen.set(entry.loraId, entry);
+  if (modelType === "minimax-h3") for (const lora of library) {
+    if (lora.globallyEnabled && (lora.modelType ?? "minimax-h3") === modelType)
+      chosen.set(lora.id, { loraId: lora.id, enabled: true, strength: lora.globalStrength ?? 1 });
+  }
+  const order = new Map(library.map((lora, index) => [lora.id, index]));
+  return [...chosen.values()].sort((a, b) => (order.get(a.loraId) ?? Infinity) - (order.get(b.loraId) ?? Infinity));
+}
+
+export function loraConflict(loras: Lora[]): string | null {
+  if (new Set(loras.flatMap((lora) => lora.samplingPreset ? [lora.samplingPreset] : [])).size > 1)
+    return "Active LoRAs require different sampling recipes. Choose either DMAD or Pika H3 Flex.";
+  if (loras.some((lora) => lora.id === PIKA_FL2VA_LORA.id) && loras.some((lora) => lora.id === PIKA_REF2VA_LORA.id))
+    return "Choose one Pika H3 Flex variant: FL2VA and Ref2VA cannot be enabled together.";
+  return null;
+}
+
+export function selectionConflict(selection: TemplateLora[], library = loadLoras()): string | null {
+  return loraConflict(library.filter((lora) => selection.some((entry) => entry.loraId === lora.id && entry.enabled && entry.strength !== 0)));
+}
+
+/** Portable render identity, including recipe changes and the actual stack order. */
+export function loraSnapshot(selection: TemplateLora[], library = loadLoras()) {
+  return selection.filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => {
+    const lora = library.find((lora) => lora.id === entry.loraId);
+    return { ...entry, stepOverride: lora?.stepOverride, samplingPreset: lora?.samplingPreset,
+      videoSigmaShiftOverride: lora?.videoSigmaShiftOverride, audioSigmaShiftOverride: lora?.audioSigmaShiftOverride };
   });
 }
 

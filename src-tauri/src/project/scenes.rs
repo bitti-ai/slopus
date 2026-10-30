@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SceneLoraOverride {
+    pub(crate) lora_id: String,
+    pub(crate) enabled: bool,
+    pub(crate) strength: f64,
+}
 /// One shot inside a scene. Mirrors `sceneShotSchema` in src/lib/project.ts.
 ///
 /// `startSeconds` and `action` are REQUIRED on the zod side and are plain
@@ -40,6 +47,8 @@ pub(crate) struct SceneShot {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GenerationJob {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) lora_overrides: Option<Vec<SceneLoraOverride>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) generator_template_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -180,6 +189,7 @@ impl GenerationJob {
             id: id.to_string(),
             scene_type: None,
             ending_prompt: None,
+            lora_overrides: None,
             context_scene_id: None,
             backdrop_color: None,
             bridge_left_margin: None,
