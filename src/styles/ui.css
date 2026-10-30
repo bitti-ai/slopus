@@ -798,6 +798,7 @@
 .inspector-action,
 .inspector-actions > button,
 .inspector-actions > .image-generation-controls,
+.inspector-actions > .scene-generation-controls,
 .image-template-settings__footer > button,
 .export-settings__actions > button,
 .debug-prompt__toggle,
