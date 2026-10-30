@@ -34,6 +34,7 @@ Changes since 0.3.2.
 
 ## Fixes and improvements
 
+- Empty shot cards use their Video's resolution and aspect ratio while waiting for a preview or generated video.
 - Non-primary scene takes can be removed during generation without interrupting the running job.
 - Videos can override project Look, aspect ratio and resolution; scenes inherit their Video's settings.
 - First & Last Frame prompts follow MiniMax's I2VA, L2VA and FL2VA formats, with ending anchors timed to the final shot.

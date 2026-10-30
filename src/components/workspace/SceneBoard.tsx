@@ -3,7 +3,7 @@ import { GenerationPreviewSource } from "./GenerationPreviewSource";
 import { SceneHistoryBar } from "./SceneHistoryBar";
 import { scenePreviewJob, scenePreviewAsset } from "../../lib/sceneHistory";
 import { Copy16, Add16, ArrowDown16, ArrowUp16, ChevronDown12, ChevronRight12, Delete16, Grip16, MoveTo16, OpenExternal16, Rename16, Stop14, Stop16, Wand16 } from "../ui/icons";
-import { useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useState, type CSSProperties, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
   SCENE_MAX_SECONDS,
   SCENE_MIN_SECONDS,
@@ -69,6 +69,7 @@ export const isMenuKey = (event: KeyboardEvent): boolean =>
  *  targets, and both carry a right-click menu. */
 export function SceneBoard({
   jobs,
+  frameAspectRatio,
   assets = [],
   folderPath,
   generationCompletionTimes,
@@ -90,6 +91,7 @@ export function SceneBoard({
   onRemoveShot, onHistorySelect, onMakePrimary, onRemoveGeneration, onRemoveDraft, onDuplicate,
 }: {
   jobs: GenerationJob[];
+  frameAspectRatio: (job: GenerationJob) => string;
   assets?: ProjectAsset[];
   folderPath: string;
   generationPreviews?: Readonly<Record<string, GenerationPreview>>;
@@ -294,6 +296,7 @@ export function SceneBoard({
           sceneDrop === null && jobIndex === jobs.length - 1 ? "scene-section--drop-after" : "",
         ].filter(Boolean).join(" ")}
         aria-label={job.title}
+        style={{ "--shot-frame-aspect": frameAspectRatio(job) } as CSSProperties}
         onDragOver={(event) => {
           if (!hasDragType(event.dataTransfer.types, SCENE_DRAG_TYPE)) return;
           const before = sceneBeforeFromEvent(event);

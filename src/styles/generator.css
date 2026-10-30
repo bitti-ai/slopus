@@ -552,15 +552,15 @@
 /* --- The frame a tile shows ---------------------------------------------------
 
    A real frame of the shot once the scene has been rendered, in that frame's
-   own shape (ShotThumbnail sets aspect-ratio from the poster; 16:9 until
-   then), and nothing
+   own shape (ShotThumbnail sets aspect-ratio from the poster; the Video's
+   configured dimensions until then), and nothing
    invented before that: the placeholder says which state the scene is in
    instead. Same rule as the media thumb and the reference card.
    ========================================================================== */
 
 .shot-thumb {
   position: relative;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: var(--shot-frame-aspect, 16 / 9);
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -576,7 +576,7 @@
 .shot-thumb-frame {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: var(--shot-frame-aspect, 16 / 9);
 }
 
 .shot-thumb-frame > .shot-thumb { height: 100%; }

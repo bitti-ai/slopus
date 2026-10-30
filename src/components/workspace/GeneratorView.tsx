@@ -32,6 +32,7 @@ import { templateWithSceneLoras, defaultGeneratorTemplate, generationStepsForTem
 import { refreshDownloadedWeights } from "../../lib/weightDownloads";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 import { sceneVideoSettings, videoGuidedScene } from "../../lib/videoLibrary";
+import { generationDimensions } from "../../lib/export";
 
 interface GeneratorViewProps {
   toolbarStart?: ReactNode;
@@ -567,6 +568,11 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
       <div className="generator-board-viewport"><div className="generator-board">
         {jobs.length > 0
           ? <SceneBoard
+            frameAspectRatio={job => {
+              const settings = sceneVideoSettings(job, config);
+              const { width, height } = generationDimensions(settings.resolution, settings.aspectRatio);
+              return `${width} / ${height}`;
+            }}
             assets={config.assets}
             jobs={jobs}
             folderPath={folderPath}
