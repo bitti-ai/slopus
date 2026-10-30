@@ -117,7 +117,7 @@ describe("a shot's picture", () => {
     });
   });
   it("autoplays and loops generation in the card with the finished shot's controls", async () => {
-    const folder = "C:/Live preview", job = { ...rendered(folder), status: "generating" as const };
+    const folder = "C:/Live preview", job = { ...rendered(folder), status: "generating" as const, progress: .42 };
     const preview = { jobId: "work", width: 256, height: 144, fps: 4, step: 1, frames: Array(36).fill("/9j/AA==") };
     await withFakeFile({ seconds: 9 }, async seen => {
       const contents = (url: string) => <GenerationPreviewContext.Provider value={{ preview, url }}>
@@ -128,6 +128,8 @@ describe("a shot's picture", () => {
       const view = render(contents("blob:preview1"));
       await screen.findByRole("button", { name: "Pause shot 1 of First scene" });
       const video = document.querySelector(".shot-thumb video") as HTMLVideoElement;
+      expect(screen.getByText("Rendering 42%").closest(".shot-thumb")).toBe(video.parentElement);
+      expect(screen.getByText("Estimating time left…").closest(".shot-thumb")).toBe(video.parentElement);
       expect(video.autoplay).toBe(true); expect(video.loop).toBe(true); expect(video.muted).toBe(true);
       expect(video.currentTime).toBe(2); expect(seen.reads()).toBe(0);
       video.currentTime = 4; fireEvent.timeUpdate(video);

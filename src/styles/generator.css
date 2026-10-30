@@ -707,6 +707,19 @@
   text-align: center;
 }
 
+.shot-thumb__status {
+  position: absolute;
+  inset: auto 0 0;
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-2) var(--space-2);
+  color: var(--on-stage);
+  background: linear-gradient(transparent, color-mix(in srgb, var(--stage-bg) 90%, transparent));
+  pointer-events: none;
+}
+
+.shot-thumb__status .shot-thumb__eta { color: inherit; }
+
 .shot-thumb--generating,
 .shot-thumb--ready {
   color: var(--accent-bright);

@@ -446,6 +446,16 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
     }
   };
 
+  const { icon, word } = placeholder(job, result.failed, cancelling);
+  const estimateLine = job.status === "generating" && !cancelling
+    ? estimatedCompletionAt === null
+      ? "Estimating time left…"
+      : formatEstimatedTimeLeft(estimatedCompletionAt - estimateNow)
+    : null;
+  const progress = job.status === "generating" && <span className="shot-thumb__progress" aria-hidden="true">
+    <i style={{ width: `${Math.max(0, Math.min(100, job.progress * 100))}%` }} />
+  </span>;
+
   if (result.poster || generation) {
     const poster = generation ? `data:image/jpeg;base64,${generation.preview.frames[Math.min(generation.preview.frames.length - 1, Math.floor(at * generation.preview.fps))]}` : result.poster!;
     const shape = generation ? `${generation.preview.width} / ${generation.preview.height}` : POSTER_SHAPES.get(poster);
@@ -480,6 +490,13 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
           POSTER_SHAPES.set(poster, `${width} / ${height}`);
           setShapeSeen((count) => count + 1);
         }} />}
+      {generation && <>
+        <span className="shot-thumb__status">
+          <em>{word}</em>
+          {estimateLine && <small className="shot-thumb__eta">{estimateLine}</small>}
+        </span>
+        {progress}
+      </>}
       <span className={`shot-thumb__play ${loadingPlayback ? "shot-thumb__play--loading" : ""}`} aria-hidden="true">
         {loadingPlayback ? <Spinner20 className="spin" /> : playing ? <Pause20 /> : playFailed ? <Warning20 /> : <Play20Filled />}
       </span>
@@ -494,18 +511,10 @@ export function ShotThumbnail({ folderPath, job, seconds, endSeconds = sceneDura
         poster={poster} title={`shot ${shotNumber} of ${job.title}`} onClose={() => { setPopoutHost(null); popoutButton.current?.focus(); }} />, popoutHost)}
     </div>;
   }
-  const { icon, word } = placeholder(job, result.failed, cancelling);
-  const estimateLine = job.status === "generating" && !cancelling
-    ? estimatedCompletionAt === null
-      ? "Estimating time left…"
-      : formatEstimatedTimeLeft(estimatedCompletionAt - estimateNow)
-    : null;
   return <span className={`shot-thumb shot-thumb--${job.status}`} role="img" aria-label={`Shot ${shotNumber} — ${word}${estimateLine ? `. ${estimateLine}` : ""}`}>
     {icon}
     <em>{word}</em>
     {estimateLine && <small className="shot-thumb__eta">{estimateLine}</small>}
-    {job.status === "generating" && <span className="shot-thumb__progress" aria-hidden="true">
-      <i style={{ width: `${Math.max(0, Math.min(100, job.progress * 100))}%` }} />
-    </span>}
+    {progress}
   </span>;
 }
