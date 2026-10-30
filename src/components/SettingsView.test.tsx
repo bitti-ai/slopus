@@ -6,7 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { middleEllipsis, SettingsView } from "./SettingsView";
 import { createGeneratorTemplate, mossImageTemplate, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings } from "../lib/settings";
-import { loadReferenceIconGeneratorId } from "../lib/referenceIconSettings";
+import { loadAlbumCoverGeneratorId, loadReferenceIconGeneratorId } from "../lib/referenceIconSettings";
 import { loadGenerationPreviewsEnabled } from "../lib/generationPreviewSettings";
 import { loadLoras, saveLoras } from "../lib/loras";
 
@@ -538,6 +538,20 @@ describe("the settings screen", () => {
     reopened.unmount();
     open(null);
     expect(combo("Reference icon generator").getAttribute("data-value")).toBe(second.id);
+  });
+
+  it("remembers a separate album cover generator under Icons", () => {
+    const first = createGeneratorTemplate("Reference art"), second = createGeneratorTemplate("Cover art", "krea2");
+    saveGeneratorTemplateSettings({ templates: [first, second], defaultTemplateId: first.id });
+    const view = open(null);
+    expect(screen.getByText("Icons", { selector: "h3" })).toBeTruthy();
+    expect(combo("Album cover generator").getAttribute("data-value")).toBe(first.id);
+    pick("Album cover generator", "Cover art");
+    expect(loadAlbumCoverGeneratorId()).toBe(second.id);
+    expect(combo("Reference icon generator").getAttribute("data-value")).toBe(first.id);
+    view.unmount();
+    open(null);
+    expect(combo("Album cover generator").getAttribute("data-value")).toBe(second.id);
   });
 
   it("creates a generator with 20 steps, edits it on its own page, and can make it the default", () => {

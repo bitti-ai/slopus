@@ -25,12 +25,26 @@ export const musicSongSchema = z.object({
   seed: z.number().int().min(-1).max(Number.MAX_SAFE_INTEGER).default(-1),
   status: z.enum(["draft", "queued", "generating", "completed", "failed", "cancelled"]).default("draft"),
   assetId: z.string().nullish(), error: z.string().nullish(),
+  coverRelativePath: z.string().min(1).nullish(),
   generation: z.object({ generatorId: z.string(), style: z.string(), settings: musicSettingsSchema,
     steps: z.number().int().min(2).max(100), seed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }).nullish(),
   createdAt: z.string(),
 });
 export type MusicSong = z.infer<typeof musicSongSchema>;
 export type MusicSettings = z.infer<typeof musicSettingsSchema>;
+
+export function albumCoverPrompt(song: MusicSong, modelType: string): string {
+  const visual = [
+    "Square album cover artwork for a song. A striking, cohesive visual composition inspired by the song's mood, genre and lyrical imagery. No lettering, captions, watermarks or borders.",
+    `Song title: ${song.title}`,
+    `Musical style and mood: ${song.generation?.style ?? song.style}`,
+    (song.generation?.settings.lyrics ?? song.settings.lyrics).trim()
+      ? `Lyrics for visual inspiration:\n${(song.generation?.settings.lyrics ?? song.settings.lyrics).trim().slice(0, 4000)}` : "Instrumental music.",
+  ].join("\n");
+  return modelType === "minimax-h3"
+    ? `integrated_multimodal_description: [Shot 1] ${visual}\n\noverall_soundscape: N/A\n\nnon_diegetic_music: N/A`
+    : visual;
+}
 export const musicFolderSchema = z.object({ id: z.string().min(1), name: z.string().trim().min(1).max(200), parentId: z.string().min(1).nullish() });
 export type MusicFolder = z.infer<typeof musicFolderSchema>;
 

@@ -2,6 +2,22 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { loadReferenceIconAutomation, referenceIconGenerator, saveReferenceIconAutomation, saveReferenceIconGeneratorId, subscribeReferenceIconAutomation } from "./referenceIconSettings";
 import { createGeneratorTemplate } from "./settings";
+import { albumCoverGenerator, loadAlbumCoverGeneratorId, saveAlbumCoverGeneratorId, loadReferenceIconGeneratorId } from "./referenceIconSettings";
+
+it("keeps the album cover generator separate from the reference icon choice and falls back if removed", () => {
+  const icons = createGeneratorTemplate("Icons"), covers = createGeneratorTemplate("Covers", "krea2");
+  const settings = { templates: [icons, covers], defaultTemplateId: icons.id };
+  const listener = vi.fn(), stop = subscribeReferenceIconAutomation(listener);
+  saveReferenceIconGeneratorId(icons.id);
+  saveAlbumCoverGeneratorId(covers.id);
+  expect(loadAlbumCoverGeneratorId()).toBe(covers.id);
+  expect(loadReferenceIconGeneratorId()).toBe(icons.id);
+  expect(albumCoverGenerator(settings)?.id).toBe(covers.id);
+  expect(listener).toHaveBeenCalledTimes(2);
+  expect(albumCoverGenerator({ ...settings, templates: [icons] })?.id).toBe(icons.id);
+  expect(albumCoverGenerator({ ...settings, templates: [] })).toBeUndefined();
+  stop();
+});
 
 beforeEach(() => localStorage.clear());
 

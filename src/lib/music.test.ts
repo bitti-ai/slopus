@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createProjectConfig, parseProjectConfig, type ProjectAsset } from "./project";
-import { moveSong, musicFolderLabel, musicSettingsForModel, musicSettingsSchema, newMusicFolder, newSong, songReference } from "./music";
+import { albumCoverPrompt, moveSong, musicFolderLabel, musicSettingsForModel, musicSettingsSchema, newMusicFolder, newSong, songReference } from "./music";
 
 describe("music projects", () => {
   it("persists folders and song moves without moving or rewriting generated audio", () => {
@@ -18,8 +18,19 @@ describe("music projects", () => {
   it("round-trips songs and preserves older projects without songs", () => {
     const config = createProjectConfig({ name: "Music", prompt: "", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 30 });
     expect(parseProjectConfig(JSON.parse(JSON.stringify(config))).musicSongs).toBeUndefined();
-    const song = { ...newSong(), style: "Jazz", settings: { ...musicSettingsSchema.parse({}), lyrics: "[Verse]\nHome again" } };
+    const song = { ...newSong(), style: "Jazz", coverRelativePath: "media/generated/cover.jpg", settings: { ...musicSettingsSchema.parse({}), lyrics: "[Verse]\nHome again" } };
     expect(parseProjectConfig(JSON.parse(JSON.stringify({ ...config, musicSongs: [song] })))).toMatchObject({ musicSongs: [song] });
+  });
+  it("builds covers from the recorded song and uses the H3 prompt format only for H3", () => {
+    const song = { ...newSong(), title: "Evening", style: "Changed draft", generation: { generatorId: "music", style: "Soft jazz", settings: musicSettingsSchema.parse({ lyrics: "Home again" }), steps: 32, seed: 42 } };
+    for (const model of ["minimax-h3", "krea2", "fibo2", "moss"]) {
+      const prompt = albumCoverPrompt(song, model);
+      expect(prompt).toContain("Evening");
+      expect(prompt).toContain("Soft jazz");
+      expect(prompt).toContain("Home again");
+      expect(prompt).not.toContain("Changed draft");
+      expect(prompt.includes("integrated_multimodal_description:")).toBe(model === "minimax-h3");
+    }
   });
   it("removes incompatible controls when switching generators", () => {
     const source = musicSettingsSchema.parse({ lyrics: "Sing", duration: 12, planning: "off", temperature: 0.7, top_p: 0.8, top_k: 80, semantic_guidance: 2, flow_guidance: 1.8 });

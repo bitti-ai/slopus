@@ -32,6 +32,8 @@ export function builtinIconVisitAction(): "ask" | "generate" | "skip" {
 const STORAGE_KEY = "slopus.reference-icon-automation.v1";
 const CHANGE_EVENT = "slopus:reference-icon-automation-changed";
 const GENERATOR_KEY = "slopus.reference-icon-generator.v1";
+const ALBUM_GENERATOR_KEY = "slopus.album-cover-generator.v1";
+let albumGeneratorOverride: string | undefined;
 let generatorOverride: string | undefined;
 let sessionOverride: ReferenceIconAutomation | undefined;
 
@@ -44,6 +46,21 @@ export function saveReferenceIconGeneratorId(id: string) {
   try { localStorage.setItem(GENERATOR_KEY, id); generatorOverride = undefined; }
   catch { generatorOverride = id; }
   window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
+export function loadAlbumCoverGeneratorId(): string {
+  if (albumGeneratorOverride !== undefined) return albumGeneratorOverride;
+  try { return localStorage.getItem(ALBUM_GENERATOR_KEY) ?? ""; } catch { return ""; }
+}
+
+export function saveAlbumCoverGeneratorId(id: string) {
+  try { localStorage.setItem(ALBUM_GENERATOR_KEY, id); albumGeneratorOverride = undefined; }
+  catch { albumGeneratorOverride = id; }
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
+export function albumCoverGenerator(settings = loadGeneratorTemplateSettings(), id = loadAlbumCoverGeneratorId()) {
+  return referenceIconGenerator(settings, id);
 }
 
 export function availableReferenceIconGenerators(settings: GeneratorTemplateSettings) {
@@ -79,7 +96,7 @@ export function saveReferenceIconAutomation(value: ReferenceIconAutomation) {
 
 export function subscribeReferenceIconAutomation(listener: () => void) {
   const onStorage = (event: StorageEvent) => {
-    if (event.key === STORAGE_KEY || event.key === GENERATOR_KEY || event.key === null) listener();
+    if (event.key === STORAGE_KEY || event.key === GENERATOR_KEY || event.key === ALBUM_GENERATOR_KEY || event.key === null) listener();
   };
   window.addEventListener(CHANGE_EVENT, listener);
   window.addEventListener("storage", onStorage);

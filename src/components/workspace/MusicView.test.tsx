@@ -13,10 +13,11 @@ import type { WorkItem } from "../../lib/workQueue";
 vi.mock("../../lib/persistence", async (original) => ({ ...await original<typeof import("../../lib/persistence")>(), isTauri: () => true, readMediaFileUrl: vi.fn(async () => "blob:song") }));
 let latest: ProjectConfig;
 const generate = vi.fn();
+const generateCover = vi.fn();
 const createConfig = () => createProjectConfig({ name: "Music", prompt: "", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 30 });
 function Harness({ initial = createConfig(), workItems = [] }: { initial?: ProjectConfig; workItems?: WorkItem[] }) {
   const [config, setConfig] = useState(initial); latest = config;
-  return <MusicView config={config} folderPath="C:/Music" onChange={setConfig} onGenerate={generate} onCancel={() => {}} workItems={workItems} />;
+  return <MusicView config={config} folderPath="C:/Music" onChange={setConfig} onGenerate={generate} onGenerateCover={generateCover} onCancel={() => {}} workItems={workItems} />;
 }
 beforeEach(() => {
   vi.clearAllMocks(); localStorage.clear();
@@ -26,6 +27,31 @@ beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
   vi.stubGlobal("URL", Object.assign(URL, { revokeObjectURL: vi.fn() }));
+});
+
+it("generates artwork for the context-menu song and displays saved covers in both views", async () => {
+  const songs = [{ ...newSong(), title: "First" }, { ...newSong(), title: "Second", coverRelativePath: "media/generated/cover.jpg" }];
+  render(<Harness initial={{ ...createConfig(), musicSongs: songs }} />);
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Select Second" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Regenerate album cover" }));
+  expect(generateCover).toHaveBeenCalledWith(songs[1].id);
+  expect(generate).not.toHaveBeenCalled();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Select Second" }).querySelector("img")).toHaveAttribute("src", "blob:song"));
+  fireEvent.click(screen.getByRole("button", { name: "List view" }));
+  expect(screen.getByRole("button", { name: "Select Second" }).querySelector("img")).toBeInTheDocument();
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Select First" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Generate album cover" }));
+  expect(generateCover).toHaveBeenLastCalledWith(songs[0].id);
+});
+
+it("reports missing cover generators without changing the song", () => {
+  const song = newSong();
+  generateCover.mockImplementationOnce(() => { throw new Error("Choose an album cover generator in Settings."); });
+  render(<Harness initial={{ ...createConfig(), musicSongs: [song] }} />);
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Select New song" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Generate album cover" }));
+  expect(screen.getByText("Error: Choose an album cover generator in Settings.")).toBeInTheDocument();
+  expect(latest.musicSongs).toEqual([song]);
 });
 
 it("creates songs in the browsed folder and moves them between folders by drag and drop", () => {

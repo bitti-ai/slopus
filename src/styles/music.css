@@ -31,6 +31,7 @@
 .music-song__select:hover { background: var(--fill-subtle-hover); }
 .music-song__art { display: flex; align-items: center; justify-content: center; gap: var(--space-3); width: 100%; aspect-ratio: 1; border-radius: var(--radius-sm); background: var(--fill-subtle-hover); color: var(--accent); }
 .music-song__art svg { width: 48px; height: 48px; }
+.music-song__art img { display: block; width: 100%; height: 100%; aspect-ratio: 1; object-fit: cover; border-radius: inherit; }
 .music-song__art > span { font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
 .music-song__info { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; width: 100%; }
 .music-song__info > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

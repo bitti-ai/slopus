@@ -7,7 +7,7 @@ pub(super) fn apply(project: &mut ProjectConfig, command: &ProjectCommand, times
             if id.trim().is_empty() || project.music_songs.iter().any(|s| s.id == *id) { return Err("Song requires a unique id.".into()); }
             project.music_songs.push(MusicSong { id: id.clone(), title: title.clone(), style: style.clone(), settings: settings.clone(),
                 folder_id: folder_id.clone(), steps: steps.unwrap_or(32), seed: seed.unwrap_or(-1), generator_id: String::new(),
-                status: "draft".into(), asset_id: None, error: None, generation: None, created_at: timestamp.into() });
+                status: "draft".into(), asset_id: None, cover_relative_path: None, error: None, generation: None, created_at: timestamp.into() });
         }
         ProjectCommand::MusicSet { id, title, style, settings, folder_id, steps, seed } => {
             let song = project.music_songs.iter_mut().find(|s| s.id == *id).ok_or("Song not found.")?;
@@ -64,6 +64,22 @@ mod tests {
     use serde_json::{json, Value};
     fn run(p: &ProjectConfig, commands: Value) -> Result<ProjectConfig, String> {
         super::super::execute_commands_at(p, &serde_json::from_value::<Vec<ProjectCommand>>(commands).unwrap(), &p.updated_at)
+    }
+    #[test]
+    fn album_covers_survive_project_round_trips_and_validate_paths() {
+        let p: ProjectConfig = serde_json::from_str(include_str!("../../../../fixtures/project-v1-complete.json")).unwrap();
+        let mut p = run(&p, json!([{"op":"music.add","id":"song","title":"Intro","style":"Jazz"}])).unwrap();
+        assert!(p.music_songs[0].cover_relative_path.is_none());
+        p.music_songs[0].cover_relative_path = Some("media\\generated\\cover.jpg".into());
+        crate::project::music::validate(&mut p).unwrap();
+        let encoded = serde_json::to_value(&p).unwrap();
+        assert_eq!(encoded["musicSongs"][0]["coverRelativePath"], "media/generated/cover.jpg");
+        let reopened: ProjectConfig = serde_json::from_value(encoded).unwrap();
+        assert_eq!(reopened.music_songs, p.music_songs);
+        for invalid in ["../outside.jpg", "C:/outside.jpg", "/outside.jpg"] {
+            p.music_songs[0].cover_relative_path = Some(invalid.into());
+            assert!(crate::project::music::validate(&mut p).is_err());
+        }
     }
     #[test]
     fn music_commands_are_transactional_and_cannot_forge_results() {

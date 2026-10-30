@@ -14,6 +14,7 @@ import { generateAgentImage, generateAgentScene, generateAgentMusic } from "./ag
 import { applyImageDraftCommand } from "./imageDraftCommands";
 import { LATENT_UPSCALER_URL, saveLocalOtherWeightPaths } from "./upscalers";
 import { WorkQueue, type GenerationSubmission } from "./workQueue";
+import { saveAlbumCoverGeneratorId, saveReferenceIconGeneratorId } from "./referenceIconSettings";
 import { saveGenerationPreviewsEnabled } from "./generationPreviewSettings";
 import { saveSceneLastFrame } from "./sceneLastFrame";
 import { prepareReferenceVideos, releaseReferenceVideos } from "./referenceVideo";
@@ -69,6 +70,61 @@ const finish = async (queue: WorkQueue, id: string) => {
   emit("slopfab-job", { jobId: id, state: "framesReady", detail: "Frames ready" });
   await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === id)?.status).toBe("completed"));
 };
+
+const coverTemplate = () => {
+  const template = kreaImageTemplates()[0];
+  return { ...template, sources: {}, paths: { ...template.paths, transformer: "C:/weights/krea.safetensors", textEncoder: "C:/weights/text.safetensors", videoVae: "C:/weights/vae.safetensors" } };
+};
+
+it("generates a cover with the selected image model and attaches it only to the requested song", async () => {
+  const { queue, first, saved } = setup();
+  const template = coverTemplate();
+  const settings = loadGeneratorTemplateSettings();
+  saveGeneratorTemplateSettings({ ...settings, templates: [...settings.templates.filter((item) => item.id !== template.id), template] });
+  saveReferenceIconGeneratorId(settings.defaultTemplateId);
+  saveAlbumCoverGeneratorId(template.id);
+  const song = { ...newSong(), title: "Evening", style: "Soft jazz", coverRelativePath: "media/old.jpg" };
+  const other = { ...newSong(), title: "Morning" };
+  first.update((config) => ({ ...config, musicSongs: [song, other] }));
+  const original = first.getSnapshot().config;
+  vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/cover.jpg", width: 1024, height: 1024 });
+  queue.enqueueAlbumCover(first, song.id);
+  queue.enqueueAlbumCover(first, song.id);
+  saveAlbumCoverGeneratorId(settings.defaultTemplateId);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  const [request, captured] = vi.mocked(enqueueSlopfabGeneration).mock.calls[0];
+  expect(request).toMatchObject({ stillImage: true, frames: 1, canvasWidth: 1024, canvasHeight: 1024, steps: template.defaultSteps, guidanceScale: 0, referencePaths: [] });
+  expect(request.prompt).toContain("Evening");
+  expect(request.prompt).toContain("Soft jazz");
+  expect(captured.providerSettings.slopfab.options).toMatchObject({ modelType: "krea2", transformer: template.paths.transformer });
+  expect(captured.providerSettings.slopfab.options).not.toHaveProperty("loras");
+  expect(first.getSnapshot().config.musicSongs![0].coverRelativePath).toBe("media/old.jpg");
+  expect(queue.getSnapshot()).toHaveLength(1);
+  await finish(queue, request.jobId);
+  expect(invoke).toHaveBeenCalledWith("save_generated_image", { folderPath: "C:/First", jobId: request.jobId });
+  expect(first.getSnapshot().config.musicSongs).toEqual([{ ...song, coverRelativePath: "media/generated/cover.jpg" }, other]);
+  expect(first.getSnapshot().config.imageScene).toEqual(original.imageScene);
+  expect(first.getSnapshot().config.assets).toEqual(original.assets);
+  expect(parseProjectConfig(saved.mock.calls.at(-1)![0].config).musicSongs![0].coverRelativePath).toBe("media/generated/cover.jpg");
+  expect(releaseRendered).toHaveBeenCalledWith(request.jobId);
+});
+
+it.each(["failed", "cancelled"])("preserves the previous album cover when generation is %s", async (state) => {
+  const { queue, first } = setup();
+  const template = coverTemplate();
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id });
+  saveAlbumCoverGeneratorId(template.id);
+  const song = { ...newSong(), coverRelativePath: "media/old.jpg" };
+  first.update((config) => ({ ...config, musicSongs: [song] }));
+  queue.enqueueAlbumCover(first, song.id);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  const id = queue.getSnapshot()[0].id;
+  if (state === "cancelled") await queue.cancel(id);
+  emit("slopfab-job", { jobId: id, state, detail: state });
+  await waitFor(() => expect(queue.getSnapshot()[0].status).toBe(state));
+  expect(first.getSnapshot().config.musicSongs).toEqual([song]);
+  expect(saveGeneratedScene).not.toHaveBeenCalled();
+});
 
 it("captures global order and scene overrides before queued generation and keeps globals active", async () => {
   saveLoras([{ ...DMAD_LORA, path: "D:/dmad", globallyEnabled: true },

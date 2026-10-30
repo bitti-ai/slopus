@@ -13,15 +13,17 @@ import type { ConfigUpdate } from "./TimelineView";
 import { GeneratorSelector } from "./GeneratorSelector";
 import { ProjectStatus } from "./ProjectStatus";
 import { PREVIEW_PLAYBACK_STARTED } from "../../lib/mediaPlayback";
+import { ReferenceImage } from "./ReferenceImage";
 
 const time = (seconds: number) => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
 const SONG_DRAG_TYPE = "application/x-slopus-music-song";
 
-export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, workItems, openSong, onSongOpened, active = true, onPlayingChange }: {
+export function MusicView({ config, folderPath, onChange, onGenerate, onGenerateCover, onCancel, workItems, openSong, onSongOpened, active = true, onPlayingChange }: {
   active?: boolean; onPlayingChange?: (playing: boolean) => void;
   openSong?: { id: string }; onSongOpened?: () => void;
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate, key?: string) => void;
   onGenerate: (songId: string, template: GeneratorTemplate) => string | void; onCancel: (id: string) => void;
+  onGenerateCover?: (songId: string) => void;
   workItems: readonly WorkItem[];
 }) {
   const [templates, setTemplates] = useState(() => loadGeneratorTemplateSettings().templates.filter(templateSupportsMusic));
@@ -206,7 +208,11 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
   };
   const context = (event: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>, song: MusicSong) => {
     const asset = config.assets.find((item) => item.id === song.assetId);
-    menu.open(event, [...newItems(), { separator: true }, { label: "Create Reference", icon: <References16 />, disabled: !asset?.relativePath || (asset.durationMs ?? 0) < 2000,
+    menu.open(event, [...newItems(), { separator: true },
+      { label: song.coverRelativePath ? "Regenerate album cover" : "Generate album cover", icon: <Sparkle16 />,
+        disabled: !isTauri() || !onGenerateCover || workItems.some((item) => item.sceneId === song.id && isWorkActive(item)),
+        onSelect: () => { setError(null); try { onGenerateCover?.(song.id); } catch (reason) { setError(String(reason)); } } },
+      { label: "Create Reference", icon: <References16 />, disabled: !asset?.relativePath || (asset.durationMs ?? 0) < 2000,
       onSelect: () => {
         try {
           const reference = songReference(song, asset!);
@@ -277,7 +283,9 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onCancel, 
                 <button type="button" className="music-song__select" aria-label={`Select ${song.title}`} aria-pressed={selected?.id === song.id} aria-describedby={`music-status-${song.id}`}
                   onClick={() => setSelectedId(song.id)} onDoubleClick={() => { if (asset) startSong(asset); }}
                   onKeyDown={(event) => { if (event.key === "ContextMenu" || event.shiftKey && event.key === "F10") context(event, song); }}>
-                  <span className="music-song__art" aria-hidden="true">{generated ? <Audio16 /> : <Edit16 />}<span>{String(index + 1).padStart(2, "0")}</span></span>
+                  <span className="music-song__art" aria-hidden="true">{song.coverRelativePath
+                    ? <ReferenceImage folderPath={folderPath} relativePath={song.coverRelativePath} alt="" />
+                    : <>{generated ? <Audio16 /> : <Edit16 />}<span>{String(index + 1).padStart(2, "0")}</span></>}</span>
                   <span className="music-song__info"><strong>{song.title}</strong><span>{song.style || "Add a style to get started"}</span></span>
                   <span className="music-song__status" id={`music-status-${song.id}`}>{work ? `${work.detail} · ${Math.round(work.progress * 100)}%` : asset ? `Ready · ${time((asset.durationMs ?? 0) / 1000)}` : generated ? "Audio unavailable" : song.status === "draft" ? "Draft · Not generated" : song.status}</span>
                 </button>

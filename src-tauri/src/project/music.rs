@@ -15,6 +15,8 @@ pub(crate) struct MusicSong {
     pub seed: i64,
     pub status: String,
     pub asset_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_relative_path: Option<String>,
     pub error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generation: Option<MusicGeneration>,
@@ -40,7 +42,7 @@ pub(crate) struct MusicFolder {
     pub parent_id: Option<String>,
 }
 
-pub(crate) fn validate(config: &super::ProjectConfig) -> Result<(), String> {
+pub(crate) fn validate(config: &mut super::ProjectConfig) -> Result<(), String> {
     let mut folders = std::collections::HashMap::new();
     for folder in &config.music_folders {
         if folder.id.is_empty() || folder.name.trim().is_empty() || folder.name.chars().count() > 200
@@ -55,7 +57,9 @@ pub(crate) fn validate(config: &super::ProjectConfig) -> Result<(), String> {
         }
     }
     let mut ids = std::collections::HashSet::new();
-    for song in &config.music_songs {
+    for song in &mut config.music_songs {
+        song.cover_relative_path = song.cover_relative_path.as_deref()
+            .map(super::paths::normalize_project_path).transpose()?;
         if song.folder_id.as_deref().is_some_and(|id| !folders.contains_key(id)) { return Err("Song folder does not exist.".into()); }
         if song.id.is_empty() || !ids.insert(&song.id) || song.title.trim().is_empty() || song.title.chars().count() > 200
             || song.style.chars().count() > 10000 || !(2..=100).contains(&song.steps) || !(-1..=9_007_199_254_740_991).contains(&song.seed)

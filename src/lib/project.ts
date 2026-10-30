@@ -716,7 +716,7 @@ export const projectConfigSchema = z.object({
   schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
   generationType: generationTypeSchema.default("video"),
   imageScene: imageSceneSchema.nullish(),
-  musicSongs: z.array(musicSongSchema).optional(),
+  musicSongs: z.array(musicSongSchema.extend({ coverRelativePath: projectRelativePathSchema.nullish() })).optional(),
   musicFolders: z.array(musicFolderSchema).optional(),
   videos: z.array(projectVideoSchema).optional(),
   videoFolders: z.array(musicFolderSchema).optional(),

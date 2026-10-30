@@ -1,6 +1,7 @@
 import { effectiveLoras, loraSnapshot } from "./loras";
 import { completeSceneGeneration, sceneInput } from "./sceneHistory";
-import { musicSongSchema, musicSettingsForModel, newSongVariation, updateSong, type MusicSong } from "./music";
+import { albumCoverPrompt, musicSongSchema, musicSettingsForModel, newSongVariation, updateSong, type MusicSong } from "./music";
+import { albumCoverGenerator } from "./referenceIconSettings";
 import { templateSupportsMusic } from "./settings";
 import { imageCfgScale } from "./generatorModels";
 import { activeGenerationEffects } from "./generationEffects";
@@ -53,7 +54,7 @@ export interface WorkItem {
   generationGroupId?: string;
   imageAssetId?: string | null;
   imageDraftId?: string;
-  kind?: "reference-icons" | "image" | "refmod" | "music";
+  kind?: "reference-icons" | "image" | "refmod" | "music" | "album-cover";
   id: string;
   projectKey: string;
   folderPath: string;
@@ -72,6 +73,7 @@ export interface WorkItem {
   settings: { frames: number; steps: number; audioSteps?: number; videoSigmaShift?: number; audioSigmaShift?: number; latentUpscale?: boolean; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
+  albumCoverSongId?: string;
   upscaleSource?: import("./project").SceneGenerationVersion;
   music?: MusicSong;
   sceneInput?: SceneInput;
@@ -339,6 +341,32 @@ export class WorkQueue {
     this.publish(); void this.pump();
     return songId;
   }
+  enqueueAlbumCover(session: ProjectSession, songId: string) {
+    if (!isTauri()) throw new Error("Album cover generation requires the desktop app and model weights.");
+    const current = session.getSnapshot().config;
+    const song = current.musicSongs?.find((item) => item.id === songId);
+    if (!song) throw new Error("This song no longer exists.");
+    const projectKey = projectQueueKey(session.record);
+    if (this.items.some((item) => item.projectKey === projectKey && item.kind === "album-cover" && item.sceneId === songId && isWorkActive(item))) return;
+    const template = albumCoverGenerator();
+    if (!template) throw new Error("Choose an available text-prompt generator for album covers in Settings → Generators → Icons.");
+    const id = `cover-${crypto.randomUUID()}`;
+    const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras ?? [], "prompt", template.additionalSafetensors ?? [], false, template.sources, template) } });
+    const request: SlopfabGenerationRequest = { jobId: id, prompt: albumCoverPrompt(song, template.modelType), stillImage: true,
+      frames: 1, canvasWidth: 1024, canvasHeight: 1024, steps: generationStepsWithLoras(template.defaultSteps, config),
+      seed: imageGenerationSeed(-1), guidanceScale: imageCfgScale(template.modelType, undefined, template.kreaVariant), referencePaths: [] };
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => { finish = resolve; });
+    this.work.set(id, { id, image: true, albumCoverSongId: songId, session, sceneId: songId, request, config,
+      snapshot: "", cancelled: false, submitted: false, done, finish });
+    this.items = [...this.items, { id, kind: "album-cover", projectKey, folderPath: session.record.folderPath, projectName: current.name,
+      sceneId: songId, title: `Album cover · ${song.title}`, submittedAt: new Date().toISOString(), status: "queued", progress: 0,
+      detail: "Waiting to generate album cover", error: null, completionAt: null, cancelling: false, needsSave: false,
+      settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: 1024, canvasHeight: 1024 } }];
+    this.publish(); this.icons.yieldToVideo(); void this.pump();
+  }
+
   enqueueImage(session: ProjectSession, template: GeneratorTemplate, count = 1) {
     if (!Number.isInteger(count) || count < 1 || count > MAX_IMAGE_BATCH_COUNT) throw new Error(`Count must be a whole number from 1 to ${MAX_IMAGE_BATCH_COUNT}.`);
     if (!isTauri()) throw new Error("Image generation requires the desktop app and downloaded model weights.");
@@ -886,7 +914,7 @@ export class WorkQueue {
     const item = this.items.find((candidate) => candidate.id === id);
     const session = item && this.projects.get(item.projectKey);
     if (!item?.needsSave || !session) return;
-    try { await session.save(); this.patch(id, { status: "completed", needsSave: false, error: null, detail: item.kind === "music" ? "Music saved" : item.kind === "image" ? "Image saved" : "Video saved" }); }
+    try { await session.save(); this.patch(id, { status: "completed", needsSave: false, error: null, detail: item.kind === "music" ? "Music saved" : item.kind === "album-cover" ? "Album cover saved" : item.kind === "image" ? "Image saved" : "Video saved" }); }
     catch (reason) { this.patch(id, { error: describeDiagnosticError(reason) }); }
   }
   private async saveMusic(work: PendingWork) {
@@ -910,7 +938,10 @@ export class WorkQueue {
     this.patch(work.id, { status: "encoding", progress: 0.9, detail: "Saving image", completionAt: null });
     try {
       const saved = await invoke<{ relativePath: string; width: number; height: number }>(work.extend ? "save_extended_image" : "save_generated_image", { folderPath: work.session.record.folderPath, jobId: work.id, ...(!work.extend && work.request.imageEdit ? { format: "png" } : {}) });
-      if (work.extend) {
+      if (work.albumCoverSongId) {
+        const songId = work.albumCoverSongId;
+        work.session.update((current) => updateSong(current, songId, { coverRelativePath: saved.relativePath }));
+      } else if (work.extend) {
         const scene = createImageEditScene({ ...saved, name: work.extend.name }, { ...work.config.imageScene!, steps: work.request.steps, seed: work.request.seed, generationEffects: work.request.generationEffects });
         work.imageGeneration = { ...work.imageGeneration!, scene };
         work.session.update(derivedImageUpdate(work.id, work.extend.sourceId, { id: work.id, kind: "image", name: work.extend.name,
@@ -920,7 +951,7 @@ export class WorkQueue {
           imageGeneration: work.imageGeneration, outputAssetId: work.config.imageScene?.outputAssetId,
           imageEdit: Boolean(work.request.imageEdit), saved }));
       }
-      try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: "Image saved" }); }
+      try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: work.albumCoverSongId ? "Album cover saved" : "Image saved" }); }
       catch (reason) { this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Image created; project save failed", error: describeDiagnosticError(reason) }); }
     } catch (reason) { this.fail(work, reason); }
     finally {

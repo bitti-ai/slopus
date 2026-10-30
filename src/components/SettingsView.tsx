@@ -40,6 +40,7 @@ import {
 } from "../lib/settings";
 import { createProjectConfig, MAX_GENERATION_STEPS } from "../lib/project";
 import { availableReferenceIconGenerators, loadReferenceIconAutomation, loadReferenceIconGeneratorId, referenceIconGenerator, saveReferenceIconAutomation, saveReferenceIconGeneratorId, subscribeReferenceIconAutomation } from "../lib/referenceIconSettings";
+import { albumCoverGenerator, loadAlbumCoverGeneratorId, saveAlbumCoverGeneratorId } from "../lib/referenceIconSettings";
 import { applyTheme, loadTheme, saveTheme, type ThemeChoice } from "../lib/theme";
 import { runtimeLocationHint } from "../lib/platform";
 import {
@@ -114,15 +115,21 @@ function DownloadStatus({ state, templateName, onError }: { state: DownloadState
 function ReferenceIconSetting({ templates }: { templates: GeneratorTemplateSettings }) {
   const automation = useSyncExternalStore(subscribeReferenceIconAutomation, loadReferenceIconAutomation);
   const chosenId = useSyncExternalStore(subscribeReferenceIconAutomation, loadReferenceIconGeneratorId);
+  const albumGeneratorId = useSyncExternalStore(subscribeReferenceIconAutomation, loadAlbumCoverGeneratorId);
   const available = availableReferenceIconGenerators(templates);
   const selected = referenceIconGenerator(templates, chosenId);
-  return <SettingsGroup heading="Reference icons">
+  const albumGenerator = albumCoverGenerator(templates, albumGeneratorId);
+  return <SettingsGroup heading="Icons">
     <SettingsCard icon={<Sparkle20 />} header="Automatic reference icon generation">
       <ToggleSwitch checked={automation !== "disabled"} aria-label="Automatic reference icon generation" onChange={(on) => saveReferenceIconAutomation(on ? "ask" : "disabled")} />
     </SettingsCard>
     <SettingsCard icon={<Image20 />} header="Reference icon generator">
       <ComboBox aria-label="Reference icon generator" disabled={!available.length} value={selected?.id ?? ""} placeholder="No available generators"
         onChange={saveReferenceIconGeneratorId} options={generatorOptions(available)} />
+    </SettingsCard>
+    <SettingsCard icon={<Image20 />} header="Album cover generator">
+      <ComboBox aria-label="Album cover generator" disabled={!available.length} value={albumGenerator?.id ?? ""} placeholder="No available generators"
+        onChange={saveAlbumCoverGeneratorId} options={generatorOptions(available)} />
     </SettingsCard>
   </SettingsGroup>;
 }
