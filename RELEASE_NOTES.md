@@ -7,7 +7,7 @@ Changes since 0.3.2.
 - **Image generators:** MOSS Image, Fibo 2.0 Base/Edit Turbo, and Krea 2 Turbo/Raw, with model-specific guidance, negative prompts and editing controls.
 - **Music:** YuE2 and MiniMax Music3 generation, folders, drafts, continuous playback and timeline audio. Export WAV, MP3, FLAC, AAC/M4A or Opus/WebM/Ogg.
 - **Album covers:** Generate artwork from a song’s context menu using a dedicated generator selected under Settings → Generators → Icons.
-- **Video library:** Organize Videos → Scenes → Shots, play scenes together, split songs into scenes, and share prompts and timed references. Videos can override project Look and resolution settings, and dependent scenes can be queued together.
+- **Video library:** Organize Videos → Scenes → Shots, play scenes together, split songs into scenes, and share prompts and timed references. Videos can override project Look and resolution settings, and dependent scenes can be queued together. Cancelling a generation also cancels its downstream dependents while preserving earlier generations.
 - **Scene takes:** Keep up to four takes plus a draft, restore settings, choose the primary take, and upscale saved takes by 1.5×, 2× or 4×. Non-primary takes can be removed during generation.
 - **Single Shot:** Continue with Context and Previous video anchors, optional generated endings, improved overlap joining and consistent Tone. Use Bridge for new connections instead of Long Shot.
 - **Motions and agents:** Create editable JavaScript animations for the timeline or references. Agents can inspect media frames, generate music and sync Motions to audio.

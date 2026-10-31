@@ -502,25 +502,33 @@ it("rejects a queued final Long Shot continuation when a following anchor is add
   expect(queue.getSnapshot().find((item) => item.id === ids[1])?.error).toContain("neighbors changed");
 });
 
-it.each(["source", "child", "grandchild", "branch"])("cancelling %s cancels its queued dependency group without touching unrelated work", async (cancelScene) => {
+it.each([
+  ["source", ["source", "child", "grandchild", "branch"]],
+  ["child", ["child", "grandchild"]],
+  ["grandchild", ["grandchild"]],
+  ["branch", ["branch"]],
+])("cancelling %s cancels only it and its queued dependents", async (cancelScene, cancelledScenes) => {
   const { queue, first, second } = setup();
   queue.enqueue(second, [submission(second)]);
   first.update((config) => ({ ...config, generationJobs: ["source", "child", "grandchild", "branch", "unrelated"].map((id) => ({ ...config.generationJobs[0], id })) }));
   const enqueue = (id: string, previousSceneId?: string) => queue.enqueue(first, [{ ...submission(first),
-    job: first.getSnapshot().config.generationJobs.find((job) => job.id === id)!, request: { ...submission(first).request, previousSceneId } }])[0];
+    job: first.getSnapshot().config.generationJobs.find((job) => job.id === id)!, request: { ...submission(first).request,
+      ...(id === "branch" ? { contextSceneId: previousSceneId } : { previousSceneId }) } }])[0];
   const ids = [enqueue("source"), enqueue("child", "source"), enqueue("grandchild", "child"), enqueue("branch", "source")];
   const unrelated = enqueue("unrelated");
   await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
-  // Editing the draft after submission must not change the captured group.
-  first.update((config) => ({ ...config, generationJobs: [...config.generationJobs].reverse() }));
+  // Editing the draft after submission must not change captured dependencies.
+  first.update((config) => ({ ...config, generationJobs: [...config.generationJobs].reverse().map((job) => ({ ...job, previousSceneId: "unrelated" })) }));
   await queue.cancel(queue.getSnapshot().find((item) => item.sceneId === cancelScene)!.id);
-  expect(queue.getSnapshot().filter((item) => ids.includes(item.id)).map((item) => item.status)).toEqual(Array(4).fill("cancelled"));
+  for (const item of queue.getSnapshot().filter((item) => ids.includes(item.id))) {
+    expect(item.status).toBe(cancelledScenes.includes(item.sceneId) ? "cancelled" : "queued");
+  }
   expect(queue.getSnapshot().find((item) => item.id === unrelated)?.status).toBe("queued");
   expect(queue.getSnapshot()[0].status).toBe("generating");
   expect(cancelSlopfabGeneration).not.toHaveBeenCalled();
 });
 
-it("cancelling a dependent also stops its generating source", async () => {
+it.each(["source", "child"])("cancelling %s only stops the running source when it is selected", async (cancelScene) => {
   const { queue, first } = setup();
   const [sourceId] = queue.enqueue(first, [submission(first)]);
   await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
@@ -528,15 +536,40 @@ it("cancelling a dependent also stops its generating source", async () => {
   const child = { ...source.job, id: "child" };
   first.update((config) => ({ ...config, generationJobs: [...config.generationJobs, child] }));
   const [childId] = queue.enqueue(first, [{ ...source, job: child, request: { ...source.request, previousSceneId: source.job.id } }]);
-  await queue.cancelScenes(first, [child.id]);
-  expect(cancelSlopfabGeneration).toHaveBeenCalledWith(sourceId);
+  await queue.cancelScenes(first, [cancelScene === "source" ? source.job.id : child.id]);
   expect(queue.getSnapshot().find((item) => item.id === childId)?.status).toBe("cancelled");
-  emit("slopfab-job", { jobId: sourceId, state: "cancelled", detail: "Stopped" });
-  await waitFor(() => expect(queue.getSnapshot().every((item) => item.status === "cancelled")).toBe(true));
+  expect(queue.getSnapshot().find((item) => item.id === sourceId)).toMatchObject({ status: "generating", cancelling: cancelScene === "source" });
+  if (cancelScene === "source") {
+    expect(cancelSlopfabGeneration).toHaveBeenCalledExactlyOnceWith(sourceId);
+    emit("slopfab-job", { jobId: sourceId, state: "cancelled", detail: "Stopped" });
+    await waitFor(() => expect(queue.getSnapshot().every((item) => item.status === "cancelled")).toBe(true));
+  } else {
+    expect(cancelSlopfabGeneration).not.toHaveBeenCalled();
+    await finish(queue, sourceId);
+    expect(first.getSnapshot().config.generationJobs[0].outputRelativePath).toBe("media/generated/result.mp4");
+  }
   expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce();
 });
 
-it("merges both Long Shot anchor groups when cancelling a bridge", async () => {
+it("finds downstream dependencies across a batch submitted in reverse order", async () => {
+  const { queue, first, second } = setup();
+  queue.enqueue(second, [submission(second)]);
+  first.update((config) => ({ ...config, generationJobs: ["source", "child", "grandchild"].map((id) => ({ ...config.generationJobs[0], id })) }));
+  const jobs = first.getSnapshot().config.generationJobs;
+  queue.enqueue(first, jobs.map((job, index) => ({ ...submission(first), job,
+    request: { ...submission(first).request, previousSceneId: jobs[index - 1]?.id } })).reverse());
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  await queue.cancelScenes(first, ["child"]);
+  expect(queue.getSnapshot().slice(1).map((item) => [item.sceneId, item.status])).toEqual([
+    ["grandchild", "cancelled"], ["child", "cancelled"], ["source", "queued"],
+  ]);
+});
+
+it.each([
+  ["bridge", ["queued", "queued", "cancelled"]],
+  ["left", ["cancelled", "queued", "cancelled"]],
+  ["right", ["queued", "cancelled", "cancelled"]],
+])("cancels Long Shot %s downstream without cancelling its other anchors", async (sceneId, statuses) => {
   const { queue, first, second } = setup();
   queue.enqueue(second, [submission(second)]);
   first.update((config) => ({ ...config, generationJobs: ["left", "bridge", "right"].map((id) => ({ ...config.generationJobs[0], id, sceneType: "long-shot" as const })) }));
@@ -545,11 +578,12 @@ it("merges both Long Shot anchor groups when cancelling a bridge", async () => {
     const job = config.generationJobs[index], request = sceneGenerationRequest(job, config, first.record.folderPath, 8);
     queue.enqueue(first, [{ job, request, snapshot: sceneGenerationSnapshot(job, request) }]);
   }
-  await queue.cancelScenes(first, ["bridge"]);
-  expect(queue.getSnapshot().slice(1).map((item) => item.status)).toEqual(["cancelled", "cancelled", "cancelled"]);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  await queue.cancelScenes(first, [sceneId]);
+  expect(queue.getSnapshot().slice(1).map((item) => item.status)).toEqual(statuses);
 });
 
-it("cancels a source saving video safely when its queued dependent is cancelled", async () => {
+it.each(["source", "child"])("handles cancelling %s while the source video is being saved", async (cancelScene) => {
   const { queue, first } = setup();
   let encoded!: (saved: Awaited<ReturnType<typeof saveGeneratedScene>>) => void;
   vi.mocked(saveGeneratedScene).mockImplementationOnce(() => new Promise((resolve) => { encoded = resolve; }));
@@ -560,11 +594,14 @@ it("cancels a source saving video safely when its queued dependent is cancelled"
   emit("slopfab-job", { jobId: sourceId, state: "framesReady" });
   await waitFor(() => expect(saveGeneratedScene).toHaveBeenCalledOnce());
   const [childId] = queue.enqueue(first, [{ ...source, job: child, request: { ...source.request, previousSceneId: source.job.id } }]);
-  await queue.cancel(childId);
-  expect(queue.getSnapshot()[0]).toMatchObject({ status: "encoding", cancelling: true });
+  await queue.cancel(cancelScene === "source" ? sourceId : childId);
+  expect(queue.getSnapshot()[0]).toMatchObject({ status: "encoding", cancelling: cancelScene === "source" });
+  expect(queue.getSnapshot()[1].status).toBe("cancelled");
+  expect(cancelSlopfabGeneration).not.toHaveBeenCalled();
   encoded({ relativePath: "media/result.mp4", bytes: 100, note: null });
-  await waitFor(() => expect(queue.getSnapshot().every((item) => item.status === "cancelled")).toBe(true));
-  expect(first.getSnapshot().config.generationJobs[0].outputRelativePath).toBeFalsy();
+  await waitFor(() => expect(queue.getSnapshot()[0].status).toBe(cancelScene === "source" ? "cancelled" : "completed"));
+  if (cancelScene === "source") expect(first.getSnapshot().config.generationJobs[0].outputRelativePath).toBeFalsy();
+  else expect(first.getSnapshot().config.generationJobs[0].outputRelativePath).toBe("media/result.mp4");
   expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce();
 });
 

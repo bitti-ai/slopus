@@ -50,8 +50,8 @@ function imageGenerationSeed(seed: number): number {
   return (high & 0x1fffff) * 0x100000000 + low;
 }
 export interface WorkItem {
-  /** Exact video runs linked while their sources were still in flight. */
-  generationGroupId?: string;
+  /** Exact source runs captured at submission, independent of later draft edits. */
+  sourceWorkIds?: string[];
   imageAssetId?: string | null;
   imageDraftId?: string;
   kind?: "reference-icons" | "image" | "refmod" | "music" | "album-cover";
@@ -262,7 +262,7 @@ export class WorkQueue {
         ? sceneGenerationSnapshot(captured, request) : submission.snapshot;
       this.work.set(id, { id, generatorName: submission.upscaleSource ? submission.upscaleSource.generatorName : chosen.name, session, sceneId: submission.job.id, sceneInput: structuredClone(submission.upscaleSource?.scene ?? sceneInput(captured)), upscaleSource: submission.upscaleSource && structuredClone(submission.upscaleSource), request, config, snapshot, cancelled: false, submitted: false, done, finish });
       this.items = [...this.items, {
-        id, generationGroupId: id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
+        id, projectKey, folderPath: session.record.folderPath, projectName: config.name,
         sceneId: submission.job.id, title: submission.job.title, submittedAt: new Date().toISOString(),
         status: "queued", progress: 0, detail: submission.upscaleSource ? "Waiting to upscale" : "Waiting to generate", error: null, completionAt: null,
         cancelling: false, needsSave: false,
@@ -271,19 +271,18 @@ export class WorkQueue {
       this.updateScene(this.work.get(id)!, { status: "queued", stage: "queued", progress: 0, error: null,
         ...(!submission.upscaleSource ? { generationSnapshot: snapshot, generatorTemplateId: captured.generatorTemplateId, steps: captured.steps, seed: captured.seed } : {}) });
     }
-    // Link after the whole batch is present, including sources submitted in
-    // earlier calls. Group IDs survive completed-work cleanup and draft edits.
+    // Capture directed dependencies after the whole batch is present, including
+    // sources submitted in earlier calls. Run IDs survive draft edits and keep
+    // cancellation from spreading to ancestors or another run of the same scene.
     for (const id of ids) {
       const work = this.work.get(id)!;
       const job = work.config.generationJobs.find((job) => job.id === work.sceneId)!;
       if (work.upscaleSource) continue;
       const sources = new Set([work.request.previousSceneId, work.request.contextSceneId, work.request.latentBridge?.leftSceneId,
         work.request.latentBridge?.rightSceneId, longShotPosition(job, sceneSiblings(job, work.config))?.previousBridge?.id]);
-      const group = this.items.find((item) => item.id === id)!.generationGroupId!;
-      const groups = new Set(this.items.filter((item) => item.projectKey === projectKey && !item.kind && isWorkActive(item)
-        && sources.has(item.sceneId)).map((item) => item.generationGroupId));
-      this.items = this.items.map((item) => item.projectKey === projectKey && item.generationGroupId && groups.has(item.generationGroupId)
-        ? { ...item, generationGroupId: group } : item);
+      const sourceWorkIds = this.items.filter((item) => item.id !== id && item.projectKey === projectKey && !item.kind && isWorkActive(item)
+        && sources.has(item.sceneId)).map((item) => item.id);
+      this.items = this.items.map((item) => item.id === id ? { ...item, sourceWorkIds } : item);
     }
     this.publish();
     if (this.items.some((item) => item.status === "queued" && item.kind !== "reference-icons")) this.icons.yieldToVideo();
@@ -693,9 +692,18 @@ export class WorkQueue {
     if (this.icons.owns(id)) { await this.icons.cancel(); return; }
     const item = this.items.find((candidate) => candidate.id === id);
     if (!item || !isWorkActive(item)) return;
-    const linked = this.items.filter((candidate) => candidate.id === id || (item.generationGroupId
-      && candidate.projectKey === item.projectKey && candidate.generationGroupId === item.generationGroupId && isWorkActive(candidate)));
-    await Promise.all(linked.map((candidate) => this.cancelOne(candidate.id)));
+    const active = this.items.filter((candidate) => candidate.projectKey === item.projectKey && isWorkActive(candidate));
+    const cancelledIds = new Set([id]);
+    // Follow only source -> dependent edges, including indirect descendants.
+    // Iterate to a fixed point so batch submission order does not matter.
+    let previousSize: number;
+    do {
+      previousSize = cancelledIds.size;
+      for (const candidate of active) {
+        if (candidate.sourceWorkIds?.some((sourceId) => cancelledIds.has(sourceId))) cancelledIds.add(candidate.id);
+      }
+    } while (cancelledIds.size !== previousSize);
+    await Promise.all([...cancelledIds].map((cancelledId) => this.cancelOne(cancelledId)));
   }
   private async cancelOne(id: string): Promise<void> {
     const item = this.items.find((candidate) => candidate.id === id);

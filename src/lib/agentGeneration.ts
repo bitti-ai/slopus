@@ -139,7 +139,7 @@ export async function generateAgentScene(queue: WorkQueue, session: ProjectSessi
   const request = sceneGenerationRequest(job, config, session.record.folderPath, template.defaultSteps, template);
   const [id] = queue.enqueue(session, [{ job, request, snapshot: sceneGenerationSnapshot(job, request) }], template);
   if (!id) throw new Error("This scene is already queued.");
-  // Stop cancels this run and its linked generation group. Encoding already in
+  // Stop cancels this run and its downstream dependents. Encoding already in
   // progress is allowed to finish safely, but the stopped agent will not resume.
   const cancel = () => { void queue.cancel(id).catch(() => undefined); };
   signal.addEventListener("abort", cancel, { once: true });
