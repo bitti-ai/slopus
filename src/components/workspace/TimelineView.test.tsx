@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import completeFixture from "../../../fixtures/project-v1-complete.json";
 import { createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectAsset, type ProjectConfig, type TimelineClip } from "../../lib/project";
 import { TimelineView } from "./TimelineView";
+import { newVideo } from "../../lib/videoLibrary";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -220,6 +221,68 @@ const press = (container: HTMLElement, key: string, init: Partial<KeyboardEventI
 const toolbarTime = (container: HTMLElement) => container.querySelector(".transport-time")!.textContent;
 
 describe("the media and scene panels", () => {
+  it("browses folders and videos with Back first, preserving scene order and drag payloads", () => {
+    const config = projectWithMedia(), first = config.generationJobs[0];
+    const second = { ...first, id: "second", title: "Second scene" };
+    config.generationJobs.push(second);
+    config.videoFolders = [{ id: "parent", name: "Collection" }, { id: "child", name: "Nested", parentId: "parent" }, { id: "empty", name: "Empty" }];
+    config.videos = [{ ...newVideo("child"), title: "Film", sceneIds: [second.id, first.id] }];
+    const opened = vi.fn();
+    render_(config, vi.fn(), opened);
+    const panel = () => screen.getByRole("tabpanel", { name: "Scenes" });
+    expect(panel().querySelector("[data-scene-id]")).toBeNull();
+    expect(within(panel()).queryByRole("button", { name: /Back/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open folder Collection" }));
+    expect(panel().firstElementChild?.getAttribute("aria-label")).toBe("Back to Scenes");
+    fireEvent.click(screen.getByRole("button", { name: "Open folder Nested" }));
+    expect(panel().firstElementChild?.getAttribute("aria-label")).toBe("Back to Collection");
+    fireEvent.click(screen.getByRole("button", { name: "Open video Film" }));
+    expect(panel().firstElementChild?.getAttribute("aria-label")).toBe("Back to Nested");
+    expect([...panel().querySelectorAll("[data-scene-id]")].map((item) => item.getAttribute("data-scene-id"))).toEqual([second.id, first.id]);
+    const scene = panel().querySelector(`[data-scene-id="${second.id}"]`)!;
+    const dataTransfer = fakeDataTransfer();
+    fireEvent.dragStart(scene, { dataTransfer });
+    expect(dataTransfer.getData("application/x-slopus-generator-scene")).toBe(second.id);
+    fireEvent.dragEnd(scene);
+    fireEvent.click(scene);
+    expect(opened).toHaveBeenLastCalledWith(second.id);
+    fireEvent.click(screen.getByRole("tab", { name: "Media" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Scenes" }));
+    expect(panel().firstElementChild?.getAttribute("aria-label")).toBe("Back to Nested");
+    for (const name of ["Back to Nested", "Back to Collection", "Back to Scenes"]) fireEvent.click(screen.getByRole("button", { name }));
+    fireEvent.click(screen.getByRole("button", { name: "Open folder Empty" }));
+    expect(panel().firstElementChild?.getAttribute("aria-label")).toBe("Back to Scenes");
+    expect(within(panel()).getByText("This folder is empty.")).toBeTruthy();
+  });
+
+  it("opens the current scene's video and recovers when its folder is removed", () => {
+    const config = projectWithMedia(), job = config.generationJobs[0];
+    config.videoFolders = [{ id: "folder", name: "Collection" }];
+    config.videos = [{ ...newVideo("folder"), title: "Film", sceneIds: [job.id] }];
+    const props = { config, folderPath: "C:/Project", onChange: vi.fn(), onOpenGenerator: vi.fn(), openSceneId: job.id };
+    const view = render(<TimelineView {...props} />);
+    expect(view.container.querySelector(`[data-scene-id="${job.id}"]`)?.getAttribute("aria-current")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Back to Collection" }));
+    view.rerender(<TimelineView {...props} config={{ ...config, videoFolders: [] }} />);
+    expect(screen.queryByRole("button", { name: /Back to/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Open video Film" })).toBeTruthy();
+  });
+
+  it("adds a scene to the browsed video without opening another video's draft", () => {
+    const config = projectWithMedia();
+    const video = { ...newVideo(null), title: "Empty video" };
+    config.videos = [video];
+    const opened = vi.fn(), onChange = vi.fn();
+    render_(config, onChange, opened);
+    fireEvent.click(screen.getByRole("button", { name: "Open video Empty video" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add scene" }));
+    const next = wrote(onChange.mock.calls[0][0], config);
+    const id = next.videos![0].sceneIds[0];
+    expect(next.generationJobs).toHaveLength(config.generationJobs.length + 1);
+    expect(next.generationJobs.at(-1)?.id).toBe(id);
+    expect(opened).toHaveBeenCalledWith(id);
+  });
+
   it("changes clip speed in Timing and splits using the retimed source position", () => {
     const config = withClip(measuredVideo(projectWithMedia(), 40000), { durationMs: 4000, sourceStartMs: 1000, playbackRate: 2 });
     const { container, onChange } = render_(config);

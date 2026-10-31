@@ -175,6 +175,8 @@
 }
 
 .scene-card:active { background: var(--fill-subtle-pressed); }
+.scene-card--navigation { grid-template-columns: 32px minmax(0, 1fr); min-height: 48px; }
+.scene-card--navigation > svg { justify-self: center; color: var(--accent); }
 
 /* Flat placeholder with a glyph: no hatching, no invented art. */
 .scene-card__thumb {

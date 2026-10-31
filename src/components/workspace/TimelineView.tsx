@@ -9,7 +9,7 @@ import { longShotPlaybackSource } from "../../lib/longShot";
 import { ProjectStatus } from "./ProjectStatus";
 import { PreviewEngineStatus } from "./PreviewEngineStatus";
 import {
-  Add16, Audio12, Audio16, Copy16, CursorClick32, Cut16, Delete16, Film12, Film16, Film20, Film32, GoToEnd16, GoToStart16,
+  Add16, Audio12, Audio16, Back16, Copy16, CursorClick32, Cut16, Delete16, Film12, Film16, Film20, Film32, FolderOpen16, GoToEnd16, GoToStart16,
   GridView16, GridView16Filled, Image12, Image16, Import16, ListView16, ListView16Filled, Lock14Filled, More16, Mute14Filled,
   NextFrame16, PanelLeft16, PanelLeft16Filled, PanelRight16, PanelRight16Filled, Pause16, Play16, PreviousFrame16, SafeArea16,
   SafeArea16Filled, Scene32, Sparkle12, Sparkle16, Speaker14, Text12, Text16, Unlock14, ZoomIn16, ZoomOut16,
@@ -20,6 +20,7 @@ import { importMediaFiles, isTauri } from "../../lib/persistence";
 import { loadMediaLayout, saveMediaLayout, type MediaLayout } from "../../lib/settings";
 import {
   clipTransform,
+  createDraftGenerationJob,
   generationAssetId,
   roundClipTransform,
   sceneDurationSeconds,
@@ -235,6 +236,22 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   /* Shuttle speed: 1, 2, 4 forward or −1, −2, −4 in reverse (J/K/L). */
   const [rate, setRate] = useState(1);
   const [panelTab, setPanelTab] = useState<"scenes" | "media">("scenes");
+  const [sceneLocation, setSceneLocation] = useState<{ kind: "folder" | "video"; id: string } | null>(() => {
+    const owner = config.videos?.find((video) => video.sceneIds.includes(openSceneId ?? ""));
+    return owner ? { kind: "video", id: owner.id } : null;
+  });
+  const sceneFolders = config.videoFolders ?? [], sceneVideos = config.videos ?? [];
+  const sceneVideo = sceneLocation?.kind === "video" ? sceneVideos.find((video) => video.id === sceneLocation.id) : undefined;
+  const sceneFolder = sceneFolders.find((folder) => folder.id === (sceneVideo?.folderId ?? (sceneLocation?.kind === "folder" ? sceneLocation.id : null)));
+  const sceneFolderId = sceneFolder?.id ?? null;
+  const childFolders = sceneVideo ? [] : sceneFolders.filter((folder) => (folder.parentId ?? null) === sceneFolderId);
+  const childVideos = sceneVideo ? [] : sceneVideos.filter((video) => (sceneFolders.some((folder) => folder.id === video.folderId) ? video.folderId : null) === sceneFolderId);
+  const assignedScenes = new Set(sceneVideos.flatMap((video) => video.sceneIds));
+  const sceneJobs = sceneVideo
+    ? sceneVideo.sceneIds.flatMap((id) => { const job = config.generationJobs.find((item) => item.id === id); return job ? [job] : []; })
+    : sceneFolder ? [] : config.generationJobs.filter((job) => !assignedScenes.has(job.id));
+  const sceneParentId = sceneVideo ? sceneFolderId : sceneFolder?.parentId;
+  const sceneParent = sceneFolders.find((folder) => folder.id === sceneParentId);
   /* Grid reads a folder of footage by its pictures, list reads it by its
      names. Which one a cutter wants is a habit, not a per-project choice, so
      it is remembered on this machine rather than written into the project. */
@@ -1146,12 +1163,21 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     setSelectedId(clipId); setMotionNodeId(null); setMediaSelectedId(id); setPanelTab("media"); setPlayhead(start);
   };
   const addScene = () => {
+    if (sceneVideo) {
+      const draft = sceneJobs.find((job) => job.status === "draft");
+      if (draft) { onOpenGenerator(draft.id); return; }
+      const job = createDraftGenerationJob("");
+      onChange((current) => ({ ...current, generationJobs: [...current.generationJobs, job],
+        videos: current.videos?.map((video) => video.id === sceneVideo.id ? { ...video, sceneIds: [...video.sceneIds, job.id] } : video) }));
+      onOpenGenerator(job.id);
+      return;
+    }
     // A new project already carries an unstarted draft made from the user's own
     // words, so open that rather than stacking a near-identical second shot.
     // With none left, go to an empty composer. Every later shot has the brief
     // already spent on the shot before it, so repeating it would describe the
     // whole video a second time and call it shot two.
-    onOpenGenerator(config.generationJobs.find((job) => job.status === "draft")?.id);
+    onOpenGenerator(sceneJobs.find((job) => job.status === "draft")?.id);
   };
 
   /* --- Context menus ----------------------------------------------------------- */
@@ -1362,8 +1388,20 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
             </>}
           />
           {panelTab === "scenes" ? (
-            <div className="scene-list" role="tabpanel" aria-label="Scenes">
-              {config.generationJobs.map((job, index) => {
+            <div key={sceneVideo ? `video:${sceneVideo.id}` : `folder:${sceneFolderId ?? "root"}`} className="scene-list" role="tabpanel" aria-label="Scenes">
+              {(sceneVideo || sceneFolder) && <button type="button" className="scene-card scene-card--navigation ui-selectable ui-selectable--separated"
+                aria-label={`Back to ${sceneParent?.name ?? "Scenes"}`} onClick={() => setSceneLocation(sceneParent ? { kind: "folder", id: sceneParent.id } : null)}>
+                <Back16 aria-hidden="true" /><span><b>Back</b><small>{sceneParent?.name ?? "Scenes"}</small></span>
+              </button>}
+              {childFolders.map((folder) => <button type="button" key={`folder:${folder.id}`} className="scene-card scene-card--navigation ui-selectable ui-selectable--separated"
+                aria-label={`Open folder ${folder.name}`} onClick={() => setSceneLocation({ kind: "folder", id: folder.id })}>
+                <FolderOpen16 aria-hidden="true" /><span><b>{folder.name}</b><small>Folder</small></span>
+              </button>)}
+              {childVideos.map((video) => <button type="button" key={`video:${video.id}`} className="scene-card scene-card--navigation ui-selectable ui-selectable--separated"
+                aria-label={`Open video ${video.title}`} onClick={() => setSceneLocation({ kind: "video", id: video.id })}>
+                <Film16 aria-hidden="true" /><span><b>{video.title}</b><small>{video.sceneIds.filter((id) => config.generationJobs.some((job) => job.id === id)).length} scenes</small></span>
+              </button>)}
+              {sceneJobs.map((job, index) => {
                 const joined = longShotPlaybackSource(job, config);
                 const assetIds = new Set([
                   generationAssetId(job.id),
@@ -1403,7 +1441,8 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   </span>
                 </button>;
               })}
-              <button className="secondary-button scene-add" onClick={addScene}><Add16 /> Add scene</button>
+              {!childFolders.length && !childVideos.length && !sceneJobs.length && <p className="panel-hint">{sceneFolder && !sceneVideo ? "This folder is empty." : "No scenes yet."}</p>}
+              {(sceneVideo || !sceneFolder) && <button className="secondary-button scene-add" onClick={addScene}><Add16 /> Add scene</button>}
             </div>
           ) : (
             <div className={`media-grid media-grid--${mediaLayout}`} role="tabpanel" aria-label="Media">

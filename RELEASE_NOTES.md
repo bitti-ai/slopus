@@ -23,6 +23,7 @@ Changes since 0.3.2.
 
 - Improved video playback, thumbnails and Back navigation.
 - Video folders stack vertically beside video cards in grid view.
+- The Timeline scene list browses video folders and videos, with Back as the first item inside each.
 - Clicking empty space in the video or music library clears the selection.
 - Image edits preserve their sources and settings. Generator lists and inspector controls are more compact and consistently ordered.
 - Corrected First/Last Frame prompts, cached VAE checks across restarts and fixed AppImage launcher permissions.
