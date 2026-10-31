@@ -104,7 +104,7 @@ export function MusicExportView({ config, folderPath }: { config: ProjectConfig;
           </div> : <EmptyState icon={<Audio16 />} title="No music to export yet" description="Generate a song in the Music tab first." />}
         </div>
         {selected && <div className="music-player" aria-label="Music player">
-          <MusicPlaybackControls title={selected.song.title} playing={playing} position={position} duration={duration} volume={volume}
+          <MusicPlaybackControls title={selected.song.title} folderPath={folderPath} coverRelativePath={selected.song.coverRelativePath} playing={playing} position={position} duration={duration} volume={volume}
             canPlay={Boolean(url)} canNavigate={Boolean(songs.length)} canSeek={Boolean(url && duration)}
             onToggle={() => { if (playing) audio.current?.pause(); else void play(); }}
             onPrevious={() => move(-1)} onNext={() => move(1)} onVolume={setVolume}

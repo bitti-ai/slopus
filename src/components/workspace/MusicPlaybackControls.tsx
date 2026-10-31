@@ -1,17 +1,24 @@
 import { Slider } from "../ui";
 import { Audio16, GoToEnd16, GoToStart16, Pause16, Play16, Speaker14 } from "../ui/icons";
+import { ReferenceImage } from "./ReferenceImage";
 
 const time = (seconds: number) => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
 
-export function MusicPlaybackControls({ title, playing, position, duration, volume, canPlay, canNavigate, canSeek,
+export function MusicPlaybackControls({ title, folderPath, coverRelativePath, playing, position, duration, volume, canPlay, canNavigate, canSeek,
   onToggle, onPrevious, onNext, onSeek, onVolume }: {
   title?: string; playing: boolean; position: number; duration: number; volume: number;
+  folderPath: string; coverRelativePath?: string | null;
   canPlay: boolean; canNavigate: boolean; canSeek: boolean;
   onToggle: () => void; onPrevious: () => void; onNext: () => void;
   onSeek: (position: number) => void; onVolume: (volume: number) => void;
 }) {
   return <>
-    <div className="music-player__now"><Audio16 /><div><strong>{title ?? "No song playing"}</strong><span>{playing ? "Playing" : title ? "Paused" : "Choose a generated song"}</span></div></div>
+    <div className="music-player__now">
+      <span className="music-player__art" aria-hidden="true">{coverRelativePath
+        ? <ReferenceImage folderPath={folderPath} relativePath={coverRelativePath} alt="" />
+        : <Audio16 />}</span>
+      <div><strong>{title ?? "No song playing"}</strong><span>{playing ? "Playing" : title ? "Paused" : "Choose a generated song"}</span></div>
+    </div>
     <div className="music-player__transport">
       <div className="music-player__buttons">
         <button type="button" className="icon-button" aria-label="Previous song" disabled={!canNavigate} onClick={onPrevious}><GoToStart16 /></button>

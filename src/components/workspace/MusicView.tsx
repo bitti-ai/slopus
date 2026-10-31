@@ -138,6 +138,7 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [playlist, setPlaylist] = useState<string[]>([]);
   const playerAsset = config.assets.find((asset) => asset.id === playerId);
+  const playerSong = playerAsset && config.musicSongs?.find((song) => song.assetId === playerAsset.id);
   const [url, setUrl] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
@@ -338,7 +339,7 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
         {selected?.error && <span>{selected.error}</span>}
       </div>}
       <div className="music-player" aria-label="Music player">
-        <MusicPlaybackControls title={playerAsset?.name} playing={playing} position={position} duration={length} volume={volume}
+        <MusicPlaybackControls title={playerAsset?.name} folderPath={folderPath} coverRelativePath={playerSong?.coverRelativePath} playing={playing} position={position} duration={length} volume={volume}
           canPlay={Boolean(playable.length || playerAsset)} canNavigate={Boolean(playable.length)} canSeek={Boolean(url && length)}
           onToggle={toggle} onPrevious={() => move(-1)} onNext={() => move(1)} onVolume={setVolume}
           onSeek={(value) => { if (audio.current) audio.current.currentTime = value; setPosition(value); }} />
