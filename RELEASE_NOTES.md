@@ -4,8 +4,6 @@ Changes since 0.3.2.
 
 ## What's new
 
-- **MiniMax weights:** Singularity v1.3 W4A8, Singularity v2 with INT8/W6A8/W4A8 choices, First/Last Frame and References W6A8, and FastH3 Omni W4A8. Existing generator settings and downloaded paths are preserved.
-
 - **Image generators:** MOSS Image, Fibo 2.0 Base/Edit Turbo, and Krea 2 Turbo/Raw, with model-specific guidance, negative prompts and editing controls.
 - **Music:** YuE2 and MiniMax Music3 generation, folders, drafts, continuous playback and timeline audio. Export WAV, MP3, FLAC, AAC/M4A or Opus/WebM/Ogg.
 - **Album covers:** Generate artwork from a song’s context menu or the AI agent using a dedicated generator selected under Settings → Generators → Icons. The playback bar shows the current song’s cover, with a music-note placeholder when absent.
@@ -25,7 +23,7 @@ Changes since 0.3.2.
 
 - Local image edits now generate only the selected bounding box or lasso bounds, padded to multiples of 32, and merge into the original image without changing surrounding pixels.
 - Generate's dropdown arrow now shares its neutral disabled colors while keeping available upscale actions accessible.
-- Single Shot with Context video now matches the two-minute Keystone/Capstone test's fully locked 22-frame overlap, preserving earlier video and audio instead of regenerating their tail. Update LAN workers alongside the app.
+- Single Shot with Context video now matches the two-minute Keystone/Capstone test's fully locked 22-frame overlap, preserving earlier video and audio instead of regenerating their tail.
 - Corrected Motion thumbnail sizing and title/duration alignment in the Timeline's list and grid layouts.
 - Send additional agent messages while it is working; queued messages join its context when the current call or generation finishes.
 - Limited generation progress updates to keep music playback controls responsive during song generation.
