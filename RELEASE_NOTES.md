@@ -21,6 +21,7 @@ Changes since 0.3.2.
 
 ## Fixes and improvements
 
+- Limited generation progress updates to keep music playback controls responsive during song generation.
 - Unavailable Generate buttons use a neutral background with readable text in both themes.
 - Improved video playback, thumbnails and Back navigation.
 - Video folders stack vertically beside video cards in grid view.
