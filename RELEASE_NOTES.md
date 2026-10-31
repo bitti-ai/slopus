@@ -4,6 +4,8 @@ Changes since 0.3.2.
 
 ## What's new
 
+- **MiniMax weights:** Singularity v1.3 W4A8, Singularity v2 with INT8/W6A8/W4A8 choices, First/Last Frame and References W6A8, and FastH3 Omni W4A8. Existing generator settings and downloaded paths are preserved.
+
 - **Image generators:** MOSS Image, Fibo 2.0 Base/Edit Turbo, and Krea 2 Turbo/Raw, with model-specific guidance, negative prompts and editing controls.
 - **Music:** YuE2 and MiniMax Music3 generation, folders, drafts, continuous playback and timeline audio. Export WAV, MP3, FLAC, AAC/M4A or Opus/WebM/Ogg.
 - **Album covers:** Generate artwork from a song’s context menu or the AI agent using a dedicated generator selected under Settings → Generators → Icons. The playback bar shows the current song’s cover, with a music-note placeholder when absent.

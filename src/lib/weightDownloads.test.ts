@@ -291,7 +291,7 @@ it("preserves the sample links and prevents an unfinished template from being th
   expect(templateNeedsDownload(saved())).toBe(true);
   expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe("");
   expect(defaultGeneratorTemplate().id).toBe("");
-  expect(Object.values(saved().sources ?? {}).flat()).toHaveLength(5);
+  expect(Object.values(saved().sources ?? {}).flat()).toHaveLength(6);
 });
 
 it.each([8, 11.4, 12, 12.01, 16, 19.4, 20, 20.01, 24, 32])("selects the Minimax weights for %s GiB of VRAM", async (vram) => {
@@ -305,10 +305,10 @@ it.each([8, 11.4, 12, 12.01, 16, 19.4, 20, 20.01, 24, 32])("selects the Minimax 
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
     url: minimaxOriginalTemplate().paths.textEncoder,
   }));
-  const transformer = vram <= 20 ? "minimax_h3_fl2va_pruned-w4a8_convrot_pruned.safetensors" : "minimax_h3_fl2va_pruned_int8_convrot.safetensors";
+  const transformer = vram > 15 && vram <= 20 ? "minimax_h3_fl2va_pruned_w6a8.safetensors" : vram <= 20 ? "minimax_h3_fl2va_pruned-w4a8_convrot_pruned.safetensors" : "minimax_h3_fl2va_pruned_int8_convrot.safetensors";
   expect(saved().paths.transformer).toBe(`C:/Slopus/weights/${transformer}`);
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
-    url: vram <= 20
+    url: vram > 15 && vram <= 20 ? "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_w6a8.safetensors" : vram <= 20
       ? "https://huggingface.co/Winnougan/MiniMax-H3-INT4_Convrot_ComfyUI/resolve/main/minimax_h3_fl2va_pruned-w4a8_convrot_pruned.safetensors"
       : minimaxOriginalTemplate().paths.transformer,
   }));
@@ -320,7 +320,7 @@ it.each([12, 20, 24])("downloads the References transformer for %s GiB of VRAM",
     ? [{ name: "GPU", memoryBytes: vram * 1024 ** 3 }] : original(command, args));
   await downloadTemplateWeights("minimax-h3-references");
   expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 4, error: null });
-  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: vram <= 20
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: vram === 20 ? "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_w6a8.safetensors" : vram <= 20
     ? "https://huggingface.co/koongrizzly/MiniMax_H3_int4_W4A8_ConvRot_Pruned/resolve/main/diffusion_models/minimax_h3_ref2va_hybrid_b20-49_pruned_w4a8_mixed.safetensors"
     : "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors" }));
   expect(templateNeedsDownload(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "minimax-h3-references")!)).toBe(false);
@@ -333,7 +333,7 @@ it.each([0, 12, 20, 24])("downloads only the FastH3 Omni transformer for %s GiB 
   await downloadTemplateWeights("minimax-h3-fast");
   expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 4, error: null });
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
-    url: "https://huggingface.co/FastVideo/FastH3-Omni-Comfy/resolve/main/diffusion_models/fasth3_omniref_8step_pruned_int8_convrot.safetensors",
+    url: vram < 22 ? "https://huggingface.co/berryber09/FastH3-OmniRef-8step-pruned-w4a8/resolve/main/fasth3_omniref_8step_pruned_w4a8.safetensors" : "https://huggingface.co/FastVideo/FastH3-Omni-Comfy/resolve/main/diffusion_models/fasth3_omniref_8step_pruned_int8_convrot.safetensors",
   }));
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
     url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors",
@@ -352,17 +352,32 @@ it.each([0, 12, 20, 32])("downloads Singularity with four steps and the shared w
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: TURBO_LORA.url }));
   expect(loadLoras().find(({ id }) => id === TURBO_LORA.id)?.path).not.toBe("");
   expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
-    url: "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
+    url: vram < 21 ? "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/resolve/main/Minimax-h3_Singularity_ref2va_v1.3_Pruned_w4a8.safetensors" : "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/blob/main/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors",
   }));
   for (const field of ["textEncoder", "videoVae", "audioVae"] as const) {
     expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: minimaxOriginalTemplate().paths[field] }));
   }
   const settings = loadGeneratorTemplateSettings();
   const template = settings.templates.find(({ id }) => id === "minimax-h3-singularity")!;
-  expect(template.paths.transformer).toBe("C:/Slopus/weights/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors");
+  expect(template.paths.transformer).toBe(vram < 21 ? "C:/Slopus/weights/Minimax-h3_Singularity_ref2va_v1.3_Pruned_w4a8.safetensors" : "C:/Slopus/weights/Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors");
   expect(templateNeedsDownload(template)).toBe(false);
   saveGeneratorTemplateSettings({ ...settings, defaultTemplateId: template.id });
   expect(defaultGeneratorTemplate().defaultSteps).toBe(4);
+});
+
+it.each([[12, "w4a8"], [16, "w6a8_r2"], [21, "int8_convrot_r2"]] as const)("downloads Singularity v2 %s GB weights with its four-step adapter", async (vram, format) => {
+  const original = vi.mocked(invoke).getMockImplementation()!;
+  vi.mocked(invoke).mockImplementation(async (command, args) => command === "weight_download_hardware"
+    ? [{ name: "GPU", memoryBytes: vram * 1024 ** 3 }] : original(command, args));
+  await downloadTemplateWeights("minimax-h3-singularity-v2");
+  expect(getWeightDownloadState()).toMatchObject({ active: false, completed: 5, files: 5, error: null });
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({
+    url: `https://huggingface.co/WAS/Minimax-h3_Singularity_v2_pruned/resolve/main/Minimax-h3_Singularity_ref2va_v2_pruned_${format}.safetensors`,
+  }));
+  expect(invoke).toHaveBeenCalledWith("download_weight", expect.objectContaining({ url: TURBO_LORA.url }));
+  const template = loadGeneratorTemplateSettings().templates.find(({ id }) => id === "minimax-h3-singularity-v2")!;
+  expect(template.defaultSteps).toBe(4);
+  expect(templateNeedsDownload(template)).toBe(false);
 });
 
 it("reuses downloaded template LoRAs and restores readiness when a shared adapter goes missing", async () => {

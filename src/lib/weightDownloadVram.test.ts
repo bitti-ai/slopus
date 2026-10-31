@@ -37,7 +37,7 @@ it("waits for a decision before any transfer and cancels without a download erro
     message: expect.stringContaining("Test GPU: 8 GB VRAM"),
   }));
   const message = vi.mocked(askNative).mock.calls[0][0].message;
-  expect(message).toContain("12 GB VRAM");
+  expect(message).toContain("13 GB VRAM");
   expect(message).toContain("16 GB VRAM");
   expect(message).not.toContain("21 GB VRAM"); // Report the smallest alternative.
   decide(false);
@@ -66,7 +66,7 @@ it.each([12, 16, 21, 24])("checks the encoder independently of the transformer o
     expect(vi.mocked(askNative).mock.calls[0][0].message).toContain("16 GB VRAM");
     expect(vi.mocked(askNative).mock.calls[0][0].message).not.toContain("at least 12");
   } else expect(askNative).not.toHaveBeenCalled();
-  expect(downloads()[0]).toContain(gb < 21 ? "w4a8_convrot_pruned" : "int8_convrot");
+  expect(downloads()[0]).toContain(gb < 16 ? "w4a8_convrot_pruned" : gb < 21 ? "w6a8" : "int8_convrot");
 });
 
 it.each([[], [gpu(0)], [gpu(15.4)], [gpu(8), gpu(24)]].map((hardware) => ({ hardware })))("handles unknown capacity, reserved memory and multiple GPUs: $hardware", async ({ hardware }) => {
@@ -140,8 +140,8 @@ it("seeds all agreed minimums and upgrades old defaults once without losing cust
   const settings = loadGeneratorTemplateSettings();
   const limits = Object.fromEntries(settings.templates.filter(({ modelType, id }) => id !== "default" && ["minimax-h3", "minimax_music3"].includes(modelType))
     .map((template) => [template.id, template.sources!.transformer!.map(({ minVramGb }) => minVramGb)]));
-  expect(limits).toEqual({ "minimax-h3-original": [21, 12], "minimax-h3-references": [21, 12],
-    "minimax-h3-fast": [22], "minimax-h3-singularity": [21], "viggle-animate": [21], minimax_music3: [10, 5, 3] });
+  expect(limits).toEqual({ "minimax-h3-original": [21, 13, 16], "minimax-h3-references": [21, 13, 16],
+    "minimax-h3-fast": [22, 17], "minimax-h3-singularity": [21, 12], "minimax-h3-singularity-v2": [21, 16, 12], "viggle-animate": [21], minimax_music3: [10, 5, 3] });
   expect(Object.fromEntries(settings.h3Components!.templates.map((entry) => [entry.id, entry.sources[0].minVramGb]))).toEqual({
     "h3-video-vae": 6, "sol-h3-vae": 6, "h3-fast-video-vae": 3, "h3-audio-vae": 1, "h3-text-encoder": 16,
   });
@@ -163,9 +163,9 @@ it("seeds all agreed minimums and upgrades old defaults once without losing cust
   localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ ...settings, catalogVersion: 17 }));
   const migrated = loadGeneratorTemplateSettings();
   const updated = migrated.templates.find(({ id }) => id === original.id)!;
-  expect(migrated.catalogVersion).toBe(20);
+  expect(migrated.catalogVersion).toBe(21);
   expect(updated.paths.transformer).toBe(original.paths.transformer);
-  expect(updated.sources!.transformer!.map(({ minVramGb }) => minVramGb)).toEqual([21, 10, 0]);
+  expect(updated.sources!.transformer!.map(({ minVramGb }) => minVramGb)).toEqual([21, 10, 16, 0]);
   expect(updated.sources!.transformer![0].downloadedPath).toBe(original.paths.transformer);
   expect(migrated.h3Components!.templates.find(({ id }) => id === encoder.id)).toMatchObject({
     path: encoder.path, sources: [{ ...encoder.sources[0], minVramGb: 16 }],

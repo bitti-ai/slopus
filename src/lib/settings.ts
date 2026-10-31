@@ -372,7 +372,8 @@ export function minimaxOriginalTemplate(): GeneratorTemplate {
   const sources: GeneratorTemplate["sources"] = Object.fromEntries(ENGINE_PATH_FIELDS.filter(({ id }) => paths[id]).map(({ id }) => [id, [{ url: paths[id], gpuModel: "", minVramGb: id === "textEncoder" ? 16 : id === "videoVae" ? 6 : id === "audioVae" ? 1 : 0 }]]));
   sources.transformer = [
     { url: paths.transformer, gpuModel: "", minVramGb: 21 },
-    { url: MINIMAX_FL2VA_W4A8_URL, gpuModel: "", minVramGb: 12 },
+    { url: MINIMAX_FL2VA_W4A8_URL, gpuModel: "", minVramGb: 13 },
+    { url: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_w6a8.safetensors", gpuModel: "", minVramGb: 16 },
   ];
   return { id: "minimax-h3-original", name: "First/Last Frame", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: 20, attention: "sage2", paths, sources };
 }
@@ -391,7 +392,8 @@ export function minimaxReferencesTemplate(): GeneratorTemplate {
     "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors");
   return { ...template, sources: { ...template.sources, transformer: [
     { url: template.paths.transformer, gpuModel: "", minVramGb: 21 },
-    { url: MINIMAX_REF2VA_W4A8_URL, gpuModel: "", minVramGb: 12 },
+    { url: MINIMAX_REF2VA_W4A8_URL, gpuModel: "", minVramGb: 13 },
+    { url: "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_ref2va_pruned_w6a8.safetensors", gpuModel: "", minVramGb: 16 },
   ] } };
 }
 
@@ -402,7 +404,8 @@ export function minimaxFastTemplate(): GeneratorTemplate {
   return { ...template,
     paths: { ...template.paths, videoVae },
     sources: { ...template.sources,
-      transformer: [{ url: template.paths.transformer, gpuModel: "", minVramGb: 22 }],
+      transformer: [{ url: template.paths.transformer, gpuModel: "", minVramGb: 22 },
+        { url: "https://huggingface.co/berryber09/FastH3-OmniRef-8step-pruned-w4a8/resolve/main/fasth3_omniref_8step_pruned_w4a8.safetensors", gpuModel: "", minVramGb: 17 }],
       videoVae: [{ url: videoVae, gpuModel: "", minVramGb: 3 }] },
   };
 }
@@ -413,7 +416,22 @@ export function minimaxSingularityTemplate(): GeneratorTemplate {
   return { ...template, id: "minimax-h3-singularity", name: "Singularity", defaultSteps: 4,
     loras: [{ loraId: TURBO_LORA.id, enabled: true, strength: 1 }],
     paths: { ...template.paths, transformer },
-    sources: { ...template.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 21 }] },
+    sources: { ...template.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 21 },
+      { url: "https://huggingface.co/WarmBloodAban/Minimax-h3_Singularity/resolve/main/Minimax-h3_Singularity_ref2va_v1.3_Pruned_w4a8.safetensors", gpuModel: "", minVramGb: 12 }] },
+  };
+}
+
+export function minimaxSingularityV2Template(): GeneratorTemplate {
+  const template = minimaxSingularityTemplate();
+  const root = "https://huggingface.co/WAS/Minimax-h3_Singularity_v2_pruned/resolve/main/";
+  const transformer = root + "Minimax-h3_Singularity_ref2va_v2_pruned_int8_convrot_r2.safetensors";
+  return { ...template, id: "minimax-h3-singularity-v2", name: "Singularity v2",
+    paths: { ...template.paths, transformer },
+    sources: { ...template.sources, transformer: [
+      { url: transformer, gpuModel: "", minVramGb: 21 },
+      { url: root + "Minimax-h3_Singularity_ref2va_v2_pruned_w6a8_r2.safetensors", gpuModel: "", minVramGb: 16 },
+      { url: root + "Minimax-h3_Singularity_ref2va_v2_pruned_w4a8.safetensors", gpuModel: "", minVramGb: 12 },
+    ] },
   };
 }
 
@@ -429,9 +447,9 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 }
 
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => normalizeTemplateSettings({
-  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates(), ...kreaImageTemplates()],
+  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates(), ...kreaImageTemplates(), minimaxSingularityV2Template()],
   defaultTemplateId: "default",
-  catalogVersion: 20,
+  catalogVersion: 21,
 })!;
 
 const normalizeTemplateSettings = (value: unknown, shareComponents = true): GeneratorTemplateSettings | null => {
@@ -501,7 +519,7 @@ const normalizeTemplateSettings = (value: unknown, shareComponents = true): Gene
     ...shared,
     defaultTemplateId: !shareComponents ? requestedDefault : shared.templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? shared.templates.find(templateUsable)?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -753,6 +771,28 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
         if ((normalized.catalogVersion ?? 0) < 20) {
           for (const template of kreaImageTemplates()) if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 20 }, false)!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
+        if ((normalized.catalogVersion ?? 0) < 21) {
+          const canonical = (url: string) => url.trim().replace("/blob/", "/resolve/");
+          const bundled = [minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate()];
+          normalized.templates = normalized.templates.map((template) => {
+            const catalog = bundled.find(({ id, modelType }) => id === template.id && modelType === template.modelType);
+            const defaults = catalog?.sources?.transformer;
+            const sources = template.sources?.transformer ?? [];
+            if (!defaults || !sources.some((source) => defaults.some((entry) => canonical(entry.url) === canonical(source.url)))) return template;
+            const retained = sources.map((source) =>
+              [MINIMAX_FL2VA_W4A8_URL, MINIMAX_REF2VA_W4A8_URL].includes(canonical(source.url))
+                && source.minVramGb === 12 && !source.gpuModel.trim() ? { ...source, minVramGb: 13 } : source);
+            // Add only the new variants; retain removals of older catalog sources.
+            const previousUrls = [canonical(catalog!.paths.transformer), MINIMAX_FL2VA_W4A8_URL, MINIMAX_REF2VA_W4A8_URL];
+            const missing = defaults.filter((source) => !previousUrls.includes(canonical(source.url))
+              && !sources.some((entry) => canonical(entry.url) === canonical(source.url)));
+            return { ...template, sources: { ...template.sources, transformer: [...retained, ...missing] } };
+          });
+          const singularity = minimaxSingularityV2Template();
+          if (!normalized.templates.some(({ id }) => id === singularity.id)) normalized.templates.push(singularity);
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 21 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         const shared = normalizeTemplateSettings(normalized)!;
