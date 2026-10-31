@@ -27,8 +27,8 @@ pub(super) struct RegionEdit {
     whole: bool,
     step: ImageEditStep,
     mask: Option<Vec<u8>>,
-    // Keep the cropped prompt reference alive through planning/inference.
-    _reference: Option<tempfile::NamedTempFile>,
+    // Keep the crop on disk through inference without holding a writer open.
+    _reference: Option<tempfile::TempPath>,
 }
 
 impl RegionEdit {
@@ -71,9 +71,11 @@ impl RegionEdit {
                         .map_err(|e| format!("Could not prepare cropped image reference: {e}"))?;
                     crop.write_to(file.as_file_mut(), image::ImageFormat::Png)
                         .map_err(|e| format!("Could not save cropped image reference: {e}"))?;
-                    reference = Some(file);
+                    // Windows native image decoding denies write sharing. Close
+                    // the writer now, retaining automatic cleanup after inference.
+                    reference = Some(file.into_temp_path());
                 }
-                *path = reference.as_ref().unwrap().path().to_string_lossy().into_owned();
+                *path = reference.as_ref().unwrap().to_string_lossy().into_owned();
             }
         }
         prepared.canvas_width = cw as i32;
@@ -284,6 +286,14 @@ mod tests {
         let region = prepare_first(&request).unwrap().unwrap();
         let reference = std::path::PathBuf::from(&region.request.reference_paths[0]);
         assert_ne!(reference, request.image_edit_path.as_ref().unwrap().as_path());
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            // Native reference decoding opens with read sharing only. An open
+            // temporary-file writer would fail here with ERROR_SHARING_VIOLATION.
+            let reader = std::fs::OpenOptions::new().read(true).share_mode(1).open(&reference).unwrap();
+            assert!(reader.metadata().unwrap().len() > 0);
+        }
         let crop = image::open(&reference).unwrap().to_rgb8();
         assert_eq!(crop.dimensions(), (32, 32));
         assert_eq!(crop.as_raw(), region.request.image_edit_pixels.as_ref().unwrap().as_ref());

@@ -21,6 +21,7 @@ Changes since 0.3.2.
 
 ## Fixes and improvements
 
+- Fixed a Windows file-sharing error when Minimax reads a cropped image-edit reference.
 - Local image edits now generate only the selected bounding box or lasso bounds, padded to multiples of 32, and merge into the original image without changing surrounding pixels.
 - Generate's dropdown arrow now shares its neutral disabled colors while keeping available upscale actions accessible.
 - Single Shot with Context video now matches the two-minute Keystone/Capstone test's fully locked 22-frame overlap, preserving earlier video and audio instead of regenerating their tail.
