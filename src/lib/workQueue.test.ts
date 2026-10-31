@@ -1313,9 +1313,9 @@ describe("image generation work", () => {
     const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
     const steps = request.imageEdit!.edits;
     expect(steps).toHaveLength(2);
-    expect(steps[0]).toMatchObject({ x: 0, y: 0, width: 96, height: 64, feather: 0 });
-    const outer = [{ x: 24, y: 16 }, { x: 72, y: 16 }, { x: 24, y: 48 }];
-    expect(steps[1]).toMatchObject({ feather: 0, ...(compound ? { maskContours: [outer, [{ x: 36, y: 24 }, { x: 48, y: 24 }, { x: 36, y: 32 }]] } : { maskPolygon: outer }) });
+    expect(steps[0]).toMatchObject({ x: 0, y: 0, width: 101, height: 77, feather: 0 });
+    const outer = [{ x: 25.25, y: 19.25 }, { x: 75.75, y: 19.25 }, { x: 25.25, y: 57.75 }];
+    expect(steps[1]).toMatchObject({ feather: 0, ...(compound ? { maskContours: [outer, [{ x: 37.875, y: 28.875 }, { x: 50.5, y: 28.875 }, { x: 37.875, y: 38.5 }]] } : { maskPolygon: outer }) });
     for (const [index, name] of ["Lighting", "Balloon"].entries()) {
       expect(steps[index].referencePaths).toEqual(["C:/Image/media/generated/source.jpg", `C:/Image/references/${name}.png`]);
       expect(steps[index].refmods).toEqual([{ path: `C:/Image/references/${name}.safetensors`, strength: 0.75, copies: 2 }]);
@@ -1356,9 +1356,9 @@ describe("image generation work", () => {
     }
     const draftId = session.getSnapshot().config.imageScene!.outputAssetId!;
     expect(session.getSnapshot().config.assets[1]).toMatchObject({ id: draftId, imageDraft: true });
-    expect(request).toMatchObject({ stillImage: true, frames: 1, canvasWidth: 96, canvasHeight: 64, imageEdit: { sourceRelativePath: "media/generated/source.jpg", edits: [
-      { prompt: expect.stringContaining("A red balloon"), x: 24, y: 16, width: 48, height: 32 },
-      { prompt: expect.stringContaining("A blue boat"), x: 24, y: 16, width: 48, height: 32 },
+    expect(request).toMatchObject({ stillImage: true, frames: 1, canvasWidth: 101, canvasHeight: 77, imageEdit: { sourceRelativePath: "media/generated/source.jpg", regionSize: { width: 128, height: 96 }, edits: [
+      { prompt: expect.stringContaining("A red balloon"), x: 25, y: 19, width: 51, height: 39 },
+      { prompt: expect.stringContaining("A blue boat"), x: 25, y: 19, width: 51, height: 39 },
     ] } });
     await finish(queue, request.jobId);
     expect(invoke).toHaveBeenCalledWith("save_generated_image", { folderPath: record.folderPath, jobId: request.jobId, format: "png" });
@@ -1369,7 +1369,7 @@ describe("image generation work", () => {
     expect(result.assets[1]).toMatchObject({ id: draftId, imageDraft: false, relativePath: "media/generated/edited.png", parentAssetId: result.assets[0].id });
     expect(result.imageScene!.outputAssetId).toBe(draftId);
     expect(result.imageScene).toMatchObject({ rootType: "image", sourceImage: { relativePath: "media/generated/edited.png" } });
-    expect(result.assets[1]).toMatchObject({ mimeType: "image/png", imageGeneration: { scene, prompt: expect.stringContaining("Edit 2 (24, 16, 48, 32)") } });
+    expect(result.assets[1]).toMatchObject({ mimeType: "image/png", imageGeneration: { scene, prompt: expect.stringContaining("Edit 2 (25, 19, 51, 39)") } });
     expect(result.assets[1].imageGeneration!.scene.nodes).toEqual(scene.nodes);
     expect(restoreGeneratedImage(result, result.assets[0].id).imageScene!.nodes).toMatchObject([{ description: "" }]);
     expect(result.assets[0].imageEditing).toBeUndefined();

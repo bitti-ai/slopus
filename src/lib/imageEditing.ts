@@ -21,19 +21,18 @@ export interface ImageEditStep {
   refmods?: Array<{ path: string; strength: number; copies: number }>;
 }
 export const imageEditDebugPrompt = (edits: ImageEditStep[]) => edits.map((edit, index) => `Edit ${index + 1} (${edit.x}, ${edit.y}, ${edit.width}, ${edit.height})\n${edit.prompt}`).join("\n\n");
-/** Imported images default to their own dimensions, rounded down to the model grid. */
-export function imageEditSize(source: Pick<ImageSource, "width" | "height">, shortEdge = Math.min(source.width, source.height)) {
-  const scale = shortEdge / Math.min(source.width, source.height);
-  const align = (value: number) => Math.max(32, Math.floor(value / 32) * 32);
+/** Cover every source pixel by default; explicit resolution choices fit the model grid. */
+export function imageEditSize(source: Pick<ImageSource, "width" | "height">, shortEdge?: number) {
+  const scale = shortEdge === undefined ? 1 : shortEdge / Math.min(source.width, source.height);
+  const align = (value: number) => Math.max(32, (shortEdge === undefined ? Math.ceil(value / 32) : Math.floor(value / 32)) * 32);
   return { width: align(source.width * scale), height: align(source.height * scale) };
 }
 export function imageEditOutputSize(scene: ImageScene) {
   return scene.outputSize ?? imageEditSize(scene.sourceImage!);
 }
-/** An explicitly smaller target limits local inference, not the saved canvas. */
+/** Every edit uses a bounded inference crop and preserves the source canvas. */
 export function imageEditRegionSize(scene: ImageScene) {
-  const source = scene.sourceImage, target = scene.outputSize;
-  return source && target && (source.width > target.width || source.height > target.height) ? target : undefined;
+  return scene.sourceImage ? imageEditOutputSize(scene) : undefined;
 }
 export function imageEditCanvasSize(scene: ImageScene) {
   return imageEditRegionSize(scene) ? { width: scene.sourceImage!.width, height: scene.sourceImage!.height } : imageEditOutputSize(scene);

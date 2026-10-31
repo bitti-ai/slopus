@@ -1,11 +1,11 @@
 import { expect, it } from "vitest";
 import { parseProjectConfig } from "./project";
 import { addImageNode, createImageEditScene } from "./imageScene";
-import { compileImageEdits, editGeneratedImage, imageEditSize, imageEditCanvasSize, limitImageEditScene } from "./imageEditing";
+import { compileImageEdits, editGeneratedImage, imageEditSize, imageEditCanvasSize, imageEditRegionSize, limitImageEditScene } from "./imageEditing";
 import fixture from "../../fixtures/project-v1-image.json";
 
 it.each([
-  [1001, 809, 992, 800], [809, 1001, 800, 992], [640, 480, 640, 480], [17, 31, 32, 32],
+  [1001, 809, 1024, 832], [809, 1001, 832, 1024], [640, 480, 640, 480], [17, 31, 32, 32],
 ])("aligns a %i × %i source to %i × %i", (width, height, expectedWidth, expectedHeight) => {
   expect(imageEditSize({ width, height })).toEqual({ width: expectedWidth, height: expectedHeight });
 });
@@ -22,7 +22,17 @@ it("keeps local edits in original pixels when the target is smaller and validate
   expect(() => parseProjectConfig(config)).toThrow();
 });
 
-it("uses hierarchy order, skips empty groups, and converts boxes to the rounded output dimensions", () => {
+it.each([undefined, { width: 4352, height: 6560 }])("always crops local edits on a 4352 by 6529 source with target %j", (outputSize) => {
+  const config = parseProjectConfig(fixture);
+  config.imageScene = addImageNode(createImageEditScene({ relativePath: "source.png", name: "Large", width: 4352, height: 6529 }), "image-root", "object", { x: 900, y: 900, width: 100, height: 100 });
+  config.imageScene.outputSize = outputSize;
+  config.imageScene.nodes[1].description = "Change the flower";
+  expect(imageEditCanvasSize(config.imageScene)).toEqual({ width: 4352, height: 6529 });
+  expect(imageEditRegionSize(config.imageScene)).toEqual({ width: 4352, height: 6560 });
+  expect(compileImageEdits(config).edits[0]).toMatchObject({ x: 3916, y: 5876, width: 436, height: 653 });
+});
+
+it("uses hierarchy order, skips empty groups, and converts boxes to original pixel dimensions", () => {
   const config = parseProjectConfig(fixture);
   let scene = createImageEditScene({ relativePath: "media/imported/source.png", name: "Source", width: 101, height: 77 });
   scene = addImageNode(scene, "image-root", "group");
@@ -36,10 +46,10 @@ it("uses hierarchy order, skips empty groups, and converts boxes to the rounded 
   config.settings.defaultLook = "watercolor";
   const { edits } = compileImageEdits(config);
   expect(edits).toHaveLength(2);
-  expect(edits[0]).toMatchObject({ x: 86, y: 57, width: 10, height: 7 });
+  expect(edits[0]).toMatchObject({ x: 90, y: 69, width: 11, height: 8 });
   expect(edits[0].prompt).toContain("A red balloon");
   expect(edits[0].prompt).not.toMatch(/Use these colors|#FF0000/);
-  expect(edits[1]).toMatchObject({ x: 24, y: 16, width: 48, height: 32 });
+  expect(edits[1]).toMatchObject({ x: 25, y: 19, width: 51, height: 39 });
   expect(edits[1].prompt).toContain("A blue boat");
   expect(edits[0].prompt).not.toContain("watercolor");
   expect(edits[0].prompt).toContain("[Shot 1]");
@@ -97,7 +107,7 @@ it("applies whole-image actions first and compiles only the references each edit
   config.imageScene = addImageNode(config.imageScene, root.id, "object");
   Object.assign(config.imageScene.nodes[1], { description: "Add a @[ref:Balloon]" });
   let edits = compileImageEdits(config).edits;
-  expect(edits[0]).toMatchObject({ x: 0, y: 0, width: 96, height: 64, feather: 0 });
+  expect(edits[0]).toMatchObject({ x: 0, y: 0, width: 101, height: 77, feather: 0 });
   expect(edits[1].feather).toBeUndefined();
   expect(edits[0].prompt).toContain("Warm up the entire image like <Subject 1>");
   expect(edits[0].prompt).toContain("<Subject 1> is Lighting, providing appearance from <Picture 2>");

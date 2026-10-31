@@ -250,7 +250,7 @@ it("edits imported-image generation settings and restores them with the draft", 
   initial.assets = [{ id: "imported", name: "Imported", kind: "image", relativePath: "media/source.png", mimeType: "image/png", width: 1001, height: 809, createdAt: initial.createdAt }];
   const current = setup(initial);
   fireEvent.click(screen.getByRole("button", { name: "View Imported" }));
-  expect(comboValue(screen.getByLabelText("Resolution"))).toBe("992x800");
+  expect(comboValue(screen.getByLabelText("Resolution"))).toBe("1024x832");
   typePrompt(screen.getByLabelText("Edit prompt"), "Warm up the lighting");
   fireEvent.change(screen.getByLabelText("Steps"), { target: { value: "32" } });
   fireEvent.change(screen.getByLabelText("Seed"), { target: { value: "123456" } });
@@ -261,14 +261,14 @@ it("edits imported-image generation settings and restores them with the draft", 
   const reopened = parseProjectConfig(JSON.parse(JSON.stringify(current())));
   expect(reopened.imageScene).toEqual(current().imageScene);
   fireEvent.click(screen.getByRole("button", { name: "View Imported" }));
-  expect(comboValue(screen.getByLabelText("Resolution"))).toBe("992x800");
+  expect(comboValue(screen.getByLabelText("Resolution"))).toBe("1024x832");
   expect(screen.getByLabelText("Steps")).toHaveValue(20);
   expect(screen.getByLabelText("Seed")).toHaveValue(-1);
   fireEvent.click(screen.getByRole("button", { name: "View Editing Imported" }));
   expect(screen.getByLabelText("Steps")).toHaveValue(32);
   expect(screen.getByLabelText("Seed")).toHaveValue(123456);
   expect(comboValue(screen.getByLabelText("Resolution"))).toBe("672x544");
-  choose("Resolution", "992 × 800");
+  choose("Resolution", "1024 × 832");
   expect(compileImageEdits(current()).edits[0]).toMatchObject({ width: 1001, height: 809 });
 });
 
@@ -488,7 +488,7 @@ it("adds image files in edit mode and saves whole-image and drawn edits with sep
   // References come from what each prompt cites; there is no list to tick.
   expect(screen.queryByRole("checkbox", { name: "Mood" })).not.toBeInTheDocument();
   typePrompt(screen.getByLabelText("Edit prompt"), "Make the lighting warmer like @[ref:Mood]");
-  expect(compileImageEdits(current()).edits[0]).toMatchObject({ x: 0, y: 0, width: 992, height: 800 });
+  expect(compileImageEdits(current()).edits[0]).toMatchObject({ x: 0, y: 0, width: 1000, height: 800 });
   const canvas = screen.getByLabelText("Image placement canvas");
   Object.defineProperty(canvas, "setPointerCapture", { value: vi.fn() });
   Object.defineProperty(canvas, "getBoundingClientRect", { value: () => ({ left: 0, top: 0, width: 1000, height: 800 }) });
@@ -1261,7 +1261,7 @@ it("draws a lasso, edits its prompt, moves its outline, and saves it independent
   pointer("pointerDown", 150, 120, outline); pointer("pointerMove", 250, 200); pointer("pointerUp", 250, 200);
   expect(current().imageScene!.nodes[1]).toMatchObject({ box: { x: 200, y: 200, width: 300, height: 300 }, lasso: lasso.lasso, description: "Add a red flower" });
   expect(promptValue(screen.getByLabelText("Edit prompt"))).toBe("Add a red flower");
-  expect(compileImageEdits(current()).edits[0]).toMatchObject({ feather: 0, maskPolygon: [{ x: 198.4, y: 160 }, { x: 496, y: 160 }, { x: 198.4, y: 400 }] });
+  expect(compileImageEdits(current()).edits[0]).toMatchObject({ feather: 0, maskPolygon: [{ x: 200, y: 160 }, { x: 500, y: 160 }, { x: 200, y: 400 }] });
   expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).imageScene).toEqual(current().imageScene);
   expect(current().assets.find((asset) => asset.id === "source")?.imageEditing).toBeUndefined();
   fireEvent.click(screen.getByRole("radio", { name: "Lasso" }));

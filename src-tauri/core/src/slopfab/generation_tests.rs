@@ -130,18 +130,25 @@ fn cropped_edit_sequence_merges_each_result_into_the_original_canvas() {
         ]}
     })).unwrap();
     item.request.image_edit_path = Some(path.clone());
+    item.request.reference_paths = vec![path.to_string_lossy().into_owned()];
     let mut calls = 0;
+    let mut crop_references = Vec::new();
     let (metadata, merged) = run_edit_sequence(&item, |stage| {
-        assert_eq!((stage.request.canvas_width, stage.request.canvas_height), (64, 64));
+        assert_eq!((stage.request.canvas_width, stage.request.canvas_height), (32, 32));
         let input = stage.request.image_edit_pixels.as_ref().unwrap();
+        let reference = std::path::PathBuf::from(&stage.request.reference_paths[0]);
+        assert_ne!(reference, path);
+        assert_eq!(image::open(&reference).unwrap().to_rgb8().as_raw(), input.as_ref());
+        crop_references.push(reference);
         if calls == 1 { assert!(input.chunks_exact(3).any(|pixel| pixel == [200, 0, 0])); }
         calls += 1;
         let color = if calls == 1 { [200, 0, 0, 255] } else { [0, 200, 0, 255] };
         let (mut metadata, _) = result(0);
-        metadata.width = 64; metadata.height = 64;
-        Ok((metadata, super::super::image_regions::rendered_image("crop-sequence", image::RgbaImage::from_pixel(64, 64, image::Rgba(color)))?))
+        metadata.width = 32; metadata.height = 32;
+        Ok((metadata, super::super::image_regions::rendered_image("crop-sequence", image::RgbaImage::from_pixel(32, 32, image::Rgba(color)))?))
     }).unwrap();
     assert_eq!(calls, 2);
+    assert!(crop_references.iter().all(|path| !path.exists()));
     assert_eq!((metadata.width, metadata.height, merged.width, merged.height), (129, 97, 129, 97));
     let pixels = merged.frame(0).unwrap().unwrap();
     for y in 0..97 { for x in 0..129 {
