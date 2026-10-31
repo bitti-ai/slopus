@@ -77,6 +77,20 @@ it("prepares music once and resumes with the new song receipt without generating
   expect(vi.mocked(runAgentTurn).mock.calls[1][2]).toContain("music.analyze");
 });
 
+it.each([false, true])("deduplicates album cover requests and resumes with their receipt (rejected: %s)", async (rejected) => {
+  const record = project();
+  const host = { getRecord: () => record, prepare: vi.fn().mockResolvedValue(undefined), generate: vi.fn() };
+  if (rejected) host.generate.mockRejectedValue(new Error("Choose an album cover generator in Settings"));
+  else host.generate.mockResolvedValue({ song: "song", template: "cover-model", status: "completed", detail: "Album cover saved", outputRelativePath: "media/cover.jpg" });
+  const cover = response({ kind: "generation", summary: "Cover", prepare: [{ op: "music.add", id: "song", title: "Evening", style: "Jazz" }],
+    command: { op: "music.cover.generate", song: "song" } });
+  vi.mocked(runAgentTurn).mockResolvedValueOnce(cover).mockResolvedValueOnce(cover).mockResolvedValueOnce(answer);
+  await runAgentWorkflow(record, "local", "Generate album cover", "turn", [], new AbortController().signal, host);
+  expect(host.generate).toHaveBeenCalledOnce(); expect(host.prepare).toHaveBeenCalledOnce();
+  expect(vi.mocked(runAgentTurn).mock.calls[1][2]).toContain('"song":"song"');
+  expect(vi.mocked(runAgentTurn).mock.calls[1][2]).toContain(rejected ? '"status":"rejected"' : '"outputRelativePath":"media/cover.jpg"');
+});
+
 it.each(["failed", "cancelled"] as const)("returns %s to the agent without automatically generating again", async (status) => {
   const record = project();
   const host = { getRecord: () => record, generate: vi.fn().mockResolvedValue({ ...outcome, status, error: "Stopped", needsSave: true }) };

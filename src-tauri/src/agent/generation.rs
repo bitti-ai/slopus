@@ -11,6 +11,8 @@ pub enum GenerationCommand {
     Image { image: String, template: String },
     #[serde(rename = "music.generate")]
     Music { song: String, template: String },
+    #[serde(rename = "music.cover.generate")]
+    AlbumCover { song: String },
 }
 
 pub(super) fn validate(
@@ -19,6 +21,14 @@ pub(super) fn validate(
     generators: &GeneratorContext,
 ) -> Result<(), String> {
     let template = match command {
+        GenerationCommand::AlbumCover { song } => {
+            // The app uses the dedicated album-cover generator from local settings.
+            return if config.music_songs.iter().any(|item| &item.id == song) {
+                Ok(())
+            } else {
+                Err(format!("Unknown song '{song}'. Use music.add first."))
+            };
+        }
         GenerationCommand::Music { song, template } => {
             if !config.music_songs.iter().any(|item| &item.id == song) { return Err(format!("Unknown song '{song}'. Use music.add first.")); }
             if !generators.settings["templates"].as_array().is_some_and(|items| items.iter().any(|item|
@@ -72,6 +82,26 @@ mod tests {
     use super::*;
     use crate::agent::{protocol::parse_turn_result, AgentTurnResult};
     use serde_json::json;
+
+    #[test]
+    fn album_cover_generation_validates_prepared_songs_without_a_template_argument() {
+        let config: ProjectConfig = serde_json::from_str(include_str!("../../../fixtures/project-v1-complete.json")).unwrap();
+        let response = json!({"kind":"generation","summary":"Generate album cover",
+            "prepare":[{"op":"music.add","id":"song","title":"Evening","style":"Jazz"}],
+            "command":{"op":"music.cover.generate","song":"song"}});
+        let AgentTurnResult::Generation { command, prepare, .. } = parse_turn_result(&response.to_string()).unwrap() else { panic!() };
+        let generators = GeneratorContext::default();
+        assert!(validate(&command, &config, &generators).unwrap_err().contains("Unknown song"));
+        let prepared = crate::project::commands::execute_commands_at(&config, &prepare, &config.updated_at).unwrap();
+        validate(&command, &prepared, &generators).unwrap();
+        for command in [
+            json!({"op":"music.cover.generate"}),
+            json!({"op":"music.cover.generate","song":"song","template":"arbitrary"}),
+            json!({"op":"music.cover.generate","song":"song","coverRelativePath":"fake.jpg"}),
+        ] {
+            assert!(parse_turn_result(&json!({"kind":"generation","summary":"Cover","command":command}).to_string()).is_err());
+        }
+    }
 
     #[test]
     fn music_generation_prepares_songs_and_requires_a_music_template() {

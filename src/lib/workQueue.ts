@@ -367,6 +367,7 @@ export class WorkQueue {
       detail: "Waiting to generate album cover", error: null, completionAt: null, cancelling: false, needsSave: false,
       settings: { frames: 1, steps: request.steps, seed: request.seed, canvasWidth: 1024, canvasHeight: 1024 } }];
     this.publish(); this.icons.yieldToVideo(); void this.pump();
+    return id;
   }
 
   enqueueImage(session: ProjectSession, template: GeneratorTemplate, count = 1) {

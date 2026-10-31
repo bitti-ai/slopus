@@ -17,6 +17,11 @@ Inspect generator.list/get and choose an existing music template. Supported mode
 
 Generation runs in the normal queue and resumes the agent with a completion/failure/cancellation receipt. A completed source produces a NEW song; use the receipt's song and assetId, not the source ID, for follow-up operations. Duplicate requests within the same turn reuse receipts. Never retry failed generation automatically. Results are audio assets usable by clip.add on a timeline track. Do not claim completion until the receipt confirms it; needsSave means persistence failed.
 
+Album cover generation
+----------------------
+When the user requests album artwork, use {"kind":"generation","summary":"Generate the song's album cover","command":{"op":"music.cover.generate","song":"existing-song-id"}}. No template argument: this uses the dedicated album-cover generator selected in Settings → Generators → Icons, with the same defaults as the song context-menu action. The song must exist after optional prepare commands; its audio does not need to be generated first. Artwork is a square 1024×1024 image derived from its title, style and lyrics. To update those inputs, use music.set in prepare.
+The queue waits for generation and saving, then resumes with a receipt containing song, template, workId and outputRelativePath. Success replaces only that song's coverRelativePath; it does not create a new song or an image-bar asset. Failure/cancellation preserves the previous cover. Report missing generator configuration instead of changing Settings or retrying automatically. Duplicate requests reuse receipts and stopping the agent cancels only the cover work it started. music.get exposes the saved cover path; a receipt is not visual inspection.
+
 Read APIs (kind: inspect, requests: [...])
 ----------------------------------------
 - {op:"music.list"}: compact songs and folders.

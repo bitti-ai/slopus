@@ -1,4 +1,5 @@
 import { isTauri } from "./persistence";
+import { albumCoverGenerator } from "./referenceIconSettings";
 import { restoreGeneratedImage, saveImageDraft } from "./imageHistory";
 import { compileImagePrompt } from "./imagePrompt";
 import { compileImageEdits } from "./imageEditing";
@@ -13,13 +14,14 @@ import { isWorkActive, projectQueueKey, type WorkQueue } from "./workQueue";
 export interface SceneGenerateCommand { op: "scene.generate"; scene: string; template: string }
 export interface ImageGenerateCommand { op: "image.generate"; image: string; template: string }
 export interface MusicGenerateCommand { op: "music.generate"; song: string; template: string }
-export type AgentGenerateCommand = SceneGenerateCommand | ImageGenerateCommand | MusicGenerateCommand;
+export interface AlbumCoverGenerateCommand { op: "music.cover.generate"; song: string }
+export type AgentGenerateCommand = SceneGenerateCommand | ImageGenerateCommand | MusicGenerateCommand | AlbumCoverGenerateCommand;
 export interface GenerationObservation {
   scene?: string;
   image?: string;
   song?: string;
   sourceSong?: string;
-  template: string;
+  template?: string;
   status: "completed" | "failed" | "cancelled" | "rejected";
   workId?: string;
   detail: string;
@@ -33,7 +35,33 @@ export function generateAgentMedia(queue: WorkQueue, session: ProjectSession, co
   signal: AbortSignal, onProgress: (text: string) => void): Promise<GenerationObservation> {
   return command.op === "image.generate" ? generateAgentImage(queue, session, command, signal, onProgress)
     : command.op === "music.generate" ? generateAgentMusic(queue, session, command, signal, onProgress)
+    : command.op === "music.cover.generate" ? generateAgentAlbumCover(queue, session, command, signal, onProgress)
     : generateAgentScene(queue, session, command, signal, onProgress);
+}
+
+export async function generateAgentAlbumCover(queue: WorkQueue, session: ProjectSession, command: AlbumCoverGenerateCommand,
+  signal: AbortSignal, onProgress: (text: string) => void): Promise<GenerationObservation> {
+  signal.throwIfAborted();
+  const song = session.getSnapshot().config.musicSongs?.find((song) => song.id === command.song);
+  if (!song) throw new Error(`Song '${command.song}' was not found. Use music.add first.`);
+  const template = albumCoverGenerator();
+  const id = queue.enqueueAlbumCover(session, song.id);
+  if (!id) throw new Error(`Song '${song.title}' already has album cover generation in progress.`);
+  const cancel = () => { void queue.cancel(id).catch(() => undefined); };
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    if (signal.aborted) { cancel(); signal.throwIfAborted(); }
+    let lastDetail = "";
+    const item = await queue.waitFor(id, signal, (work) => {
+      if (lastDetail !== work.detail) { lastDetail = work.detail; onProgress(`${song.title}: ${work.detail}`); }
+    });
+    signal.throwIfAborted();
+    const current = session.getSnapshot().config.musicSongs?.find((song) => song.id === command.song);
+    return { song: song.id, template: template?.id, workId: id,
+      status: item.status === "completed" ? "completed" : item.status === "cancelled" ? "cancelled" : "failed",
+      detail: item.detail, error: item.error, needsSave: item.needsSave,
+      ...(item.status === "completed" || item.needsSave ? { outputRelativePath: current?.coverRelativePath } : {}) };
+  } finally { signal.removeEventListener("abort", cancel); }
 }
 
 export async function generateAgentMusic(queue: WorkQueue, session: ProjectSession, command: MusicGenerateCommand,

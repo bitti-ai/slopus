@@ -10,7 +10,7 @@ import { createProjectConfig, parseProjectConfig, sceneGenerationSnapshot, type 
 import { ProjectSession } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
 import { saveEngineSettings, saveGeneratorTemplateSettings, loadGeneratorTemplateSettings, EMPTY_ENGINE_SETTINGS, type GeneratorTemplate } from "./settings";
-import { generateAgentImage, generateAgentScene, generateAgentMusic } from "./agentGeneration";
+import { generateAgentImage, generateAgentScene, generateAgentMusic, generateAgentMedia } from "./agentGeneration";
 import { applyImageDraftCommand } from "./imageDraftCommands";
 import { LATENT_UPSCALER_URL, saveLocalOtherWeightPaths } from "./upscalers";
 import { WorkQueue, type GenerationSubmission } from "./workQueue";
@@ -149,6 +149,65 @@ it.each(["failed", "cancelled"])("preserves the previous album cover when genera
   await waitFor(() => expect(queue.getSnapshot()[0].status).toBe(state));
   expect(first.getSnapshot().config.musicSongs).toEqual([song]);
   expect(saveGeneratedScene).not.toHaveBeenCalled();
+});
+
+it.each(["completed", "failed", "cancelled", "save-failed"])("returns an agent album cover receipt when %s", async (state) => {
+  const { queue, first, saved } = setup();
+  const template = coverTemplate();
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id });
+  saveAlbumCoverGeneratorId(template.id);
+  const song = { ...newSong(), coverRelativePath: "media/old.jpg" };
+  first.update((config) => ({ ...config, musicSongs: [song] }));
+  vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/cover.jpg", width: 1024, height: 1024 });
+  const pending = generateAgentMedia(queue, first, { op: "music.cover.generate", song: song.id }, new AbortController().signal, vi.fn());
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  const id = queue.getSnapshot()[0].id;
+  if (state === "save-failed") saved.mockRejectedValueOnce(new Error("Disk full"));
+  if (state === "cancelled") await queue.cancel(id);
+  emit("slopfab-job", { jobId: id, state: state === "completed" || state === "save-failed" ? "framesReady" : state, detail: state });
+  const receipt = await pending;
+  expect(receipt).toMatchObject({ song: song.id, template: template.id, workId: id,
+    status: state === "save-failed" ? "failed" : state, needsSave: state === "save-failed" });
+  if (state === "completed" || state === "save-failed") expect(receipt.outputRelativePath).toBe("media/generated/cover.jpg");
+  else {
+    expect(receipt).not.toHaveProperty("outputRelativePath");
+    expect(first.getSnapshot().config.musicSongs![0].coverRelativePath).toBe("media/old.jpg");
+  }
+});
+
+it("rejects active album covers and stopping the agent cancels only its own cover", async () => {
+  const { queue, first } = setup();
+  const template = coverTemplate();
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id });
+  saveAlbumCoverGeneratorId(template.id);
+  const song = newSong(), other = newSong();
+  first.update((config) => ({ ...config, musicSongs: [song, other] }));
+  const controller = new AbortController();
+  const command = { op: "music.cover.generate" as const, song: song.id };
+  const pending = generateAgentMedia(queue, first, command, controller.signal, vi.fn());
+  const stopped = expect(pending).rejects.toThrow();
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  const ownId = queue.getSnapshot()[0].id;
+  const otherId = queue.enqueueAlbumCover(first, other.id);
+  await expect(generateAgentMedia(queue, first, command, new AbortController().signal, vi.fn())).rejects.toThrow("already");
+  expect(cancelSlopfabGeneration).not.toHaveBeenCalled();
+  controller.abort(); await stopped;
+  await waitFor(() => expect(cancelSlopfabGeneration).toHaveBeenCalledExactlyOnceWith(ownId));
+  expect(queue.getSnapshot().find((work) => work.id === otherId)?.status).toBe("queued");
+  expect(queue.getSnapshot()).toHaveLength(2);
+});
+
+it("rejects missing songs and unavailable album cover generators without queueing", async () => {
+  const { queue, first } = setup();
+  const command = { op: "music.cover.generate" as const, song: "missing" };
+  await expect(generateAgentMedia(queue, first, command, new AbortController().signal, vi.fn())).rejects.toThrow("not found");
+  const song = newSong();
+  first.update((config) => ({ ...config, musicSongs: [song] }));
+  saveAlbumCoverGeneratorId("missing-template");
+  const template = musicTemplates()[0];
+  saveGeneratorTemplateSettings({ templates: [template], defaultTemplateId: template.id });
+  await expect(generateAgentMedia(queue, first, { ...command, song: song.id }, new AbortController().signal, vi.fn())).rejects.toThrow("Settings");
+  expect(queue.getSnapshot()).toHaveLength(0);
 });
 
 it("captures global order and scene overrides before queued generation and keeps globals active", async () => {
