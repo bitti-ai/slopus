@@ -36,6 +36,7 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
   const pane = usePaneSize("video.inspector", 340, { min: 280, max: 560 });
   const menu = useContextMenu();
   const currentFolder = folders.find((folder) => folder.id === folderId), currentFolderId = currentFolder?.id ?? null;
+  const visibleFolders = folders.filter((folder) => (folder.parentId ?? null) === currentFolderId);
   const visible = videos.filter((video) => (video.folderId ?? null) === currentFolderId);
   const selected = selectedId === null ? undefined : visible.find((video) => video.id === selectedId) ?? visible[0];
   const selectedSettings = videoSettings(selected, config);
@@ -123,9 +124,9 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
             <button className="primary-button" disabled={!folderName.trim()}>Create folder</button><button type="button" className="secondary-button" onClick={() => setCreatingFolder(false)}>Cancel</button>
           </form>}
           <div className={`music-songs music-songs--${view}`} role="list" aria-label="Video contents">
-            {folders.filter((folder) => (folder.parentId ?? null) === currentFolderId).map((folder) => <div className="music-song music-folder video-folder" role="listitem" key={folder.id} {...dropProps(folder.id)} onContextMenu={(event) => menu.open(event, [...newItems(), { separator: true }, { label: "Remove folder", icon: <Delete16 />, onSelect: () => update((current) => ({ ...current, videoFolders: current.videoFolders?.filter((item) => item.id !== folder.id).map((item) => item.parentId === folder.id ? { ...item, parentId: folder.parentId } : item), videos: current.videos!.map((video) => video.folderId === folder.id ? { ...video, folderId: folder.parentId } : video) })) }])}>
+            {visibleFolders.length > 0 && <div className="video-folders" role="presentation">{visibleFolders.map((folder) => <div className="music-song music-folder video-folder" role="listitem" key={folder.id} {...dropProps(folder.id)} onContextMenu={(event) => menu.open(event, [...newItems(), { separator: true }, { label: "Remove folder", icon: <Delete16 />, onSelect: () => update((current) => ({ ...current, videoFolders: current.videoFolders?.filter((item) => item.id !== folder.id).map((item) => item.parentId === folder.id ? { ...item, parentId: folder.parentId } : item), videos: current.videos!.map((video) => video.folderId === folder.id ? { ...video, folderId: folder.parentId } : video) })) }])}>
               <button type="button" className="music-song__select" aria-label={`Open ${folder.name}`} onClick={() => browse(folder.id)}><span className="music-song__art"><FolderOpen48 /></span><span className="music-song__info"><strong title={folder.name}>{folder.name}</strong><span>{folderContents(folder.id)}</span></span></button>
-            </div>)}
+            </div>)}</div>}
             {visible.map((video) => {
               const scenes = videoScenes(video, config), playlist = videoPlaylist(video, config), playable = playlist.length, first = playlist[0];
               const [width, height] = videoSettings(video, config).aspectRatio.split(":").map(Number);
@@ -146,7 +147,7 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
               </div>;
             })}
           </div>
-          {!visible.length && !folders.some((folder) => (folder.parentId ?? null) === currentFolderId) && <div className="music-empty"><Film32 /><h3>Create a video</h3><p>Organize scenes and shots into a video, with shared prompts and references.</p><button type="button" className="primary-button" onClick={add}>New video</button></div>}
+          {!visible.length && !visibleFolders.length && <div className="music-empty"><Film32 /><h3>Create a video</h3><p>Organize scenes and shots into a video, with shared prompts and references.</p><button type="button" className="primary-button" onClick={add}>New video</button></div>}
         </div>
         {playing && playback?.popout && <VideoPlayback key={playing.id} video={playing} config={config} folderPath={folderPath} popout onClose={() => setPlayback(undefined)} />}
       </div>

@@ -9,9 +9,10 @@
 .video-scenes__title { min-width: 0; max-width: 200px; margin-inline: var(--space-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .video-reference-help { color: var(--text-secondary); font-size: var(--text-xs); }
 .video-reference-range { display: block; margin-block: var(--space-1); }
-.video-library-stage .music-songs--grid { grid-template-columns: repeat(auto-fill, minmax(0, min(300px, 100%))); gap: var(--space-2); }
+.video-library-stage .music-songs--grid { grid-template-columns: repeat(auto-fill, minmax(0, min(300px, 100%))); gap: var(--space-2); align-items: start; }
+.video-folders { display: contents; }
+.music-songs--grid:has(> .video-card) > .video-folders { display: flex; flex-direction: column; gap: var(--space-2); }
 .video-card, .video-folder { overflow: hidden; container-type: inline-size; border-radius: var(--radius-sm); }
-.music-songs--grid > .video-folder { align-self: start; }
 .video-card > .music-song__select, .video-folder > .music-song__select { height: auto; padding: 6px; }
 .video-card .music-song__art { aspect-ratio: var(--video-card-aspect, 16 / 9); overflow: hidden; }
 .video-card .music-song__art img { display: block; width: 100%; height: 100%; object-fit: contain; }
