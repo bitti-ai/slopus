@@ -312,6 +312,69 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn single_shot_matches_two_minute_anchored_request() {
+        use super::super::{ffi::{Api, RequestHandle}, h3::configure_request, config::Configuration,
+            platform::ComputePlatform, planning::RequestPurpose, types::SingleShotRequest};
+        use crate::settings::{ProviderOption, ProviderSetting};
+        // SlopFab docs/lcs_drift_4way.md and tools/lcs_long_run.py:
+        // 73 original frames, 42 x 68 new frames, 25 grid points, delay 4,
+        // fixed original anchors, overlap 22, and no regenerated overlap.
+        // Small spatial fixtures exercise the bundled DLL without GPU weights.
+        let original = archive(73).into_temp_path();
+        let original_bytes = std::fs::read(&original).unwrap();
+        let settings = BTreeMap::from([("slopfab".into(), ProviderSetting { enabled: true, model: None,
+            options: BTreeMap::from([
+                ("attention".into(), ProviderOption::String("flash2".into())),
+                ("motionCache".into(), ProviderOption::Boolean(true)),
+            ]) })]);
+        let configuration = Configuration::from_settings(&settings);
+        let api = Api::load(&configuration.dll_path).unwrap();
+        for index in [0, 1, 41] {
+            let source_frames = 73 + index * 68;
+            let previous = archive(source_frames).into_temp_path();
+            let previous_bytes = std::fs::read(&previous).unwrap();
+            let request = GenerationRequest {
+                prompt: "The same subject continues moving".into(), frames: 68, steps: 25, seed: 424243 + index as i64,
+                canvas_width: 64, canvas_height: 32,
+                single_shot: Some(SingleShotRequest { ending_prompt: String::new(), ending_path: None }),
+                continuation_path: Some(previous.to_path_buf()), continuation_overlap_frames: Some(22),
+                continuation_source_frames: Some(source_frames as i32), continuation_from: Some("end".into()),
+                // Single Shot must enforce locking even for a stale false flag.
+                continuation_lock_overlap: false, keystone_path: Some(original.to_path_buf()), ..Default::default()
+            };
+            for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+                // Construct the experiment's request independently of Slopus's recipe.
+                let experiment = RequestHandle::new(&api).unwrap();
+                api.set_prompt(&experiment, &request.prompt).unwrap();
+                api.set_frames(&experiment, 68).unwrap();
+                api.set_steps(&experiment, 25).unwrap();
+                api.set_seed(&experiment, request.seed as u64).unwrap();
+                api.set_resolution(&experiment, 64, 32).unwrap();
+                api.set_attention(&experiment, "flash2").unwrap();
+                api.set_inference_backend(&experiment, platform.backend()).unwrap();
+                api.set_continuation_file(&experiment, &previous, 22).unwrap();
+                api.set_continuation_lock_overlap(&experiment, true).unwrap();
+                api.set_keystone_file(&experiment, &original, 4).unwrap();
+                let expected = api.describe(&experiment).unwrap();
+                assert!(expected.contains("90 frames (22 hidden overlap)"));
+                assert!(expected.contains("locked video and audio"));
+                assert!(expected.contains("capstone locks after 4 video updates"));
+                assert!(!expected.contains("overlap replacement"));
+                for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+                    let actual = RequestHandle::new(&api).unwrap();
+                    configure_request(&api, &actual, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+                    assert_eq!(api.describe(&actual).unwrap(), expected);
+                    let plan = api.resolve(&actual).unwrap();
+                    assert_eq!(plan.aligned_frames, source_frames as i32 + 68);
+                    assert_eq!(plan.num_model_evaluations, 24);
+                }
+            }
+            assert_eq!(std::fs::read(&previous).unwrap(), previous_bytes);
+        }
+        assert_eq!(std::fs::read(&original).unwrap(), original_bytes);
+    }
+
+    #[test]
     fn single_shot_keystone_adapts_lock_delay_to_short_video_schedules() {
         use super::super::types::SingleShotRequest;
         let source = archive(124).into_temp_path();
@@ -329,11 +392,15 @@ pub(super) mod tests {
         assert_eq!(plan.aligned_frames, 175);
         assert_eq!(plan.model_evaluations, 8);
         assert!(plan.description.contains("one call-only video latent; front restored before output"));
-        assert!(plan.description.contains("39 frames; hold 22, regenerate 17"));
+        assert!(plan.description.contains("22 hidden overlap"));
+        assert!(!plan.description.contains("overlap replacement"));
         request.continuation_overlap_frames = Some(39);
-        assert_eq!(resolve_plan(&request, &settings, &ReferenceVideos::default()).unwrap().aligned_frames, 175);
-        request.continuation_source_frames = Some(34);
-        assert!(resolve_plan(&request, &settings, &ReferenceVideos::default()).unwrap_err().contains("at least 39"));
+        assert!(resolve_plan(&request, &settings, &ReferenceVideos::default()).is_err());
+        request.continuation_overlap_frames = Some(22);
+        request.continuation_source_frames = Some(21);
+        assert!(resolve_plan(&request, &settings, &ReferenceVideos::default()).unwrap_err().contains("shorter than the continuation overlap"));
+        request.continuation_source_frames = Some(22);
+        assert!(resolve_plan(&request, &settings, &ReferenceVideos::default()).is_ok());
         request.continuation_source_frames = Some(124);
         assert_eq!(std::fs::read(&source).unwrap(), source_bytes);
         assert_eq!(std::fs::read(&context).unwrap(), context_bytes);
@@ -381,7 +448,8 @@ pub(super) mod tests {
                     let description = api.describe(&handle).unwrap();
                     assert!(description.contains(&format!("capstone locks after {delay} video updates")));
                     assert!(description.contains(&format!("modality updates    video {updates}")));
-                    assert!(description.contains("39 frames; hold 22, regenerate 17"));
+                    assert!(description.contains("22 hidden overlap"));
+                    assert!(!description.contains("overlap replacement"));
                 }
             }
         }

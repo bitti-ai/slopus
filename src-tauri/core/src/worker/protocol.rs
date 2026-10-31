@@ -34,7 +34,8 @@ pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 // v28 bounds image-edit inference to the target region and preserves the original canvas.
 // v29 aligns Single Shot's Keystone conditioning guide with its original context anchor.
 // v30 carries portable learned-drift calibration and LCS highlight controls.
-pub const PROTOCOL_VERSION: u32 = 30;
+// v31 matches the two-minute anchored recipe: lock 22 frames without replacing the source tail.
+pub const PROTOCOL_VERSION: u32 = 31;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -389,7 +390,7 @@ mod tests {
         let single = restored.single_shot.unwrap();
         assert_eq!(single.ending_prompt, "The subject waves goodbye");
         assert!(single.ending_path.is_none());
-        assert_eq!(PROTOCOL_VERSION, 30);
+        assert_eq!(PROTOCOL_VERSION, 31);
     }
 
     #[test]

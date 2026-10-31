@@ -7,15 +7,15 @@ from `D:\Projects\slopfab`, with CUDA and Vulkan enabled and FFmpeg disabled.
 This update keeps Keystone and delayed Capstone context inside sampling: the
 original front latent is restored before output, and Capstone adds one clean
 video latent only during model calls. It does not replace generated end frames
-or add hidden tail frames. Single Shot with Context video now replaces a
-39-frame overlap: it holds the earlier 22 frames, regenerates the trailing 17,
-and splices the complete sampled window into the joined video and audio.
+or add hidden tail frames. Single Shot with Context video uses the two-minute
+anchored experiment's fully locked 22-frame overlap. The complete previous
+video/audio archive is retained; no previously generated tail is replaced.
 TAEH3 now also decodes single-frame MiniMax image previews on CUDA and Vulkan.
 Video previews autoplay and loop inside the existing shot card player; image
 previews update the image canvas and thumbnail. Both use the generation previews
 setting and require the optional TAEH3 weights. Saved-latent upscaling remains supported.
 
-LAN protocol is 30 so workers support portable LCS Drift calibration and use the same Keystone conditioning, image crop
+LAN protocol is 31 so workers use the same fully locked overlap, portable LCS Drift calibration, Keystone conditioning, image crop
 merging, Single Shot Tone and overlap behavior. Single Shot automatically shortens its preferred four-update
 Capstone delay when the resolved video schedule is shorter, without changing the
 LoRA recipe. Restart Slopus and update workers to load the new runtime.
@@ -46,15 +46,54 @@ and retained/file parity; they are not a visual quality benchmark.
 
 With Context video selected, Single Shot continues from Previous video's saved
 latents while using the sequence's first video as its persistent Keystone and
-Capstone source. It runs one generation pass. The last 39 frames of Previous
-video form the overlap; the first 22 remain locked and the last 17 are generated
-again. Native joining replaces that overlap in both video and audio, preserving
-the source archive and restoring the real front latent after Keystone sampling.
-The released tail is also excluded from the continuation guide. Previous video
-must contain at least 39 frames and both sources need matching latent geometry.
+Capstone source. It runs one generation pass. The last 22 frames of Previous
+video form the overlap and all remain locked. Native joining discards the
+sampled overlap and appends only newly generated frames, preserving the complete
+previous video/audio prefix and restoring the real front latent after Keystone
+sampling. Previous video must contain at least 22 frames and both sources need
+matching latent geometry.
 Scene duration continues to mean newly added timeline frames; the sampling window
-includes the 39-frame overlap. Cumulative audio boundaries avoid rounding drift.
-This change does not select ER-SDE, beta scheduling or the example's LoRAs.
+includes the 22-frame overlap. Cumulative audio boundaries avoid rounding drift.
+
+### Two-minute experiment audit
+
+Compared against SlopFab commit `94fcedc`, `docs/lcs_drift_4way.md`,
+`tools/lcs_long_run.py`, and the recorded
+`output/lcs-drift-120s-anchors/manifest.json` / `validation.json` in
+`D:/Projects/slopfab`. The successful anchors-only arm starts from 73 frames,
+adds 42 extensions of 68 frames, and exports the first 2,880 frames of the
+2,929-frame joined archive at 24 fps.
+
+The prior Slopus integration used SlopFab's separate Long Context recipe:
+39-frame overlap, 22 held frames and 17 regenerated frames. That was **not** the
+recipe used in this experiment. New context-video requests instead attach the
+previous archive with overlap 22, explicitly lock video/audio, set regenerated
+frames to zero, and attach the unchanged original archive with Capstone enabled.
+No ending-first pass, repeated-source middle initialization or MotionCache is
+used. Updated fingerprints distinguish these requests from existing takes;
+existing saved media is not rewritten. Protocol 31 rejects older workers that
+would override this overlap with the former recipe.
+
+The experiment used Singularity Ref2VA v1.3 INT8, the original cached prompt
+embedding, 384x384, CUDA, Flash2, 25 Euler grid points (24 updates), no LoRA or
+LCS in its anchors-only arm, and seeds 424243–424284. Those remain generator /
+scene choices in Slopus, not forced Single Shot defaults. Capstone uses four
+video updates of delay when the schedule permits; the existing short-schedule
+compatibility path reduces it when there are fewer than five video updates.
+Such short schedules do not reproduce the experiment's delay.
+
+The bundled runtime's anchoring implementation is unchanged between its pinned
+commit and the experiment; the intervening production changes add optional LCS
+output stability controls, which the anchors-only arm does not use. No runtime
+binary replacement is needed for this correction.
+
+The regression check independently constructs the experiment's native request
+and compares its complete plan description with Slopus planning and execution
+configuration on CUDA and Vulkan, at the first, second and 42nd handoffs. It
+checks 22-frame locking, delay four, 24 evaluations, no overlap replacement,
+unchanged source files, and the 2,929-frame endpoint. Small spatial fixtures
+keep this check independent of model weights; it verifies request parity, not
+a repeated two-minute visual quality benchmark.
 
 Without Context video, Single Shot has one reference-aware prompt, an optional
 ending prompt and an optional previous scene of any type with saved video latents. Its full clip's
@@ -145,7 +184,7 @@ buffers. Corrupt archives are regenerated. Planning never calibrates or
 runs inference. The generation request snapshots the archive before sampling;
 region masks use fractional coverage of the resolved latent patch grid.
 
-LAN worker protocol 30 carries the portable controls and fitted drift archive and prevents older
+LAN worker protocol 31 carries the portable controls and fitted drift archive and prevents older
 workers from silently dropping them. Each worker calibrates and caches its
 own VAE. Update workers alongside the desktop app. A runtime missing the LCS
 exports reports an explicit upgrade error.

@@ -16,7 +16,11 @@ it("keeps the original context archive while continuation advances and persists 
   expect(sendBlocker(next, [])).toBeNull();
   const request = sceneGenerationRequest(next, config, "C:/Project", 9);
   expect(request).toMatchObject({ contextSceneId: "original", keystoneRelativePath: original.latentRelativePath,
-    previousSceneId: "previous", continuationRelativePath: previous.latentRelativePath, singleShot: { endingPrompt: "" } });
+    previousSceneId: "previous", continuationRelativePath: previous.latentRelativePath, singleShot: { endingPrompt: "" },
+    continuationOverlapFrames: 22, continuationLockOverlap: true, continuationFrom: "end" });
+  expect(sceneGenerationSnapshot(next, request)).not.toBe(sceneGenerationSnapshot(next, { ...request, continuationOverlapFrames: 39 }));
+  expect(sceneGenerationRequest({ ...next, continuationOverlapFrames: 39, continuationLockOverlap: false }, config, "C:/Project", 9))
+    .toMatchObject({ continuationOverlapFrames: 22, continuationLockOverlap: true });
   expect(JSON.parse(sceneGenerationSnapshot(next, request))).toMatchObject({ contextSceneId: "original", keystoneGuide: "context", capstoneLockAfter: "auto" });
   expect(sceneGenerationSnapshot({ ...next, endingPrompt: "Something else" }, request)).toBe(sceneGenerationSnapshot(next, request));
   expect(parseProjectConfig(JSON.parse(JSON.stringify(config))).generationJobs[0].contextSceneId).toBe("original");

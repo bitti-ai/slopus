@@ -1140,7 +1140,7 @@ export function sceneFrameInputs(job: GenerationJob, config: ProjectConfig) {
   const resolved = { ...job, startFrameReferenceId: undefined, endFrameReferenceId: undefined };
   return { job: resolved, references: sceneGenerationReferences(resolved, config.references),
     previousSceneId: sourceId, continuationRelativePath: previous?.latentRelativePath ?? undefined,
-    continuationOverlapFrames: job.sceneType === "single-shot" ? job.contextSceneId ? 39 : 22 : job.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP,
+    continuationOverlapFrames: job.sceneType === "single-shot" ? 22 : job.continuationOverlapFrames ?? DEFAULT_CONTINUATION_OVERLAP,
     continuationFrom: job.sceneType === "single-shot" ? "end" as const : job.continuationFrom ?? "end",
     continuationLockOverlap: job.sceneType === "single-shot" || (job.continuationLockOverlap ?? false),
     continuationSourceFrames: previous ? sceneOutputFrames(previous, config) : undefined };

@@ -159,7 +159,7 @@ pub(super) fn configure_request(
     api.set_latent_upscaler(handle, upscaler)?;
     api.set_inference_backend(handle, platform.backend())?;
     api.set_attention(handle, configuration.attention)?;
-    let lock_overlap = request.continuation_path.is_some() && request.continuation_lock_overlap;
+    let lock_overlap = request.continuation_path.is_some() && (request.single_shot.is_some() || request.continuation_lock_overlap);
     let independent_audio = request.audio_steps.is_some_and(|steps| steps != video_steps);
     // Overlap locking and different audio/video step counts require full evaluations.
     api.set_motion_cache(handle, configuration.motion_cache && preset.is_none() && request.image_edit.is_none() && !lock_overlap && !independent_audio && request.latent_bridge.is_none() && request.single_shot.is_none() && source_noise.is_none())?;
@@ -178,13 +178,14 @@ pub(super) fn configure_request(
         api.set_continuation_file(
             handle,
             opening.as_ref().map_or(path.as_path(), |file| file.as_ref()),
-            if request.keystone_path.is_some() { 39 } else { request.continuation_overlap_frames.unwrap_or(crate::models::H3_CAPABILITIES.continuation_overlap) },
+            if request.single_shot.is_some() { 22 } else { request.continuation_overlap_frames.unwrap_or(crate::models::H3_CAPABILITIES.continuation_overlap) },
         )?;
         api.set_continuation_lock_overlap(handle, lock_overlap)?;
         if request.keystone_path.is_some() {
-            // Keep the first 22 frames of the previous 39-frame
-            // tail, regenerate its last 17, then replace the complete overlap.
-            api.set_continuation_regenerate_frames(handle, 17)?;
+            // Match SlopFab's two-minute anchored test: lock all 22 context
+            // frames and preserve the complete preceding video/audio archive.
+            // The separate 39/17 Long Context recipe rewrites an approved tail.
+            api.set_continuation_regenerate_frames(handle, 0)?;
         }
     }
     if let Some(path) = request.single_shot.as_ref().and_then(|single| single.ending_path.as_ref()) {
