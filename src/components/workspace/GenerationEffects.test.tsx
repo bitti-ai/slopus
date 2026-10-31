@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { useState } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { GenerationEffects } from "./GenerationEffects";
 import { activeGenerationEffects, type GenerationEffects as Settings } from "../../lib/generationEffects";
+import fixture from "../../../fixtures/generation-effects.json";
 
 afterEach(() => { cleanup(); localStorage.clear(); });
 function Harness() {
@@ -49,6 +50,47 @@ it("blocks unsupported models but allows bypassing or removing existing effects"
   expect(change).toHaveBeenLastCalledWith({ sharpness: { strength: 0.5, enabled: false } });
   fireEvent.click(screen.getByRole("button", { name: "Remove Sharpness" }));
   expect(change).toHaveBeenLastCalledWith(undefined);
+});
+
+it("configures both LCS Drift controls and imports portable learned calibration", async () => {
+  render(<Harness />);
+  fireEvent.click(screen.getByRole("button", { name: "Add effect" }));
+  fireEvent.click(screen.getByRole("button", { name: "LCS Drift" }));
+  expect(screen.getByRole("slider", { name: "Drift strength" })).toBeDisabled();
+  fireEvent.change(screen.getByRole("slider", { name: "Highlight strength" }), { target: { value: "0.3" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: "Highlight threshold value" }), { target: { value: "0.78" } });
+  expect(saved().drift).toMatchObject({ highlightStrength: 0.3, highlightKnee: 0.78 });
+  const bytes = Uint8Array.from(atob(fixture.drift.calibration.data), (c) => c.charCodeAt(0));
+  const file = new File([bytes], "test-drift.safetensors");
+  Object.defineProperty(file, "arrayBuffer", { value: async () => bytes.buffer });
+  fireEvent.change(screen.getByLabelText("LCS drift calibration"), { target: { files: [file] } });
+  await waitFor(() => expect(screen.getByRole("slider", { name: "Drift strength" })).not.toBeDisabled());
+  fireEvent.change(screen.getByRole("slider", { name: "Drift strength" }), { target: { value: "0.5" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: "Maximum correction value" }), { target: { value: "2" } });
+  expect(saved().drift).toMatchObject({ strength: 0.5, max: 2, calibration: fixture.drift.calibration });
+  fireEvent.click(screen.getByRole("checkbox", { name: "Enable LCS Drift" }));
+  expect(activeGenerationEffects(saved())).toBeUndefined();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Enable LCS Drift" }));
+  fireEvent.click(screen.getByRole("button", { name: "Remove drift calibration" }));
+  expect(saved().drift.calibration).toBeUndefined();
+  expect(saved().drift.strength).toBe(0);
+  expect(activeGenerationEffects(saved())?.drift?.highlightStrength).toBe(0.3);
+  fireEvent.click(screen.getByRole("button", { name: "Reset LCS Drift" }));
+  expect(saved().drift).toEqual({ strength: 0, max: 1, highlightStrength: 0.5, highlightKnee: 0.8 });
+  fireEvent.click(screen.getByRole("button", { name: "Remove LCS Drift" }));
+  expect(saved()).toBeNull();
+});
+
+it("reports an invalid drift calibration without enabling learned correction", async () => {
+  render(<Harness />);
+  fireEvent.click(screen.getByRole("button", { name: "Add effect" }));
+  fireEvent.click(screen.getByRole("button", { name: "LCS Drift" }));
+  const file = new File(["invalid"], "wrong.safetensors");
+  Object.defineProperty(file, "arrayBuffer", { value: async () => new ArrayBuffer(7) });
+  fireEvent.change(screen.getByLabelText("LCS drift calibration"), { target: { files: [file] } });
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  expect(saved().drift.calibration).toBeUndefined();
+  expect(screen.getByRole("slider", { name: "Drift strength" })).toBeDisabled();
 });
 
 it("edits the selected video scene from its right panel", async () => {

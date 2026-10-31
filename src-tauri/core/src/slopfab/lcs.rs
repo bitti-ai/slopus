@@ -43,6 +43,15 @@ pub(super) fn prepare(api: &Api, request: &RequestHandle, item: &QueueItem, plat
         !item.cancel.load(Ordering::Acquire)
     };
     super::lcs_fingerprint::check_cancel(&item.cancel)?;
+    if let Some(calibration) = item.request.generation_effects.as_ref().and_then(|effects| effects.drift.as_ref())
+        .filter(|drift| drift.enabled != Some(false) && drift.strength > 0.0 && drift.max > 0.0).and_then(|drift| drift.calibration.as_ref()) {
+        // Native set_lcs snapshots and validates every tensor. Generation also
+        // verifies the archive's VAE fingerprint against the actual loaded VAE.
+        let path = tempfile::Builder::new().suffix(".safetensors").tempfile().map_err(|e| e.to_string())?.into_temp_path();
+        std::fs::write(&path, calibration.bytes()?).map_err(|e| e.to_string())?;
+        api.set_lcs(request, &path, &settings.to_string()).map_err(|e| format!("Cannot apply LCS Drift calibration: {e}"))?;
+        return Ok(true);
+    }
     let vae = item.configuration.models.iter().find(|(id, _, _)| *id == 3).and_then(|(_, _, path)| path.as_deref()).ok_or("Generation effects require a video VAE.")?;
     let log_path = PathBuf::from(crate::diagnostics::log_info()?.path);
     let directory = log_path.parent().ok_or("Cannot locate the generation effects cache.")?.join("lcs");

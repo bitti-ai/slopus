@@ -1,6 +1,8 @@
 //! Portable authoring settings; calibration files belong to the generation host.
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+mod calibration;
+pub use calibration::DriftCalibration;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -13,6 +15,8 @@ pub struct GenerationEffects {
     pub sharpness: Option<Strength>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor: Option<Anchor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drift: Option<Drift>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub start_step: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -39,6 +43,15 @@ pub struct Strength { #[serde(default, skip_serializing_if = "Option::is_none")]
 #[serde(deny_unknown_fields)]
 pub struct Anchor { #[serde(default, skip_serializing_if = "Option::is_none")] pub enabled: Option<bool>, pub mode: String, pub strength: f32 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Drift {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    pub strength: f32, pub max: f32, pub highlight_strength: f32, pub highlight_knee: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calibration: Option<DriftCalibration>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Region { pub x: f32, pub y: f32, pub width: f32, pub height: f32, pub invert: bool }
 
@@ -51,9 +64,13 @@ impl GenerationEffects {
             || self.tone.as_ref().is_some_and(|t| !range(t.contrast, 0.0, 4.0) || !range(t.brightness, -1.0, 1.0) || !range(t.saturation, 0.0, 4.0) || !range(t.temperature, -1.0, 1.0))
             || self.sharpness.as_ref().is_some_and(|s| !range(s.strength, -5.0, 5.0))
             || self.anchor.as_ref().is_some_and(|a| !range(a.strength, 0.0, 1.0) || !matches!(a.mode.as_str(), "self" | "smooth"))
+            || self.drift.as_ref().is_some_and(|d| !range(d.strength, 0.0, 1.0) || !range(d.max, 0.0, 10.0) || !range(d.highlight_strength, 0.0, 1.0) || !range(d.highlight_knee, 0.0, 2.0)
+                || d.strength > 0.0 && d.max > 0.0 && d.calibration.is_none())
             || self.start_step.unwrap_or(0) < 0 || self.end_step.unwrap_or(i32::MAX) < self.start_step.unwrap_or(0)
             || self.region.as_ref().is_some_and(|r| !range(r.x, 0.0, 100.0) || !range(r.y, 0.0, 100.0) || !range(r.width, 0.1, 100.0) || !range(r.height, 0.1, 100.0) || r.x + r.width > 100.0 || r.y + r.height > 100.0);
-        if invalid { Err("Invalid generation effects settings.".into()) } else { Ok(()) }
+        if invalid { return Err("Invalid generation effects settings.".into()); }
+        if let Some(calibration) = self.drift.as_ref().and_then(|d| d.calibration.as_ref()) { calibration.bytes()?; }
+        Ok(())
     }
 
     /// Translate to the native LCS schema; bypassed/neutral cards do no work.
@@ -70,6 +87,10 @@ impl GenerationEffects {
         }
         if let Some(s) = self.sharpness.as_ref().filter(|s| s.enabled != Some(false) && s.strength != 0.0) { settings["sharpness"] = json!(s.strength); }
         if let Some(a) = self.anchor.as_ref().filter(|a| a.enabled != Some(false) && a.strength != 0.0) { settings["anchor"] = json!(a.mode); settings["anchor_strength"] = json!(a.strength); }
+        if let Some(d) = self.drift.as_ref().filter(|d| d.enabled != Some(false)) {
+            if d.strength > 0.0 && d.max > 0.0 { settings["drift_strength"] = json!(d.strength); settings["drift_max"] = json!(d.max); }
+            if d.highlight_strength > 0.0 { settings["highlight_strength"] = json!(d.highlight_strength); settings["highlight_knee"] = json!(d.highlight_knee); }
+        }
         if settings.as_object().unwrap().is_empty() { return Ok(None); }
         settings["start_step"] = json!(self.start_step.unwrap_or(0));
         settings["end_step"] = json!(self.end_step.unwrap_or(i32::MAX));
@@ -105,6 +126,10 @@ mod tests {
         assert_eq!(native["start_step"], 2);
         assert_eq!(native["anchor"], "self");
         assert_eq!(native["contrast"], 1.25);
+        assert_eq!(native["drift_strength"], 0.5);
+        assert_eq!(native["drift_max"], 1.0);
+        assert_eq!(native["highlight_strength"], 0.5);
+        assert!((native["highlight_knee"].as_f64().unwrap() - 0.8).abs() < 0.00001);
         assert!(native.get("sharpness").is_none());
         assert!((native["color"][0].as_f64().unwrap() - 128.0 / 255.0).abs() < 0.00001);
         let roundtrip: GenerationEffects = serde_json::from_value(serde_json::to_value(&effects).unwrap()).unwrap();
@@ -124,5 +149,26 @@ mod tests {
         let neutral: GenerationEffects = serde_json::from_value(json!({"tone":{"contrast":1,"brightness":0,"saturation":1,"temperature":0},"sharpness":{"strength":1,"enabled":false}})).unwrap();
         assert!(neutral.native_settings().unwrap().is_none());
         assert!(serde_json::from_value::<GenerationEffects>(json!({"sharpness":{"strength":true}})).is_err());
+    }
+    #[test]
+    fn drift_controls_are_independent_bounded_and_bypassable() {
+        let mut effects: GenerationEffects = serde_json::from_value(json!({"drift":{"strength":0,"max":1,"highlightStrength":0.5,"highlightKnee":0.8}})).unwrap();
+        let native = effects.native_settings().unwrap().unwrap();
+        assert_eq!(native["highlight_strength"], 0.5);
+        assert!(native.get("drift_strength").is_none());
+        effects.drift.as_mut().unwrap().enabled = Some(false);
+        assert!(effects.native_settings().unwrap().is_none());
+        effects.drift.as_mut().unwrap().enabled = None;
+        effects.drift.as_mut().unwrap().highlight_strength = 0.;
+        assert!(effects.native_settings().unwrap().is_none());
+        effects.drift.as_mut().unwrap().strength = 0.5;
+        assert!(effects.validate().is_err()); // learned correction requires fitted data
+        let fixture: GenerationEffects = serde_json::from_str(include_str!("../../../fixtures/generation-effects.json")).unwrap();
+        for (field, value) in [("strength", 1.1), ("max", -1.), ("max", 11.), ("highlightStrength", 1.1), ("highlightKnee", 2.1)] {
+            let mut invalid = serde_json::to_value(&fixture).unwrap();
+            invalid["drift"]["enabled"] = json!(false);
+            invalid["drift"][field] = json!(value);
+            assert!(serde_json::from_value::<GenerationEffects>(invalid).unwrap().validate().is_err());
+        }
     }
 }

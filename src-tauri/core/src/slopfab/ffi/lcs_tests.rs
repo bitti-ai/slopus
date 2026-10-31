@@ -10,11 +10,13 @@ fn calibration(path: &Path) {
     let mut data = Vec::<u8>::new();
     let mut basis = vec![0_f32; 288];
     basis[0] = 1.; basis[4] = 1.; basis[8] = 1.;
+    let mut drift = vec![0_f32; 96]; drift[3] = 1.;
     for (name, shape, values) in [
         ("basis", vec![96, 3], basis), ("mean", vec![96], vec![0.; 96]),
         ("anchor_lcs", vec![8, 3], vec![1.,0.,0., 0.,0.,1., 0.,1.,0., 1.,0.,1., 0.,1.,1., 1.,1.,0., 0.,0.,0., 1.,1.,1.]),
         ("latent_mean", vec![24], vec![0.; 24]), ("latent_std", vec![24], vec![1.; 24]),
         ("explained_variance", vec![1], vec![1.]),
+        ("drift_direction", vec![96], drift), ("drift_reference", vec![2], vec![0.5, 0.25]),
     ] {
         let start = data.len();
         data.extend(values.into_iter().flat_map(f32::to_le_bytes));
@@ -54,6 +56,22 @@ fn bundled_lcs_snapshots_settings_and_validates_masks() {
     api.resolve(&request).unwrap();
     let other = bundled_api();
     assert!(other.set_lcs_mask(&request, &[]).unwrap_err().contains("different runtime"));
+}
+
+#[test]
+fn bundled_lcs_accepts_portable_learned_drift_and_independent_highlights() {
+    let api = bundled_api();
+    let request = RequestHandle::new(&api).unwrap();
+    let effects: crate::generation_effects::GenerationEffects = serde_json::from_str(include_str!("../../../../../fixtures/generation-effects.json")).unwrap();
+    let archive = tempfile::NamedTempFile::new().unwrap().into_temp_path();
+    std::fs::write(&archive, effects.drift.as_ref().unwrap().calibration.as_ref().unwrap().bytes().unwrap()).unwrap();
+    api.set_lcs(&request, &archive, &effects.native_settings().unwrap().unwrap().to_string()).unwrap();
+    api.resolve(&request).unwrap();
+    api.set_lcs(&request, &archive, r#"{"highlight_strength":0.5,"highlight_knee":0.8}"#).unwrap();
+    api.resolve(&request).unwrap();
+    for settings in [r#"{"drift_strength":1.1}"#, r#"{"drift_max":11}"#, r#"{"highlight_strength":-1}"#, r#"{"highlight_knee":3}"#] {
+        assert!(api.set_lcs(&request, &archive, settings).is_err());
+    }
 }
 
 #[test]

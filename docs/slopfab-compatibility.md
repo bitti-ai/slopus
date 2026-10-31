@@ -2,7 +2,7 @@
 
 ## Bundled runtime (API 1.48.0)
 
-Windows and Linux runtimes use SlopFab commit `c5297c243923f336d4f174980a80452f0003bd0f`
+Windows and Linux runtimes use SlopFab commit `54362786a76e7530f7216dfeca130835a8f298f3`
 from `D:\Projects\slopfab`, with CUDA and Vulkan enabled and FFmpeg disabled.
 This update keeps Keystone and delayed Capstone context inside sampling: the
 original front latent is restored before output, and Capstone adds one clean
@@ -15,7 +15,7 @@ Video previews autoplay and loop inside the existing shot card player; image
 previews update the image canvas and thumbnail. Both use the generation previews
 setting and require the optional TAEH3 weights. Saved-latent upscaling remains supported.
 
-LAN protocol is 29 so workers use the same Keystone conditioning, image crop
+LAN protocol is 30 so workers support portable LCS Drift calibration and use the same Keystone conditioning, image crop
 merging, Single Shot Tone and overlap behavior. Single Shot automatically shortens its preferred four-update
 Capstone delay when the resolved video schedule is shorter, without changing the
 LoRA recipe. Restart Slopus and update workers to load the new runtime.
@@ -118,7 +118,7 @@ appear in Music and timeline media. Song settings persist in `musicSongs`.
 ## Generation effects (API 1.31)
 
 Scene and image root inspectors provide **Effects > Add effect** for native
-LCS color steering, tone, experimental sharpness, and self/smooth color
+LCS color steering, tone, experimental LCS Drift and sharpness, and self/smooth color
 stabilization. Cards support bypass, reset and removal. A shared inclusive
 step interval (zero-based) and optional percentage rectangle apply to all
 active cards; the rectangle can be inverted. Neutral and bypassed controls
@@ -145,7 +145,7 @@ buffers. Corrupt archives are regenerated. Planning never calibrates or
 runs inference. The generation request snapshots the archive before sampling;
 region masks use fractional coverage of the resolved latent patch grid.
 
-LAN worker protocol 11 carries the portable controls and prevents older
+LAN worker protocol 30 carries the portable controls and fitted drift archive and prevents older
 workers from silently dropping them. Each worker calibrates and caches its
 own VAE. Update workers alongside the desktop app. A runtime missing the LCS
 exports reports an explicit upgrade error.
@@ -157,6 +157,37 @@ checks cover UI authoring, project persistence, request snapshots, worker
 serialization, mask validation, calibration cancellation and callback panic
 containment through the bundled DLL. Full generation and visual LCS quality
 with model weights were not evaluated in this integration.
+
+### LCS Drift
+
+The LCS Drift card exposes independent highlight strength (0–1), highlight
+threshold (0–2), learned drift strength (0–1), and maximum correction (0–10 raw
+VAE units). It defaults to highlight strength 0.5 and threshold 0.8; learned
+correction defaults to zero. Highlight compression uses the automatic VAE
+calibration and needs no imported file. Both effects run during sampling,
+including Single Shot, and honor the shared step range and region mask.
+
+Learned correction requires **Import drift calibration**: a SlopFab v1 LCS
+`.safetensors` archive fitted from early and late latent generations, containing
+`drift_direction` and `drift_reference`. SlopFab's `tools/lcs_drift.py fit` produces
+this archive. Slopus validates its size, tensor shapes, finite values, unit
+direction and color orthogonality, then embeds the complete small archive as
+base64 in the scene. It survives save/load, Take snapshots and worker transfer;
+there is no dependency on the importing machine's file path. Importing does not
+enable learned correction until its strength is increased. Removing the file
+resets learned strength to zero. Bypassed and neutral effects do no work.
+
+For active learned correction, the worker attaches the imported calibration
+instead of the automatic cache. SlopFab validates its full contents and checks
+the VAE SHA-256 before sampling. All active LCS cards use that archive, so include
+its sharpness calibration if also using Sharpness. The correction is specific
+to the fitted scene/checkpoint and VAE; its quality is experimental, and Slopus
+does not automatically fit a direction or choose an optimal step interval.
+The upstream drift experiment documents the fitting workflow and measured limits.
+
+The updated Windows and Linux bundles pass 23,119 native LCS checks each, plus
+C API and tokenizer tests. Slopus tests exercise controls, portable archive
+validation, persistence, fingerprints, worker serialization and native attachment.
 
 ## Local edits on larger images
 

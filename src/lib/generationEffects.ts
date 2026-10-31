@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { lcsCalibrationSchema } from "./lcsCalibration";
 
 const enabled = z.boolean().optional();
 const scalar = (min: number, max: number) => z.number().finite().min(min).max(max);
@@ -7,6 +8,8 @@ export const generationEffectsSchema = z.object({
   tone: z.object({ enabled, contrast: scalar(0, 4), brightness: scalar(-1, 1), saturation: scalar(0, 4), temperature: scalar(-1, 1) }).strict().optional(),
   sharpness: z.object({ enabled, strength: scalar(-5, 5) }).strict().optional(),
   anchor: z.object({ enabled, mode: z.enum(["self", "smooth"]), strength: scalar(0, 1) }).strict().optional(),
+  drift: z.object({ enabled, strength: scalar(0, 1), max: scalar(0, 10), highlightStrength: scalar(0, 1), highlightKnee: scalar(0, 2), calibration: lcsCalibrationSchema.optional() }).strict()
+    .refine((drift) => drift.strength === 0 || drift.max === 0 || !!drift.calibration, "Learned drift correction needs a fitted LCS calibration.").optional(),
   startStep: z.number().int().min(0).max(2147483647).optional(),
   endStep: z.number().int().min(0).max(2147483647).optional(),
   region: z.object({ x: scalar(0, 100), y: scalar(0, 100), width: scalar(0.1, 100), height: scalar(0.1, 100), invert: z.boolean() }).strict()
@@ -18,6 +21,7 @@ export const GENERATION_EFFECTS = [
   { id: "tone", name: "Tone", description: "Adjust contrast, brightness, saturation and temperature during generation." },
   { id: "sharpness", name: "Sharpness", description: "Sharpen or soften during generation." },
   { id: "anchor", name: "Color stabilization", description: "Reduce color drift or smooth color boundaries during generation." },
+  { id: "drift", name: "LCS Drift", description: "Compress highlights and optionally correct learned appearance drift during generation." },
 ] as const;
 export type GenerationEffectId = typeof GENERATION_EFFECTS[number]["id"];
 export const GENERATION_EFFECT_DEFAULTS: Required<Pick<GenerationEffects, GenerationEffectId>> = {
@@ -25,6 +29,7 @@ export const GENERATION_EFFECT_DEFAULTS: Required<Pick<GenerationEffects, Genera
   tone: { contrast: 0.9, brightness: 0.1, saturation: 0.95, temperature: 0 },
   sharpness: { strength: 0.1 },
   anchor: { mode: "self", strength: 0.25 },
+  drift: { strength: 0, max: 1, highlightStrength: 0.5, highlightKnee: 0.8 },
 };
 
 /** Only active, non-neutral controls are submitted or included in render fingerprints. */
@@ -37,6 +42,10 @@ export function activeGenerationEffects(value?: GenerationEffects | null): Gener
   }
   if (value.sharpness && value.sharpness.enabled !== false && value.sharpness.strength !== 0) effects.sharpness = { strength: value.sharpness.strength };
   if (value.anchor && value.anchor.enabled !== false && value.anchor.strength !== 0) effects.anchor = { mode: value.anchor.mode, strength: value.anchor.strength };
+  if (value.drift && value.drift.enabled !== false && (value.drift.strength > 0 && value.drift.max > 0 || value.drift.highlightStrength > 0)) {
+    const { enabled: _enabled, calibration, ...drift } = value.drift;
+    effects.drift = { ...drift, ...(drift.strength > 0 && drift.max > 0 && calibration ? { calibration } : {}) };
+  }
   if (!Object.keys(effects).length) return;
   return { ...effects, ...(value.startStep !== undefined ? { startStep: value.startStep } : {}), ...(value.endStep !== undefined ? { endStep: value.endStep } : {}), ...(value.region ? { region: { ...value.region } } : {}) };
 }

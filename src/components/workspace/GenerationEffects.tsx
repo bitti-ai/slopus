@@ -3,6 +3,7 @@ import { Checkbox, ComboBox, Flyout, PropRow, PropSection, tooltipProps } from "
 import { SliderNumberInput } from "./SliderNumberInput";
 import { Add16, ChevronDown12, Delete14, Reset16 } from "../ui/icons";
 import { GENERATION_EFFECTS, GENERATION_EFFECT_DEFAULTS, generationEffectsSchema, type GenerationEffectId, type GenerationEffects as Settings } from "../../lib/generationEffects";
+import { importLcsCalibration, MAX_LCS_CALIBRATION_BYTES } from "../../lib/lcsCalibration";
 
 export function GenerationEffects({ value, onChange, supported, disabled = false, finalTone = false }: {
   value?: Settings | null; onChange: (value: Settings | undefined) => void; supported: boolean; disabled?: boolean; finalTone?: boolean;
@@ -12,6 +13,12 @@ export function GenerationEffects({ value, onChange, supported, disabled = false
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const trigger = useRef<HTMLButtonElement>(null);
   const picker = useRef<HTMLDivElement>(null);
+  const calibrationInput = useRef<HTMLInputElement>(null);
+  const [calibrationError, setCalibrationError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const latest = useRef({ value, disabled, supported }); latest.current = { value, disabled, supported };
+  const importRevision = useRef(0);
+  useEffect(() => () => { importRevision.current++; }, []);
   const moveFocus = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
@@ -29,9 +36,9 @@ export function GenerationEffects({ value, onChange, supported, disabled = false
     onChange(GENERATION_EFFECTS.some(({ id }) => next[id]) ? next : undefined);
   };
   const set = <K extends GenerationEffectId>(id: K, patch: Partial<NonNullable<Settings[K]>>) => update({ ...effects, [id]: { ...effects[id], ...patch } });
-  const param = (id: GenerationEffectId, field: string, label: string, min: number, max: number, initial: number) => {
+  const param = (id: GenerationEffectId, field: string, label: string, min: number, max: number, initial: number, unavailable = false) => {
     const settings = effects[id] as unknown as Record<string, number>;
-    const inactive = locked || effects[id]?.enabled === false;
+    const inactive = locked || effects[id]?.enabled === false || unavailable;
     const change = (next: number) => { if (!inactive) set(id, { [field]: next }); };
     return <PropRow key={field} label={label} value={settings[field]} defaultValue={initial} onReset={inactive ? undefined : () => change(initial)} scrub={inactive ? undefined : { value: settings[field], onChange: change, step: 0.01, min, max }}>
       <SliderNumberInput aria-label={`${label} value`} sliderLabel={label} minimum={min} maximum={max} step={0.01} value={settings[field]} disabled={inactive} onCommit={change} />
@@ -60,6 +67,32 @@ export function GenerationEffects({ value, onChange, supported, disabled = false
             {id === "anchor" && effects.anchor && <>
               <PropRow label="Anchor"><ComboBox aria-label="Color anchor" disabled={inactive} value={effects.anchor.mode} options={[{ value: "self", label: "Self" }, { value: "smooth", label: "Smooth" }]} onChange={(mode) => set("anchor", { mode: mode as "self" | "smooth" })} /></PropRow>
               {param(id, "strength", "Anchor strength", 0, 1, 0.25)}
+            </>}
+            {id === "drift" && effects.drift && <>
+              {param(id, "highlightStrength", "Highlight strength", 0, 1, 0.5)}
+              {param(id, "highlightKnee", "Highlight threshold", 0, 2, 0.8)}
+              <p className="clip-effect__note">Compresses highlights above the threshold. Learned correction uses a calibration fitted from early and late generations of this scene with the same VAE.</p>
+              <input ref={calibrationInput} type="file" accept=".safetensors" hidden aria-label="LCS drift calibration" disabled={inactive || importing}
+                onChange={async (event) => {
+                  const file = event.target.files?.[0]; event.target.value = "";
+                  if (!file || inactive) return;
+                  const revision = ++importRevision.current;
+                  setCalibrationError(null); setImporting(true);
+                  try {
+                    if (file.size > MAX_LCS_CALIBRATION_BYTES) throw new Error("Choose an LCS calibration archive smaller than 256 KB.");
+                    const calibration = importLcsCalibration(file.name, new Uint8Array(await file.arrayBuffer()));
+                    if (revision === importRevision.current && latest.current.value === value && !latest.current.disabled && latest.current.supported) set("drift", { calibration });
+                  } catch (error) { if (revision === importRevision.current) setCalibrationError(error instanceof Error ? error.message : String(error)); }
+                  finally { if (revision === importRevision.current) setImporting(false); }
+                }} />
+              <button type="button" className="secondary-button" disabled={inactive || importing} onClick={() => calibrationInput.current?.click()}>{importing ? "Importing calibration…" : effects.drift.calibration ? "Replace drift calibration" : "Import drift calibration"}</button>
+              {effects.drift.calibration && <PropRow label="Calibration"><span title={effects.drift.calibration.name}>{effects.drift.calibration.name}</span>
+                <button type="button" className="clip-effect__action" aria-label="Remove drift calibration" disabled={inactive || importing} onClick={() => set("drift", { calibration: undefined, strength: 0 })}><Delete14 aria-hidden="true" /></button>
+              </PropRow>}
+              {calibrationError && <p className="clip-effect__note" role="alert">{calibrationError}</p>}
+              {param(id, "strength", "Drift strength", 0, 1, 0, !effects.drift.calibration)}
+              {param(id, "max", "Maximum correction", 0, 10, 1, !effects.drift.calibration)}
+              <p className="clip-effect__note">Experimental: inspect the result before reusing these settings across continuations.</p>
             </>}
           </fieldset>}
         </section>;

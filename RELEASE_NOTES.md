@@ -13,7 +13,7 @@ Changes since 0.3.2.
 - **Motions and agents:** Create editable JavaScript animations for the timeline or references. Agents can inspect media frames, generate music and sync Motions to audio.
 - **Image editing:** Combine or subtract lasso selections, queue batches of up to 100 images, and edit bounded regions of larger images while preserving their original resolution.
 - **Live previews:** Watch MiniMax H3 video and image generation in the editor. Cancelling a video generation saves its latest available preview as the Take's video. Optional TAEH3 preview weights are available in Settings.
-- **Generation effects:** LCS color steering, tone, sharpness and color stabilization, with step ranges and optional regions.
+- **Generation effects:** LCS color steering, tone, sharpness and color stabilization, with step ranges and optional regions. LCS Drift adds configurable highlight compression and learned drift correction using an imported scene calibration, including on LAN workers.
 - **Generator controls:** Compatible sampler/scheduler choices, including ER-SDE and Beta; global LoRAs, application ordering, scene overrides, Pika H3 Flex and Hyperflow 8-Step adapters.
 - **Generator selection:** Video, image and music remember separate active generators. Saved takes show the used seed and generator, with a button to select that generator again.
 - **Speech languages:** Set custom speech languages for shots.
