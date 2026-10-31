@@ -169,7 +169,10 @@ pub(crate) fn create_project_at_with_references(
                 job.reference_ids.push(reference_id);
             }
         }
-        write_project(project_folder, &config)
+        write_project(project_folder, &config)?;
+        // New projects have no legacy orphans. Mark them before handing the
+        // document to the UI, where generation may immediately start.
+        super::cleanup::mark_new_project(project_folder, &config)
     })();
     if let Err(error) = prepare_result {
         // The selected root belonged to the user before creation. Roll back

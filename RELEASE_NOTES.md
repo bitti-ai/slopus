@@ -21,6 +21,7 @@ Changes since 0.3.2.
 
 ## Fixes and improvements
 
+- On first launch after updating, each recent project gets a one-time cleanup of orphaned generated media, latents and caches. Other projects receive the cleanup when first opened; files still referenced by the project are preserved.
 - Saving now deletes unused files from replaced video takes and removed video, image and music generations, including latents and derived caches. Files still used by timeline clips, references or other generations are preserved; saved deletions cannot be undone.
 - Fixed a Windows file-sharing error when Minimax reads a cropped image-edit reference.
 - Local image edits now generate only the selected bounding box or lasso bounds, padded to multiples of 32, and merge into the original image without changing surrounding pixels.

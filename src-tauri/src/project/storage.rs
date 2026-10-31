@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 pub(crate) const PROJECT_FILE_NAME: &str = "slopus.json";
+static WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// What the file was called before, newest first. Folders written by earlier
 /// builds still open; the next save writes `slopus.json` and leaves the old
 /// file alone, so a project stays readable by the build that made it.
@@ -49,6 +50,20 @@ pub(crate) fn read_project(folder: &Path) -> Result<ProjectRecord, String> {
     })
 }
 
+/// Desktop entry point, also used for every recent project on startup. Internal
+/// reads stay side-effect-free so generation and saves cannot trigger a sweep.
+pub(crate) fn open_project_with_migrations(folder: &Path) -> Result<ProjectRecord, String> {
+    let _write = WRITES.lock().map_err(|_| "Project save lock was poisoned.".to_string())?;
+    let record = read_project(folder)?;
+    if let Err(error) = super::cleanup::migrate_on_open(folder, &record.config) {
+        // Cleanup must not prevent editing a readable project. Failed scans
+        // remain unmarked and retry at the next launch, before new jobs start.
+        crate::diagnostics::warn("project", "cleanup.migration_failed", &error,
+            serde_json::json!({"folder": record.folder_path}));
+    }
+    Ok(record)
+}
+
 pub(crate) fn write_project(folder: &Path, config: &ProjectConfig) -> Result<(), String> {
     write_project_with_replacer(folder, config, atomic_replace)
 }
@@ -72,7 +87,6 @@ fn write_project_impl<F>(folder: &Path, config: &ProjectConfig, protected_paths:
 where F: FnOnce(&Path, &Path) -> io::Result<()> {
     // Keep the old-document comparison, commit and cleanup in one ordered
     // operation even when desktop commands save different sessions concurrently.
-    static WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let _write = WRITES.lock().map_err(|_| "Project save lock was poisoned.".to_string())?;
     let config = validate_and_normalize_config(config.clone())?;
     if !folder.is_dir() {

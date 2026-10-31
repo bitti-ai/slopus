@@ -1,5 +1,8 @@
 //! Delete only previously tracked generated files, after the new document is
-//! durable. Never sweep the output directory: it may contain an in-flight render.
+//! durable. Ordinary saves never sweep output directories; the one-time startup
+//! migration runs before the project can have an in-flight render.
+mod migration;
+pub(super) use migration::{mark_new_project, migrate_on_open};
 use super::{paths::{normalize_project_path, ProjectRoot}, ProjectConfig};
 use serde_json::Value;
 use std::{collections::BTreeSet, fs, path::Path};
@@ -16,6 +19,10 @@ fn path_key(path: &str) -> Option<String> {
 fn managed(path: &str) -> bool {
     ["media/generated/", "latents/", "cache/scene-last/", "cache/image-edits/", "thumbnails/timeline/"]
         .iter().any(|prefix| path.starts_with(prefix) && path.len() > prefix.len())
+}
+
+fn retained(path: &str, live: &BTreeSet<String>) -> bool {
+    live.iter().any(|keep| keep == path || keep.starts_with(&format!("{path}/")) || path.starts_with(&format!("{keep}/")))
 }
 
 fn collect(value: &Value, root: &ProjectRoot, paths: &mut BTreeSet<String>) {
@@ -81,10 +88,9 @@ impl Cleanup {
                 .map_err(|error| format!("Could not read generated-file cleanup journal: {error}"))?
         } else { BTreeSet::new() };
         if let Some(previous) = previous { pending.extend(files(previous, &root)?); }
-        let retained = files(next, &root)?;
+        let live = files(next, &root)?;
         pending = pending.into_iter().filter_map(|path| path_key(&path)).collect();
-        pending.retain(|path| managed(path)
-            && !retained.iter().any(|keep| keep == path || keep.starts_with(&format!("{path}/"))));
+        pending.retain(|path| managed(path) && !retained(path, &live));
         let cleanup = Self { root, pending };
         // Persist the retry list before committing the project. If that commit
         // fails, a subsequent save subtracts the still-live references again.
@@ -122,20 +128,7 @@ impl Cleanup {
 }
 
 fn remove(root: &ProjectRoot, relative: &str) -> Result<(), String> {
-    let expected = root.path().join(relative);
-    match fs::symlink_metadata(&expected) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(format!("Could not inspect {relative}: {error}")),
-        Ok(_) => {}
-    }
-    let target = root.existing(relative)?;
-    // Refuse redirected ancestors even when their destination is inside the
-    // project: it might be another generation's live file.
-    #[cfg(windows)]
-    let redirected = !target.to_string_lossy().eq_ignore_ascii_case(&expected.to_string_lossy());
-    #[cfg(not(windows))]
-    let redirected = target != expected;
-    if redirected { return Err(format!("Refusing to remove redirected generated path: {relative}")); }
+    let Some(target) = checked_target(root, relative)? else { return Ok(()); };
     if target.is_dir() {
         if !relative.starts_with("thumbnails/timeline/") && !relative.starts_with("cache/image-edits/") {
             return Err(format!("Expected a generated file, found a directory: {relative}"));
@@ -147,6 +140,26 @@ fn remove(root: &ProjectRoot, relative: &str) -> Result<(), String> {
         fs::remove_dir(&target)
     } else { fs::remove_file(&target) }
         .map_err(|error| format!("Could not remove {relative}: {error}"))
+}
+
+/// Used before enumeration as well as deletion: never traverse a redirected
+/// ancestor, including junctions that lead back into another project directory.
+fn checked_target(root: &ProjectRoot, relative: &str) -> Result<Option<std::path::PathBuf>, String> {
+    let expected = root.path().join(relative);
+    match fs::symlink_metadata(&expected) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("Could not inspect {relative}: {error}")),
+        Ok(_) => {}
+    }
+    let target = root.existing(relative)?;
+    // Refuse redirected ancestors even when their destination is inside the
+    // project: it might be another generation's live file.
+    #[cfg(windows)]
+    let redirected = !target.to_string_lossy().eq_ignore_ascii_case(&expected.to_string_lossy());
+    #[cfg(not(windows))]
+    let redirected = target != expected;
+    if redirected { return Err(format!("Refusing to remove redirected generated path: {relative}")); }
+    Ok(Some(target))
 }
 
 #[cfg(test)]

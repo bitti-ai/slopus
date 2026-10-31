@@ -97,13 +97,14 @@ fn complete_project_create_open_save_reopen_is_lossless() {
             "thumbnails",
         ]
     );
-    let files: Vec<_> = fs::read_dir(&project_folder)
+    let mut files: Vec<_> = fs::read_dir(&project_folder)
         .unwrap()
         .filter_map(Result::ok)
         .filter(|entry| entry.path().is_file())
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();
-    assert_eq!(files, [PROJECT_FILE_NAME]);
+    files.sort();
+    assert_eq!(files, [".generated-orphans-v1.json", PROJECT_FILE_NAME]);
 }
 
 #[test]

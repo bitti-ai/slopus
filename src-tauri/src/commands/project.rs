@@ -26,7 +26,7 @@ pub(crate) async fn choose_new_project_folder(app: AppHandle) -> Result<Option<N
 }
 #[tauri::command]
 pub(crate) fn open_project(folder_path: String) -> Result<ProjectRecord, String> {
-    read_project(Path::new(&folder_path))
+    open_project_with_migrations(Path::new(&folder_path))
 }
 
 #[tauri::command]
@@ -45,7 +45,7 @@ pub(crate) fn choose_project_folder(app: AppHandle) -> Result<Option<ProjectReco
         .map(|path| {
             path.into_path()
                 .map_err(|error| format!("Could not access selected folder: {error}"))
-                .and_then(|path| read_project(&path))
+                .and_then(|path| open_project_with_migrations(&path))
         })
         .transpose()
 }
