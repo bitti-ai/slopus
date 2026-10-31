@@ -673,10 +673,23 @@ it("removes generated images through their context menu and keeps the preview an
   fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
   expect(current().assets).toHaveLength(0);
   expect(current().imageScene!.outputAssetId).toBeNull();
+  expect(current().imageScene!.sourceImage).toBeFalsy();
   expect(current().thumbnail).toBeNull();
   expect(within(screen.getByLabelText("Generated images")).queryByRole("button")).not.toBeInTheDocument();
   expect(screen.getByText("Compose your image")).toBeInTheDocument();
   expect(parseProjectConfig(JSON.parse(JSON.stringify(current()))).imageScene).toEqual(current().imageScene);
+});
+
+it("clears the source when removing the last image opened for editing", () => {
+  const initial = parseProjectConfig(fixture);
+  initial.assets = [{ id: "only", kind: "image", name: "Only", relativePath: "media/generated/only.png", mimeType: "image/png", width: 640, height: 480, createdAt: initial.createdAt }];
+  const current = setup(restoreGeneratedImage(initial, "only"));
+  expect(current().imageScene?.sourceImage?.relativePath).toBe("media/generated/only.png");
+  fireEvent.contextMenu(screen.getByRole("button", { name: "View Only" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
+  expect(current().assets).toHaveLength(0);
+  expect(current().imageScene?.sourceImage).toBeNull();
+  expect(saveImageDraft(current()).assets).toHaveLength(0);
 });
 
 it("creates a blank draft from the image bar and preserves it while browsing", () => {

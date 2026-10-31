@@ -7,6 +7,7 @@ pub(crate) mod paths;
 pub(crate) mod references;
 pub(crate) mod scenes;
 pub(crate) mod storage;
+mod cleanup;
 pub(crate) mod timeline;
 pub(crate) mod validation;
 pub(crate) use model::*;

@@ -323,7 +323,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
           : remaining[Math.min(currentImages.findIndex((asset) => asset.id === id), remaining.length - 1)];
       const updated = { ...current,
         assets: removeImageAsset(current.assets, id),
-        imageScene: removingSelected && removed.imageDraft && !next ? currentScene.rootType === "image" ? createImageEditScene(null, currentScene) : { ...createImageScene(), steps: template?.defaultSteps ?? 20 } : { ...currentScene, outputAssetId: removingSelected ? next?.id ?? null : currentScene.outputAssetId },
+        imageScene: removingSelected && !next ? currentScene.rootType === "image" ? createImageEditScene(null, currentScene) : { ...createImageScene(), steps: template?.defaultSteps ?? 20 } : { ...currentScene, outputAssetId: removingSelected ? next?.id ?? null : currentScene.outputAssetId },
         thumbnail: removingSelected || current.thumbnail === removed.relativePath ? next?.relativePath ?? null : current.thumbnail,
         timeline: { ...current.timeline, tracks: current.timeline.tracks.map((track) => ({ ...track, clips: track.clips.filter((clip) => clip.assetId !== id) })) },
       };

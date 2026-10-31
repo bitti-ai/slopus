@@ -53,6 +53,10 @@ pub(crate) fn write_project(folder: &Path, config: &ProjectConfig) -> Result<(),
     write_project_with_replacer(folder, config, atomic_replace)
 }
 
+pub(crate) fn write_project_protected(folder: &Path, config: &ProjectConfig, protected_paths: &[String]) -> Result<(), String> {
+    write_project_impl(folder, config, protected_paths, atomic_replace)
+}
+
 pub(crate) fn write_project_with_replacer<F>(
     folder: &Path,
     config: &ProjectConfig,
@@ -61,10 +65,21 @@ pub(crate) fn write_project_with_replacer<F>(
 where
     F: FnOnce(&Path, &Path) -> io::Result<()>,
 {
+    write_project_impl(folder, config, &[], replacer)
+}
+
+fn write_project_impl<F>(folder: &Path, config: &ProjectConfig, protected_paths: &[String], replacer: F) -> Result<(), String>
+where F: FnOnce(&Path, &Path) -> io::Result<()> {
+    // Keep the old-document comparison, commit and cleanup in one ordered
+    // operation even when desktop commands save different sessions concurrently.
+    static WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _write = WRITES.lock().map_err(|_| "Project save lock was poisoned.".to_string())?;
     let config = validate_and_normalize_config(config.clone())?;
     if !folder.is_dir() {
         return Err("Project folder does not exist.".into());
     }
+    let previous = if project_file_in(folder).exists() { Some(read_project(folder)?.config) } else { None };
+    let cleanup = super::cleanup::Cleanup::prepare(folder, previous.as_ref(), &config)?;
     let json = serde_json::to_string_pretty(&config)
         .map_err(|error| format!("Could not serialize project: {error}"))?;
     let destination = folder.join(PROJECT_FILE_NAME);
@@ -73,5 +88,7 @@ where
         format!("{json}\n").as_bytes(),
         replacer,
     )
-    .map_err(|error| format!("Could not write project config: {error}"))
+    .map_err(|error| format!("Could not write project config: {error}"))?;
+    cleanup.finish(protected_paths);
+    Ok(())
 }

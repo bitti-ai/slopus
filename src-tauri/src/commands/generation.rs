@@ -368,7 +368,8 @@ fn prepare_image_edit_path(request: &mut slopfab::GenerationRequest, folder_path
             use std::hash::{Hash, Hasher};
             let mut hash = std::collections::hash_map::DefaultHasher::new();
             (&request.job_id, &path, request.canvas_width, request.canvas_height).hash(&mut hash);
-            let directory = root.directory("cache/image-edits")?;
+            let stem = generated_file_stem(&request.job_id)?;
+            let directory = root.directory(&format!("cache/image-edits/{stem}"))?;
             let destination = directory.join(format!("{:016x}.png", hash.finish()));
             let resized = ::image::open(&path).map_err(|error| format!("Could not read source image: {error}"))?
                 .resize_exact(request.canvas_width as u32, request.canvas_height as u32, ::image::imageops::FilterType::Lanczos3);

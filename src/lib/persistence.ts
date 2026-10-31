@@ -260,13 +260,13 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectR
   return record;
 }
 
-export async function saveProject(record: ProjectRecord): Promise<ProjectRecord> {
+export async function saveProject(record: ProjectRecord, protectedPaths: string[] = []): Promise<ProjectRecord> {
   const next: ProjectRecord = {
     ...record,
     config: parseProjectConfig({ ...record.config, updatedAt: new Date().toISOString() }),
   };
   if (isTauri()) {
-    await invoke("save_project", { folderPath: next.folderPath, config: next.config });
+    await invoke("save_project", { folderPath: next.folderPath, config: next.config, ...(protectedPaths.length ? { protectedPaths } : {}) });
   } else {
     const projects = getWebProjects().projects.filter((project) => project.config.id !== next.config.id);
     localStorage.setItem(WEB_PROJECTS_KEY, JSON.stringify([next, ...projects]));

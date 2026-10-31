@@ -81,7 +81,7 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
     { label: "New folder", icon: <FolderAdd16 />, onSelect: () => { setFolderName(""); setCreatingFolder(true); } },
   ];
   const remove = async (video: ProjectVideo) => {
-    if (!await askNative({ message: `Remove ${video.title} and its scenes? Existing timeline clips and media will be kept.`, title: "Remove video", kind: "warning" })) return;
+    if (!await askNative({ message: `Remove ${video.title} and its scenes? Unused generated files will be deleted when saved. Media used by timeline clips or references will be kept.`, title: "Remove video", kind: "warning" })) return;
     update((current) => ({ ...current, videos: current.videos!.filter((item) => item.id !== video.id), generationJobs: current.generationJobs.filter((scene) => !video.sceneIds.includes(scene.id)) }));
     setPlayback(undefined);
   };

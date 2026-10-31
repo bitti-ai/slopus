@@ -114,7 +114,7 @@ export function makeSceneGenerationPrimary(config: ProjectConfig, sceneId: strin
   };
 }
 
-/** Remove history metadata, keeping media files available to Undo and references. */
+/** Remove a take. Saving deletes its files once no remaining entry uses them. */
 export function removeSceneGeneration(config: ProjectConfig, sceneId: string, versionId: string): ProjectConfig {
   const current = config.generationJobs.find(job => job.id === sceneId);
   if (!current) return config;

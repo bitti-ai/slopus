@@ -80,9 +80,9 @@ pub(crate) fn create_project(
 }
 
 #[tauri::command]
-pub(crate) fn save_project(folder_path: String, config: ProjectConfig) -> Result<(), String> {
+pub(crate) fn save_project(folder_path: String, config: ProjectConfig, protected_paths: Option<Vec<String>>) -> Result<(), String> {
     let folder = PathBuf::from(folder_path)
         .canonicalize()
         .map_err(|error| format!("Could not resolve project folder: {error}"))?;
-    write_project(&folder, &config)
+    crate::project::storage::write_project_protected(&folder, &config, &protected_paths.unwrap_or_default())
 }

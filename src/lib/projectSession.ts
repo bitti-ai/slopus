@@ -4,9 +4,10 @@ import type { ProjectConfig, ProjectRecord } from "./project";
 import { saveImageDraft } from "./imageHistory";
 import { addReferenceImageAssets } from "./referenceImageAssets";
 import { createUndoStack, type UndoStack } from "./undo";
+import { removeUnusedGenerationAssets, removesGeneratedFiles } from "./generationCleanup";
 
 export type ProjectUpdate = ProjectConfig | ((current: ProjectConfig) => ProjectConfig);
-export type ProjectWriter = (record: ProjectRecord) => Promise<ProjectRecord | void>;
+export type ProjectWriter = (record: ProjectRecord, protectedPaths?: string[]) => Promise<ProjectRecord | void>;
 
 export interface ProjectSessionState {
   config: ProjectConfig;
@@ -65,11 +66,14 @@ export class ProjectSession {
   private revision = 0;
   private pending = 0;
   private savedConfig: ProjectConfig;
+  private queuedConfig: ProjectConfig;
+  private cleanupDeferred = false;
   private history: UndoStack<HistoryEntry> = createUndoStack<HistoryEntry>({ limit: 100, mergeWindowMs: 500 });
   private background: BackgroundChange[] = [];
   private backgroundSeq = 0;
-  constructor(readonly record: ProjectRecord, private writer: ProjectWriter) {
+  constructor(readonly record: ProjectRecord, private writer: ProjectWriter, private cleanupProtection: () => string[] = () => []) {
     this.savedConfig = record.config;
+    this.queuedConfig = record.config;
     const config = saveImageDraft(record.config);
     const stamped = Date.parse(record.config.updatedAt);
     this.state = { config, dirty: config !== record.config, saving: false, saveError: null, canUndo: false, canRedo: false, savedAt: Number.isFinite(stamped) ? stamped : null };
@@ -92,7 +96,7 @@ export class ProjectSession {
 
   /** A change the app makes on its own. Never an undo step (see above). */
   update = (next: ProjectUpdate, dirty = true) => {
-    const config = saveSceneDrafts(saveImageDraft(typeof next === "function" ? next(this.state.config) : next), this.state.config);
+    const config = saveSceneDrafts(saveImageDraft(removeUnusedGenerationAssets(typeof next === "function" ? next(this.state.config) : next, this.state.config)), this.state.config);
     if (config === this.state.config) return;
     if (typeof next === "function") {
       this.backgroundSeq += 1;
@@ -104,7 +108,7 @@ export class ProjectSession {
 
   /** A change the person made: recorded for undo. Same `key` within 500ms = one step. */
   edit = (next: ProjectUpdate, key = "edit") => {
-    const config = saveSceneDrafts(saveImageDraft(addReferenceImageAssets(typeof next === "function" ? next(this.state.config) : next, this.state.config.references)), this.state.config);
+    const config = saveSceneDrafts(saveImageDraft(addReferenceImageAssets(removeUnusedGenerationAssets(typeof next === "function" ? next(this.state.config) : next, this.state.config), this.state.config.references)), this.state.config);
     if (config === this.state.config) return;
     this.history.record({ config: this.state.config, mark: this.backgroundSeq }, key);
     this.apply(config, true);
@@ -118,7 +122,7 @@ export class ProjectSession {
     let config = entry.config;
     for (const change of this.background) {
       if (change.seq <= entry.mark) continue;
-      try { config = change.apply(config); } catch { /* A patch whose target is gone is simply skipped. */ }
+      try { config = removeUnusedGenerationAssets(change.apply(config), config); } catch { /* A patch whose target is gone is simply skipped. */ }
     }
     return saveSceneDrafts(saveImageDraft(config));
   }
@@ -138,19 +142,38 @@ export class ProjectSession {
   };
 
   dismissError = () => this.publish({ saveError: null });
+  /** Retry removals held back while queued generations still needed their inputs. */
+  flushGeneratedCleanup = async () => {
+    if (!this.cleanupDeferred || this.cleanupProtection().length) return;
+    this.cleanupDeferred = false;
+    try { await this.save(); } catch (error) { this.cleanupDeferred = true; throw error; }
+  };
   discard = async (): Promise<void> => {
     await this.writes;
     this.revision += 1;
     this.history.clear();
     this.background = [];
+    this.queuedConfig = this.savedConfig;
     this.publish({ config: this.savedConfig, dirty: false, saveError: null });
   };
   save = (): Promise<void> => {
     const revision = this.revision;
     const record = { ...this.record, config: this.state.config };
+    // Saving commits physical deletions. Older snapshots must not bring back
+    // entries pointing to those files, including while this write is pending.
+    if (removesGeneratedFiles(this.queuedConfig, record.config, this.record.folderPath)
+      || removesGeneratedFiles(this.savedConfig, record.config, this.record.folderPath)) {
+      this.history.clear();
+      this.background = [];
+      if (this.cleanupProtection().length) this.cleanupDeferred = true;
+    }
+    this.queuedConfig = record.config;
     this.pending += 1;
     this.publish({ saving: true, saveError: null });
-    const write = this.writes.catch(() => undefined).then(() => this.writer(record));
+    const write = this.writes.catch(() => undefined).then(() => {
+      const protectedPaths = this.cleanupProtection();
+      return protectedPaths.length ? this.writer(record, protectedPaths) : this.writer(record);
+    });
     this.writes = write.then(() => undefined, () => undefined);
     return write.then(() => {
       this.savedConfig = record.config;

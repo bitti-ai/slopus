@@ -1,5 +1,6 @@
 import { effectiveLoras, loraSnapshot } from "./loras";
 import { completeSceneGeneration, sceneInput } from "./sceneHistory";
+import { generatedFilePaths } from "./generationCleanup";
 import { albumCoverPrompt, musicSongSchema, musicSettingsForModel, newSongVariation, updateSong, type MusicSong } from "./music";
 import { albumCoverGenerator } from "./referenceIconSettings";
 import { templateSupportsMusic } from "./settings";
@@ -169,7 +170,13 @@ export class WorkQueue {
       const config = isTauri() ? { ...record.config, musicSongs: (record.config.musicSongs ?? []).map((song) =>
         ["queued", "generating"].includes(song.status) ? { ...song, status: "failed" as const, error: "Generation was interrupted when Slopus closed. Generate again to restart." } : song), generationJobs: record.config.generationJobs.map((job) =>
         ["queued", "generating", "ready"].includes(job.status) ? { ...job, status: "failed" as const, stage: "failed" as const, error: "Generation was interrupted when Slopus closed. Generate again to restart." } : job) } : record.config;
-      session = new ProjectSession({ ...record, config }, this.writer);
+      session = new ProjectSession({ ...record, config }, this.writer, () => {
+        const paths = new Set<string>();
+        for (const work of this.work.values()) {
+          if (projectQueueKey(work.session.record) === key && this.items.some(item => item.id === work.id && isWorkActive(item))) generatedFilePaths(work.config, paths, record.folderPath);
+        }
+        return [...paths];
+      });
       this.projects.set(key, session);
     }
     this.icons.watch(session);
@@ -669,6 +676,7 @@ export class WorkQueue {
           // Queue history only needs WorkItem; finished runs must not keep a
           // deep copy of the entire project and its image history alive.
           this.work.delete(work.id);
+          await work.session.flushGeneratedCleanup().catch(() => undefined);
         }
       }
     } finally { this.pumping = false; }
