@@ -22,7 +22,7 @@ import { describeDiagnosticError, writeDiagnostic } from "./diagnostics";
 import { GenerationTimingEstimator, type CompletedGenerationTiming, type GenerationTimingProgress } from "./generationTiming";
 import { validGenerationPreview, type GenerationPreview } from "./generationPreview";
 import { loadGenerationPreviewsEnabled, subscribeGenerationPreviews } from "./generationPreviewSettings";
-import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
+import { releaseRendered, saveGeneratedScene, saveGenerationPreview } from "./generatedVideo";
 import { isTauri, saveProject } from "./persistence";
 import { continuationBlocker, generationAssetId, generationLatentPath, GENERATION_FRAME_RATE, sceneSiblings, sceneOutputFrames, sceneGenerationSnapshot, type SceneInput, type GenerationJob, type ProjectRecord, type ProjectConfig } from "./project";
 import { ProjectSession, type ProjectWriter } from "./projectSession";
@@ -73,6 +73,8 @@ export interface WorkItem {
   settings: { frames: number; steps: number; audioSteps?: number; videoSigmaShift?: number; audioSigmaShift?: number; latentUpscale?: boolean; seed: number; canvasWidth: number; canvasHeight: number };
 }
 interface PendingWork {
+  lastPreview?: GenerationPreview;
+  cancellation?: Promise<void>;
   generatorName?: string;
   albumCoverSongId?: string;
   upscaleSource?: import("./project").SceneGenerationVersion;
@@ -653,7 +655,7 @@ export class WorkQueue {
           work.submitted = true;
           if (work.cancelled) await this.requestNativeCancellation(work);
           await work.done;
-        } catch (reason) { this.fail(work, reason); }
+        } catch (reason) { await this.fail(work, reason); }
         finally {
           if (work.extend) await invoke("discard_extend_image", { folderPath: next.folderPath, jobId: work.id }).catch((reason) =>
             writeDiagnostic("error", "work-queue", "extend.cleanup_failed", describeDiagnosticError(reason), { workId: work.id }));
@@ -716,7 +718,7 @@ export class WorkQueue {
       return;
     }
     if (item.status === "queued" || item.status === "preparing") {
-      this.cancelled(work);
+      await this.cancelled(work);
       if (item.status === "queued") this.work.delete(id);
       // Stops files that are still being sent to a LAN worker for this job.
       if (item.status === "preparing" && remoteWorkerSelected()) void cancelSlopfabGeneration(work.request.jobId).catch(() => undefined);
@@ -735,17 +737,50 @@ export class WorkQueue {
   cancelScenes(session: ProjectSession, sceneIds: string[]) {
     return Promise.all(this.items.filter((item) => item.projectKey === projectQueueKey(session.record) && sceneIds.includes(item.sceneId) && isWorkActive(item)).map((item) => this.cancel(item.id))).then(() => undefined);
   }
-  private cancelled(work: PendingWork, detail = "Generation cancelled before it started.") {
+  private cancelled(work: PendingWork, detail = "Generation cancelled before it started."): Promise<void> {
+    // Native cancellation, a late result and an enqueue error can race.
+    // Finalize once and keep the queue occupied until the preview is saved.
+    return work.cancellation ??= this.finishCancellation(work, detail);
+  }
+  private async finishCancellation(work: PendingWork, detail: string) {
     this.timing.clear(work.id);
+    work.cancelled = true;
+    const preview = work.lastPreview;
+    work.lastPreview = undefined;
+    if (preview) {
+      this.patch(work.id, { status: "encoding", detail: "Saving cancelled generation preview", cancelling: true, completionAt: null });
+      this.updateScene(work, { status: "ready", stage: "encoding", error: null }, false);
+      try {
+        const saved = await saveGenerationPreview(work.session.record.folderPath, work.id, preview);
+        const createdAt = new Date().toISOString();
+        work.session.update(sceneResultUpdate(work.sceneId, {
+          id: work.id, createdAt, scene: work.sceneInput!, generatorName: work.generatorName,
+          generationSnapshot: work.snapshot, latentRelativePath: null,
+          media: { id: generationAssetId(work.sceneId), name: work.sceneInput!.title, kind: "generated", createdAt,
+            relativePath: saved.relativePath, sourcePath: null, mimeType: "video/mp4", hasAudio: false,
+            width: saved.width, height: saved.height, durationMs: saved.durationMs },
+        }));
+        try {
+          await work.session.save();
+          this.patch(work.id, { status: "cancelled", detail: "Cancelled; preview saved as Take", cancelling: false, progress: 1, error: null });
+        } catch (reason) {
+          this.patch(work.id, { status: "cancelled", detail: "Preview saved; project save failed", cancelling: false,
+            progress: 1, needsSave: true, error: describeDiagnosticError(reason) });
+        }
+        return;
+      } catch (reason) {
+        detail = `Generation cancelled; preview could not be saved: ${describeDiagnosticError(reason)}`;
+        writeDiagnostic("error", "work-queue", "preview.save_failed", detail, { workId: work.id, sceneId: work.sceneId });
+      } finally { work.finish(); }
+    }
     this.patch(work.id, { status: "cancelled", detail, cancelling: false, completionAt: null });
     this.updateScene(work, work.upscaleSource ? { status: "completed", stage: "completed", progress: 1, error: detail } : { status: "cancelled", stage: "failed", error: detail });
     void work.session.save().catch(() => undefined);
     work.finish();
   }
-  private fail(work: PendingWork, reason: unknown) {
+  private async fail(work: PendingWork, reason: unknown) {
     if (work.cancelled) {
-      if (this.items.find((item) => item.id === work.id)?.status !== "cancelled") this.cancelled(work);
-      work.finish();
+      await this.cancelled(work);
       return;
     }
     const detail = describeDiagnosticError(reason);
@@ -764,6 +799,7 @@ export class WorkQueue {
       || (work.config.providerSettings.slopfab?.options.modelType ?? "minimax-h3") !== "minimax-h3"
       || (work.image && event.frames.length !== 1)
       || !["preparing", "generating"].includes(item.status)) return;
+    if (!item.kind) work.lastPreview = event;
     this.patch(work.id, { preview: event });
   }
   private progress(event: GenerationTimingProgress) {
@@ -802,7 +838,10 @@ export class WorkQueue {
       return;
     }
     if (!isWorkActive(item)) { if (event.state === "framesReady") void releaseRendered(event.jobId); return; }
-    if (item.status === "encoding") return;
+    if (item.status === "encoding") {
+      if (work.cancellation && event.state === "framesReady") void releaseRendered(event.jobId);
+      return;
+    }
     if (work.characterSheet) {
       if (event.state === "framesReady") work.characterSheet.ready?.resolve();
       else if (event.state === "failed" || event.state === "cancelled") {
@@ -816,8 +855,8 @@ export class WorkQueue {
       this.timing.clear(work.id);
       if (work.cancelled) { void releaseRendered(work.id).then(() => this.cancelled(work)); return; }
       void this.encode(work);
-    } else if (event.state === "failed") this.fail(work, event.detail);
-    else if (event.state === "cancelled") this.cancelled(work, event.detail);
+    } else if (event.state === "failed") void this.fail(work, event.detail);
+    else if (event.state === "cancelled") void this.cancelled(work, event.detail);
     // A queued acknowledgement can arrive after progress. It must not rewind it.
   }
   private nativeWork(jobId: string) {
@@ -851,7 +890,7 @@ export class WorkQueue {
         if (work.cancelled) await this.requestNativeCancellation(work);
         await ready;
         sheet.ready = undefined;
-        if (work.cancelled) { this.cancelled(work); return; }
+        if (work.cancelled) { await this.cancelled(work); return; }
         this.patch(work.id, { status: "encoding", detail: `Saving character sheet view ${index + 1}/${sheet.order.length}` });
         await invoke("save_character_sheet_view", { folderPath, sheetId: work.id, jobId: work.request.jobId, index: viewIndex });
         await releaseRendered(work.request.jobId);
@@ -890,7 +929,7 @@ export class WorkQueue {
           this.updateScene(work, { progress }, false);
         },
       });
-      if (work.cancelled) { this.cancelled(work); return; }
+      if (work.cancelled) { await this.cancelled(work); return; }
       const assetId = generationAssetId(work.sceneId);
       const totalFrames = saved.durationMs ? Math.round(saved.durationMs * GENERATION_FRAME_RATE / 1000) : work.outputFrames ?? work.request.frames;
       const sceneSegments = work.upscaleSource ? work.upscaleSource.media.sceneSegments : work.request.latentBridge
@@ -911,12 +950,12 @@ export class WorkQueue {
       work.session.update(sceneResultUpdate(work.sceneId, version, saved.note));
       try {
         await work.session.save();
-        if (work.cancelled) { this.cancelled(work); return; }
+        if (work.cancelled) { await this.cancelled(work); return; }
         this.patch(work.id, { status: "completed", progress: 1, detail: "Video saved", error: saved.note });
       } catch (reason) {
         this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Video created; project save failed", error: describeDiagnosticError(reason) });
       }
-    } catch (reason) { this.fail(work, reason); }
+    } catch (reason) { await this.fail(work, reason); }
     finally { await releaseRendered(work.id); work.finish(); }
   }
   async retrySave(id: string) {
@@ -924,7 +963,7 @@ export class WorkQueue {
     const item = this.items.find((candidate) => candidate.id === id);
     const session = item && this.projects.get(item.projectKey);
     if (!item?.needsSave || !session) return;
-    try { await session.save(); this.patch(id, { status: "completed", needsSave: false, error: null, detail: item.kind === "music" ? "Music saved" : item.kind === "album-cover" ? "Album cover saved" : item.kind === "image" ? "Image saved" : "Video saved" }); }
+    try { await session.save(); this.patch(id, { status: item.status === "cancelled" ? "cancelled" : "completed", needsSave: false, error: null, detail: item.status === "cancelled" ? "Cancelled; preview saved as Take" : item.kind === "music" ? "Music saved" : item.kind === "album-cover" ? "Album cover saved" : item.kind === "image" ? "Image saved" : "Video saved" }); }
     catch (reason) { this.patch(id, { error: describeDiagnosticError(reason) }); }
   }
   private async saveMusic(work: PendingWork) {
@@ -941,7 +980,7 @@ export class WorkQueue {
       } catch (reason) {
         this.patch(id, { status: "failed", progress: 1, needsSave: true, detail: "Music created; project save failed", error: describeDiagnosticError(reason) });
       }
-    } catch (reason) { this.fail(work, reason); }
+    } catch (reason) { await this.fail(work, reason); }
     finally { await releaseRendered(work.id); work.finish(); }
   }
   private async saveImage(work: PendingWork) {
@@ -963,7 +1002,7 @@ export class WorkQueue {
       }
       try { await work.session.save(); this.patch(work.id, { status: "completed", progress: 1, detail: work.albumCoverSongId ? "Album cover saved" : "Image saved" }); }
       catch (reason) { this.patch(work.id, { status: "failed", progress: 1, needsSave: true, detail: "Image created; project save failed", error: describeDiagnosticError(reason) }); }
-    } catch (reason) { this.fail(work, reason); }
+    } catch (reason) { await this.fail(work, reason); }
     finally {
       try { await releaseRendered(work.id); }
       finally { work.finish(); }

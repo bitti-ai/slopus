@@ -2,9 +2,11 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { audioSamplesFromIpc, bytesFromIpc, releaseRendered, renderedSummary, resampleInterleaved, saveGeneratedScene } from "./generatedVideo";
+import { audioSamplesFromIpc, bytesFromIpc, releaseRendered, renderedSummary, resampleInterleaved, saveGeneratedScene, saveGenerationPreview } from "./generatedVideo";
+import { encodeGenerationPreview } from "./generationPreview";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("./generationPreview", () => ({ encodeGenerationPreview: vi.fn() }));
 
 const muxed = vi.hoisted(() => ({
   configs: [] as Array<Record<string, unknown>>,
@@ -33,8 +35,34 @@ const summary = (over: Record<string, unknown> = {}) => ({
 
 const desktop = () => { scope.__TAURI_INTERNALS__ = {}; };
 
+it("writes a cancelled preview as a silent video with its actual dimensions and duration", async () => {
+  desktop();
+  const preview = { jobId: "work-preview", step: 3, width: 168, height: 96, fps: 2, frames: ["a", "b", "c"] };
+  const bytes = new Uint8Array([1, 2, 3, 4]);
+  vi.mocked(encodeGenerationPreview).mockResolvedValue({ arrayBuffer: async () => bytes.buffer } as Blob);
+  invoked.mockResolvedValue({ relativePath: "media/generated/work-preview.mp4", bytes: 4 });
+  await expect(saveGenerationPreview("C:/My Project", "work-preview", preview)).resolves.toEqual({
+    relativePath: "media/generated/work-preview.mp4", bytes: 4, hasAudio: false, note: null,
+    width: 168, height: 96, durationMs: 1500,
+  });
+  expect(encodeGenerationPreview).toHaveBeenCalledWith(preview, expect.any(AbortSignal));
+  expect(invoked).toHaveBeenCalledExactlyOnceWith("write_generated_video", bytes, {
+    headers: { "x-generated-folder": "C%3A%2FMy%20Project", "x-generated-job": "work-preview" },
+  });
+});
+
+it("does not write a file when preview encoding fails", async () => {
+  desktop();
+  vi.mocked(encodeGenerationPreview).mockRejectedValue(new Error("Preview encoding is unavailable."));
+  await expect(saveGenerationPreview("C:/Project", "work-preview", {
+    jobId: "work-preview", step: 0, width: 2, height: 2, fps: 2, frames: ["jpeg"],
+  })).rejects.toThrow("Preview encoding is unavailable");
+  expect(invoked).not.toHaveBeenCalled();
+});
+
 beforeEach(() => {
   invoked.mockReset().mockResolvedValue(true);
+  vi.mocked(encodeGenerationPreview).mockReset();
   muxed.configs.length = 0;
   muxed.audioChunks = 0;
   muxed.videoChunks = 0;

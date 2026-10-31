@@ -5,7 +5,7 @@ import { waitFor } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { releaseRendered, saveGeneratedScene } from "./generatedVideo";
+import { releaseRendered, saveGeneratedScene, saveGenerationPreview } from "./generatedVideo";
 import { createProjectConfig, parseProjectConfig, sceneGenerationSnapshot, type ProjectRecord } from "./project";
 import { ProjectSession } from "./projectSession";
 import { cancelSlopfabGeneration, enqueueSlopfabGeneration, resolveSlopfabPlan } from "./runtime";
@@ -32,7 +32,7 @@ import { DMAD_LORA, saveLoras, loadLoras, moveLibraryLora } from "./loras";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
-vi.mock("./generatedVideo", () => ({ saveGeneratedScene: vi.fn(), releaseRendered: vi.fn(async () => true) }));
+vi.mock("./generatedVideo", () => ({ saveGeneratedScene: vi.fn(), saveGenerationPreview: vi.fn(), releaseRendered: vi.fn(async () => true) }));
 vi.mock("./timelineThumbnails", () => ({ purgeTimelineThumbnails: vi.fn(async () => undefined) }));
 vi.mock("./sceneLastFrame", () => ({ saveSceneLastFrame: vi.fn(async () => "cache/scene-last/work-new.png") }));
 vi.mock("./referenceVideo", () => ({ prepareReferenceVideos: vi.fn(async () => ["video-1"]), releaseReferenceVideos: vi.fn(async () => undefined) }));
@@ -52,6 +52,10 @@ beforeEach(() => {
   vi.mocked(enqueueSlopfabGeneration).mockResolvedValue(undefined);
   vi.mocked(cancelSlopfabGeneration).mockResolvedValue(true);
   vi.mocked(saveGeneratedScene).mockResolvedValue({ relativePath: "media/generated/result.mp4", bytes: 100, hasAudio: true, note: null });
+  vi.mocked(saveGenerationPreview).mockReset().mockImplementation(async (_folder, id, preview) => ({
+    relativePath: `media/generated/${id}.mp4`, bytes: 100, hasAudio: false, note: null,
+    width: preview.width, height: preview.height, durationMs: Math.round(preview.frames.length / preview.fps * 1000),
+  }));
 });
 afterEach(() => { stops.splice(0).forEach((stop) => stop()); delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__; vi.restoreAllMocks(); });
 const project = (name: string): ProjectRecord => ({ folderPath: `C:/${name}`, config: createProjectConfig({ name, prompt: "A quiet scene", aspectRatio: "16:9", resolution: "416p", targetDurationSeconds: 30 }) });
@@ -198,6 +202,133 @@ it("isolates live previews by native job and clears them on disable, cancel and 
   emit("slopfab-preview", { ...preview, jobId: other });
   expect(queue.getSnapshot().find((item) => item.id === other)?.preview).toBeUndefined();
   emit("slopfab-job", { jobId: other, state: "cancelled", detail: "Cancelled" });
+  await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === other)?.status).toBe("cancelled"));
+});
+
+it.each(["cancelled", "framesReady", "failed"])("saves the latest cancelled preview as a Take when the native result is %s", async (state) => {
+  const { queue, first, second } = setup();
+  const source = submission(first);
+  first.update(config => completeSceneGeneration(config, source.job.id, {
+    id: "original", createdAt: config.createdAt, scene: sceneInput(source.job), latentRelativePath: "latents/original.safetensors",
+    media: { id: `asset-${source.job.id}`, kind: "generated", mimeType: "video/mp4", name: source.job.title, relativePath: "media/original.mp4", createdAt: config.createdAt },
+  }));
+  const [id] = queue.enqueue(first, [submission(first)]);
+  const child = { ...source.job, id: "child" }, grandchild = { ...source.job, id: "grandchild" };
+  first.update(config => ({ ...config, generationJobs: [...config.generationJobs, child, grandchild] }));
+  const descendants = queue.enqueue(first, [child, grandchild].map((job, index) => ({ ...source, job,
+    request: { ...source.request, previousSceneId: index ? child.id : source.job.id } })));
+  const [other] = queue.enqueue(second, [submission(second)]);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  const preview = { jobId: id, step: 2, width: 168, height: 96, fps: 4, frames: ["/9j/AA==", "/9j/AQ=="] };
+  emit("slopfab-preview", { ...preview, step: 1, frames: ["old"] });
+  emit("slopfab-preview", preview);
+  let saved!: (result: Awaited<ReturnType<typeof saveGenerationPreview>>) => void;
+  vi.mocked(saveGenerationPreview).mockImplementationOnce(() => new Promise(resolve => { saved = resolve; }));
+  await queue.cancel(id);
+  expect(cancelSlopfabGeneration).toHaveBeenCalledExactlyOnceWith(id);
+  emit("slopfab-preview", { ...preview, step: 3, frames: ["too-late"] });
+  emit("slopfab-job", { jobId: id, state, detail: "Stopped" });
+  await waitFor(() => expect(saveGenerationPreview).toHaveBeenCalledExactlyOnceWith(first.record.folderPath, id, preview));
+  emit("slopfab-job", { jobId: id, state: "cancelled", detail: "Duplicate" });
+  expect(descendants.map(childId => queue.getSnapshot().find(item => item.id === childId)?.status)).toEqual(["cancelled", "cancelled"]);
+  expect(queue.getSnapshot().find(item => item.id === other)?.status).toBe("queued");
+  expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce();
+  saved({ relativePath: `media/generated/${id}.mp4`, bytes: 100, note: null, hasAudio: false, width: 168, height: 96, durationMs: 500 });
+  await expect(queue.waitFor(id, new AbortController().signal)).resolves.toMatchObject({ status: "cancelled", needsSave: false });
+  const config = parseProjectConfig(JSON.parse(JSON.stringify(first.getSnapshot().config)));
+  const result = config.generationJobs[0];
+  expect(result).toMatchObject({ status: "completed", outputRelativePath: `media/generated/${id}.mp4`, latentRelativePath: null });
+  expect(result.generationHistory).toMatchObject({ primaryId: id, selectedId: id });
+  expect(result.generationHistory!.versions).toHaveLength(2);
+  expect(result.generationHistory!.versions[0].latentRelativePath).toBe("latents/original.safetensors");
+  expect(result.generationHistory!.versions[1].media).toMatchObject({ width: 168, height: 96, durationMs: 500, hasAudio: false });
+  expect(result.generationHistory!.versions[1].media.sceneSegments).toBeUndefined();
+  expect(config.assets.find(asset => asset.id === `asset-${source.job.id}`)?.relativePath).toBe(`media/generated/${id}.mp4`);
+  expect(JSON.stringify(config)).not.toContain("/9j/");
+  expect(saveGenerationPreview).toHaveBeenCalledOnce();
+  expect(saveGeneratedScene).not.toHaveBeenCalled();
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2));
+});
+
+it("retains the last preview for cancellation after live previews are disabled", async () => {
+  const { queue, first } = setup();
+  const [id] = queue.enqueue(first, [submission(first)]);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  const preview = { jobId: id, step: 1, width: 2, height: 2, fps: 4, frames: ["jpeg"] };
+  emit("slopfab-preview", preview);
+  saveGenerationPreviewsEnabled(false);
+  await queue.cancel(id);
+  emit("slopfab-job", { jobId: id, state: "cancelled", detail: "Stopped" });
+  await expect(queue.waitFor(id, new AbortController().signal)).resolves.toMatchObject({ status: "cancelled" });
+  expect(saveGenerationPreview).toHaveBeenCalledExactlyOnceWith(first.record.folderPath, id, preview);
+});
+
+it("finishes saving a preview before advancing the queue when cancellation arrives during encoding", async () => {
+  const { queue, first, second } = setup();
+  let encoded!: (result: Awaited<ReturnType<typeof saveGeneratedScene>>) => void;
+  let previewSaved!: (result: Awaited<ReturnType<typeof saveGenerationPreview>>) => void;
+  vi.mocked(saveGeneratedScene).mockImplementationOnce(() => new Promise(resolve => { encoded = resolve; }));
+  vi.mocked(saveGenerationPreview).mockImplementationOnce(() => new Promise(resolve => { previewSaved = resolve; }));
+  const [id] = queue.enqueue(first, [submission(first)]);
+  queue.enqueue(second, [submission(second)]);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  emit("slopfab-preview", { jobId: id, step: 1, width: 2, height: 2, fps: 4, frames: ["jpeg"] });
+  emit("slopfab-job", { jobId: id, state: "framesReady" });
+  await waitFor(() => expect(saveGeneratedScene).toHaveBeenCalledOnce());
+  await queue.cancel(id);
+  encoded({ relativePath: "media/full.mp4", bytes: 100, note: null });
+  await waitFor(() => expect(saveGenerationPreview).toHaveBeenCalledOnce());
+  expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce();
+  expect(queue.getSnapshot()[0].status).toBe("encoding");
+  previewSaved({ relativePath: "media/preview.mp4", bytes: 100, note: null, width: 2, height: 2, hasAudio: false, durationMs: 250 });
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(2));
+  expect(queue.getSnapshot()[0].status).toBe("cancelled");
+  expect(first.getSnapshot().config.generationJobs[0].outputRelativePath).toBe("media/preview.mp4");
+});
+
+it.each([false, true])("keeps cancellation without a valid video preview unchanged (malformed preview: %s)", async (malformed) => {
+  const { queue, first } = setup();
+  const [id] = queue.enqueue(first, [submission(first)]);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  if (malformed) emit("slopfab-preview", { jobId: id, step: 1, width: 2, height: 2, fps: 4, frames: [] });
+  await queue.cancel(id);
+  emit("slopfab-job", { jobId: id, state: "cancelled", detail: "Stopped" });
+  await expect(queue.waitFor(id, new AbortController().signal)).resolves.toMatchObject({ status: "cancelled" });
+  expect(saveGenerationPreview).not.toHaveBeenCalled();
+  expect(first.getSnapshot().config.generationJobs[0].outputRelativePath).toBeFalsy();
+});
+
+it("keeps the prior Take when saving a cancelled preview fails", async () => {
+  const { queue, first } = setup();
+  const source = submission(first);
+  first.update(config => completeSceneGeneration(config, source.job.id, {
+    id: "original", createdAt: config.createdAt, scene: sceneInput(source.job), latentRelativePath: "latents/original.safetensors",
+    media: { id: `asset-${source.job.id}`, kind: "generated", mimeType: "video/mp4", name: source.job.title, relativePath: "media/original.mp4", createdAt: config.createdAt },
+  }));
+  const [id] = queue.enqueue(first, [submission(first)]);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  emit("slopfab-preview", { jobId: id, step: 1, width: 2, height: 2, fps: 4, frames: ["jpeg"] });
+  vi.mocked(saveGenerationPreview).mockRejectedValueOnce(new Error("Disk full"));
+  await queue.cancel(id);
+  emit("slopfab-job", { jobId: id, state: "cancelled", detail: "Stopped" });
+  await expect(queue.waitFor(id, new AbortController().signal)).resolves.toMatchObject({ status: "cancelled", detail: expect.stringContaining("Disk full") });
+  expect(first.getSnapshot().config.generationJobs[0]).toMatchObject({ outputRelativePath: "media/original.mp4", latentRelativePath: "latents/original.safetensors" });
+  expect(first.getSnapshot().config.generationJobs[0].generationHistory!.versions).toHaveLength(1);
+});
+
+it("retries project persistence for a saved cancelled preview without encoding it again", async () => {
+  const { queue, first, saved } = setup();
+  const [id] = queue.enqueue(first, [submission(first)]);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  emit("slopfab-preview", { jobId: id, step: 1, width: 2, height: 2, fps: 4, frames: ["jpeg"] });
+  await queue.cancel(id);
+  saved.mockRejectedValueOnce(new Error("Project save failed"));
+  emit("slopfab-job", { jobId: id, state: "cancelled", detail: "Stopped" });
+  await expect(queue.waitFor(id, new AbortController().signal)).resolves.toMatchObject({ status: "cancelled", needsSave: true });
+  await queue.retrySave(id);
+  expect(queue.getSnapshot()[0]).toMatchObject({ status: "cancelled", needsSave: false, error: null });
+  expect(saveGenerationPreview).toHaveBeenCalledOnce();
+  expect(first.getSnapshot().config.generationJobs[0].generationHistory!.versions).toHaveLength(1);
 });
 
 it("upscales selected Takes repeatedly without diffusion, preserving source lineage and joined scene ranges", async () => {

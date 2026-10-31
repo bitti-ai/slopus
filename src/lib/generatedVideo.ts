@@ -3,6 +3,7 @@ import { writeDiagnostic } from "./diagnostics";
 import { bitrateFor, outputCodec } from "./export";
 import { isTauri } from "./persistence";
 import { TIMELINE_THUMBNAIL_INTERVAL_MS, writeTimelineThumbnail } from "./timelineThumbnails";
+import { encodeGenerationPreview, type GenerationPreview } from "./generationPreview";
 
 /* Turning a finished render into a file in the project folder.
  *
@@ -166,6 +167,15 @@ async function writeGeneratedVideo(folderPath: string, jobId: string, bytes: Uin
       "x-generated-job": encodeURIComponent(jobId),
     },
   });
+}
+
+/** Promote a cancelled render's latest preview to a normal project video. */
+export async function saveGenerationPreview(folderPath: string, jobId: string, preview: GenerationPreview): Promise<SavedGeneration> {
+  if (!isTauri()) throw new Error("Saving a generation preview needs the desktop app.");
+  const video = await encodeGenerationPreview(preview, new AbortController().signal);
+  const written = await writeGeneratedVideo(folderPath, jobId, new Uint8Array(await video.arrayBuffer()));
+  return { ...written, note: null, hasAudio: false, width: preview.width, height: preview.height,
+    durationMs: Math.round(preview.frames.length / preview.fps * 1000) };
 }
 
 /** The codec string this machine actually accepts for this picture, asked of

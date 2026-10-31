@@ -4,7 +4,7 @@ export interface GenerationPreview {
   width: number;
   height: number;
   fps: number;
-  /** Base64 JPEG frames; transient and never written into the project. */
+  /** Base64 JPEG frames; kept in memory until discarded or saved as a cancelled Take. */
   frames: string[];
 }
 
@@ -17,7 +17,7 @@ export function validGenerationPreview(value: GenerationPreview): boolean {
     && value.frames.reduce((bytes, frame) => bytes + frame.length, 0) <= 8 * 1024 * 1024);
 }
 
-/** Small silent MP4 for the scene card. WebCodecs owns encoding; no files or FFmpeg. */
+/** Small silent MP4 for playback or saving a cancelled Take. WebCodecs owns encoding. */
 export async function encodeGenerationPreview(preview: GenerationPreview, signal: AbortSignal): Promise<Blob> {
   if (!validGenerationPreview(preview)) throw new Error("Invalid generation preview.");
   signal.throwIfAborted();
