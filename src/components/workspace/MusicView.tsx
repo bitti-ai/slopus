@@ -47,9 +47,10 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderName, setFolderName] = useState("");
   const [dropFolder, setDropFolder] = useState<string>();
-  const [selectedId, setSelectedId] = useState(config.musicSongs?.[0]?.id);
+  // null explicitly clears selection; undefined keeps the initial first-item fallback.
+  const [selectedId, setSelectedId] = useState<string | null | undefined>(config.musicSongs?.[0]?.id);
   useEffect(() => { if (openSong) { setFolderId(config.musicSongs?.find((song) => song.id === openSong.id)?.folderId ?? null); setSelectedId(openSong.id); onSongOpened?.(); } }, [openSong]);
-  const selected = visibleSongs.find((song) => song.id === selectedId) ?? visibleSongs[0];
+  const selected = selectedId === null ? undefined : visibleSongs.find((song) => song.id === selectedId) ?? visibleSongs[0];
   const activeGeneratorId = useSyncExternalStore(subscribeActiveGenerators, () => loadActiveGeneratorId("music"));
   const chosenTemplate = selectedGeneratorTemplate("music", loadGeneratorTemplateSettings(), activeGeneratorId);
   const template = templates.find((item) => item.id === chosenTemplate.id) ?? templates[0];
@@ -245,6 +246,7 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
     </div>
     <div className="music-body">
       <div className="music-library" tabIndex={0} aria-label="Music library"
+        onClick={(event) => { if (!(event.target as Element).closest(".music-song, button, form")) setSelectedId(null); }}
         onContextMenu={(event) => { if (!(event.target as HTMLElement).closest("input, textarea")) folderContext(event, currentFolderId); }}
         onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "ContextMenu" || event.shiftKey && event.key === "F10")) folderContext(event, currentFolderId); }}>
         <div className="music-library__heading">
@@ -328,7 +330,7 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
             {activeWork ? <button type="button" className="primary-button" disabled={activeWork.cancelling || activeWork.status === "encoding"} onClick={() => onCancel(activeWork.id)}><Stop14 aria-hidden="true" />{activeWork.cancelling ? "Cancelling…" : "Cancel"}</button> :
               <button type="button" className="primary-button" data-tooltip={generatorStatus.state !== "ready" ? generatorStatus.detail : undefined} disabled={!ready || !isTauri() || !selected.style.trim()} onClick={generate}><Sparkle16 aria-hidden="true" />Generate</button>}
           </div>
-        </> : <p className="music-inspector__empty">Add a song to edit its lyrics, style and generation settings.</p>}
+        </> : <p className="music-inspector__empty">{visibleSongs.length ? "Select a song to edit its lyrics, style and generation settings." : "Add a song to edit its lyrics, style and generation settings."}</p>}
       </aside>
       {error && <InfoBar className="music-error" severity="error" title="Couldn’t update music" message={error} onClose={() => setError(null)} />}
       {(activeWork || selected?.error) && <div className="music-generation-status" role={selected?.error ? "alert" : "status"}>

@@ -37,6 +37,32 @@ function mount(config = project(), openScene?: { id: string }) {
   return { ...render(<Harness />), config: () => latest };
 }
 
+it.each(["Grid", "List"])("clears video selection on empty %s space and allows selecting again", (mode) => {
+  const config = project();
+  config.videos = [{ ...newVideo(null), title: "First" }, { ...newVideo(null), title: "Second" }];
+  mount(config);
+  fireEvent.click(screen.getByRole("button", { name: `${mode} view` }));
+  const first = screen.getByRole("button", { name: "Select First" });
+  const second = screen.getByRole("button", { name: "Select Second" });
+  for (const surface of [screen.getByLabelText("Video library"), screen.getByRole("list", { name: "Video contents" }), screen.getByText("2 videos")]) {
+    fireEvent.click(second.querySelector("strong")!);
+    fireEvent.click(screen.getByLabelText("Video title"));
+    expect(second).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(surface);
+    expect(first).toHaveAttribute("aria-pressed", "false");
+    expect(second).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByLabelText("Video title")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Scenes" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: `${mode} view` }));
+    expect(screen.getByText("Select a video to edit its settings.")).toBeInTheDocument();
+  }
+  fireEvent.click(first);
+  fireEvent.click(screen.getByRole("button", { name: "New folder" }));
+  fireEvent.click(screen.getByLabelText("Folder name"));
+  expect(first).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByLabelText("Video title")).toHaveValue("First");
+});
+
 it("creates nested folders and videos, moves cards to a folder, and opens only that video's scenes", () => {
   const config = project(); config.generationJobs = [createDraftGenerationJob("Existing", { id: "legacy" })]; const view = mount(config);
   fireEvent.click(screen.getByRole("button", { name: "New folder" })); fireEvent.change(screen.getByRole("textbox", { name: "Folder name" }), { target: { value: "Album" } }); fireEvent.click(screen.getByRole("button", { name: "Create folder" }));

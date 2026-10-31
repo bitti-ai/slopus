@@ -29,6 +29,31 @@ beforeEach(() => {
   vi.stubGlobal("URL", Object.assign(URL, { revokeObjectURL: vi.fn() }));
 });
 
+it.each(["Grid", "List"])("clears song selection on empty %s space and allows selecting again", (mode) => {
+  const songs = [{ ...newSong(), title: "First" }, { ...newSong(), title: "Second" }];
+  render(<Harness initial={{ ...createConfig(), musicSongs: songs }} />);
+  fireEvent.click(screen.getByRole("button", { name: `${mode} view` }));
+  const first = screen.getByRole("button", { name: "Select First" });
+  const second = screen.getByRole("button", { name: "Select Second" });
+  for (const surface of [screen.getByLabelText("Music library"), screen.getByRole("list", { name: "Music contents" }), within(screen.getByLabelText("Music library")).getByText("2 songs")]) {
+    fireEvent.click(second.querySelector("strong")!);
+    fireEvent.click(screen.getByLabelText("Song title"));
+    expect(second).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(surface);
+    expect(first).toHaveAttribute("aria-pressed", "false");
+    expect(second).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByLabelText("Song title")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Generate" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: `${mode} view` }));
+    expect(screen.getByText("Select a song to edit its lyrics, style and generation settings.")).toBeInTheDocument();
+  }
+  fireEvent.click(first);
+  fireEvent.click(screen.getByRole("button", { name: "New folder" }));
+  fireEvent.click(screen.getByLabelText("Folder name"));
+  expect(first).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByLabelText("Song title")).toHaveValue("First");
+});
+
 it("generates artwork for the context-menu song and displays saved covers in both views", async () => {
   const songs = [{ ...newSong(), title: "First" }, { ...newSong(), title: "Second", coverRelativePath: "media/generated/cover.jpg" }];
   render(<Harness initial={{ ...createConfig(), musicSongs: songs }} />);

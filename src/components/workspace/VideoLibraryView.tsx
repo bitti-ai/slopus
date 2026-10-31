@@ -27,7 +27,8 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
   const latest = useRef(config); latest.current = config;
   const videos = videoLibrary(config), folders = config.videoFolders ?? [];
   const [folderId, setFolderId] = useState<string | null>(() => videos.find((video) => video.id === props.initialOpenVideoId)?.folderId ?? null);
-  const [selectedId, setSelectedId] = useState<string | undefined>(props.initialOpenVideoId);
+  // null explicitly clears selection; undefined keeps the initial first-item fallback.
+  const [selectedId, setSelectedId] = useState<string | null | undefined>(props.initialOpenVideoId);
   const [openId, setOpenId] = useState<string | undefined>(props.initialOpenVideoId);
   const [playback, setPlayback] = useState<{ id: string; popout: boolean }>();
   const [creatingFolder, setCreatingFolder] = useState(false), [folderName, setFolderName] = useState("");
@@ -36,7 +37,7 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
   const menu = useContextMenu();
   const currentFolder = folders.find((folder) => folder.id === folderId), currentFolderId = currentFolder?.id ?? null;
   const visible = videos.filter((video) => (video.folderId ?? null) === currentFolderId);
-  const selected = visible.find((video) => video.id === selectedId) ?? visible[0];
+  const selected = selectedId === null ? undefined : visible.find((video) => video.id === selectedId) ?? visible[0];
   const selectedSettings = videoSettings(selected, config);
   const resolutionLabel = (resolution: Resolution) => { const size = outputDimensions(resolution, selectedSettings.aspectRatio); return `${size.width} × ${size.height}`; };
   const open = videos.find((video) => video.id === openId);
@@ -113,7 +114,9 @@ export function VideoLibraryView(props: ComponentProps<typeof GeneratorView> & {
     </CommandBar>
     <div className="video-library-body">
       <div className="video-library-stage">
-        <div className="music-library" aria-label="Video library" tabIndex={0} onContextMenu={(event) => { if (!(event.target as HTMLElement).closest("input, textarea")) menu.open(event, newItems()); }}>
+        <div className="music-library" aria-label="Video library" tabIndex={0}
+          onClick={(event) => { if (!(event.target as Element).closest(".music-song, button, form")) setSelectedId(null); }}
+          onContextMenu={(event) => { if (!(event.target as HTMLElement).closest("input, textarea")) menu.open(event, newItems()); }}>
           <div className="music-library__heading"><nav aria-label="Video path"><h2 className="music-path">{breadcrumbs.map((folder, index) => <span key={folder.id ?? "root"}>{index > 0 && <span className="music-path__separator">/</span>}<button type="button" aria-current={folder.id === currentFolderId ? "page" : undefined} onClick={() => browse(folder.id)} {...dropProps(folder.id)}>{folder.name}</button></span>)}</h2></nav><span>{visible.length} videos</span></div>
           {creatingFolder && <form className="music-new-folder" onSubmit={(event) => { event.preventDefault(); if (!folderName.trim()) return; const folder = newMusicFolder(folderName, currentFolderId); update((current) => ({ ...current, videoFolders: [...(current.videoFolders ?? []), folder] })); browse(folder.id); }}>
             <input className="text-field" aria-label="Folder name" maxLength={200} autoFocus value={folderName} onChange={(event) => setFolderName(event.target.value)} />
