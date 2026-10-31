@@ -1062,7 +1062,9 @@
 .scene-generation-controls { display: flex; min-width: 0; }
 .scene-generation-controls > .scene-generate-button { flex: 1; }
 .scene-generation-controls--split { border: 1px solid var(--button-primary-stroke); border-bottom-color: var(--button-primary-stroke-bottom); border-radius: var(--radius-sm); background: var(--button-primary-bg); }
+.scene-generation-controls--split:has(> .scene-generate-button:disabled) { border-color: transparent; background: var(--button-primary-off-bg); }
 .scene-generation-controls--split > .primary-button { min-height: calc(var(--control-md) - 2px); border: 0; background: transparent; }
+.scene-generation-controls--split:has(> .scene-generate-button:disabled) > .scene-generation-options { background: var(--button-primary-bg); }
 .scene-generation-controls--split > .scene-generate-button { border-radius: calc(var(--radius-sm) - 1px) 0 0 calc(var(--radius-sm) - 1px); }
 .scene-generation-controls--split > .scene-generation-options { position: relative; flex: 0 0 var(--control-md); padding: 0; border-radius: 0 calc(var(--radius-sm) - 1px) calc(var(--radius-sm) - 1px) 0; }
 .scene-generation-options::before { content: ""; position: absolute; left: 0; top: 25%; bottom: 25%; width: 1px; background: currentColor; opacity: .22; }

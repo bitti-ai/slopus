@@ -318,8 +318,8 @@
   --button-primary-bg: #3557c7;        /* white on it is 6.3:1 */
   --button-primary-hover: var(--accent-fill); /* 5.2:1 — lighter, as dark-theme hover should be */
   --button-primary-active: #2c49ac;    /* 7.9:1 */
-  --button-primary-off-bg: var(--accent-disabled);
-  --button-primary-off-ink: var(--on-accent-disabled);
+  --button-primary-off-bg: var(--panel-3);
+  --button-primary-off-ink: var(--text-muted);
   --button-primary-stroke: rgba(255, 255, 255, 0.08);
   --button-primary-stroke-bottom: rgba(0, 0, 0, 0.14);
 

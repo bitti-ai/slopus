@@ -21,6 +21,7 @@ Changes since 0.3.2.
 
 ## Fixes and improvements
 
+- Unavailable Generate buttons use a neutral background with readable text in both themes.
 - Improved video playback, thumbnails and Back navigation.
 - Video folders stack vertically beside video cards in grid view.
 - The Timeline scene list browses video folders and videos, with Back as the first item inside each.
