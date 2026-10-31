@@ -84,7 +84,10 @@
    height (--command-row) and their 32px, 14px controls. */
 
 .scene-panel__toolbar {
-  height: var(--command-row);
+  height: auto;
+  min-height: var(--command-row);
+  flex-wrap: wrap;
+  padding-block: var(--space-1);
 }
 
 .scene-panel__toolbar .ui-selector-bar--compact {
@@ -92,14 +95,14 @@
 }
 
 .scene-panel__toolbar .ui-selector-bar--compact .ui-selector-bar__item {
-  padding: 0 var(--space-3);
+  padding: 0 var(--space-2);
   font-size: var(--text-base);
   line-height: var(--leading-normal);
 }
 
 
 /* Icon-only, like the layout toggles beside it, so it never crowds the
-   Scenes / Media switch; the name is in an .sr-only span and the tooltip. */
+   source tabs; the name is in an .sr-only span and the tooltip. */
 .scene-panel__import {
   width: var(--control-md);
   height: var(--control-md);

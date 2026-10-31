@@ -10,9 +10,11 @@ import completeFixture from "../../../fixtures/project-v1-complete.json";
 import { createProjectConfig, parseProjectConfig, STORY_TRACK_ID, type ProjectAsset, type ProjectConfig, type TimelineClip } from "../../lib/project";
 import { TimelineView } from "./TimelineView";
 import { newVideo } from "../../lib/videoLibrary";
+import { emptyMotion, MOTION_MIME } from "../../lib/motion";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
+vi.mock("./MotionCanvas", () => ({ MotionCanvas: () => <canvas aria-label="Motion preview" /> }));
 
 afterEach(() => {
   cleanup();
@@ -316,7 +318,7 @@ describe("the media and scene panels", () => {
   it("keeps imported media in Media and lists Generator scenes even before generation", () => {
     const config = withClip(projectWithMedia(), { durationMs: 5_000 });
     const { container } = render_(config);
-    expect(screen.getByRole("tablist", { name: "Scenes and media" })).toBeTruthy();
+    expect(screen.getByRole("tablist", { name: "Scenes, media and motions" })).toBeTruthy();
     expect(container.querySelector(".scene-list")!.textContent).toContain("First scene");
     expect(container.querySelector(".scene-list")!.textContent).not.toContain("Macro footage");
     expect(container.querySelector(".scene-card__thumb")).not.toBeNull();
@@ -1083,10 +1085,18 @@ describe("measuring media", () => {
 });
 
 
-it("creates an empty inline Motion and places it on an unlocked video track", () => {
+it.each(["Add Motion", "New Motion"])("creates an empty Motion from %s in the Motions tab and places it on a video track", (action) => {
   const config = projectWithMedia();
   const { onChange } = render_(config);
-  fireEvent.click(screen.getByRole("button", { name: "Add Motion" }));
+  const tabs = screen.getByRole("tablist", { name: "Scenes, media and motions" });
+  expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Scenes", "Media", "Motions"]);
+  expect(screen.queryByRole("button", { name: "Add Motion" })).toBeNull();
+  fireEvent.click(screen.getByRole("tab", { name: "Media" }));
+  expect(screen.queryByRole("button", { name: "Add Motion" })).toBeNull();
+  fireEvent.click(screen.getByRole("tab", { name: "Motions" }));
+  expect(screen.getByText("No motions yet")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Import" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: action }));
   const update = onChange.mock.calls.at(-1)![0];
   const next = typeof update === "function" ? update(config) : update;
   const motion = next.assets.find((asset: ProjectAsset) => asset.kind === "motion")!;
@@ -1094,4 +1104,34 @@ it("creates an empty inline Motion and places it on an unlocked video track", ()
   expect(motion.motion.source).toContain("export function update");
   expect(motion.relativePath).toBeUndefined();
   expect(next.timeline.tracks.flatMap((track: ProjectConfig["timeline"]["tracks"][number]) => track.clips).some((clip: TimelineClip) => clip.assetId === motion.id)).toBe(true);
+  expect(screen.getByRole("tab", { name: "Motions" }).getAttribute("aria-selected")).toBe("true");
+});
+
+it.each(["Grid", "List"])("browses placed and unused Motions in %s view and drags them onto the timeline", (layout) => {
+  const config = projectWithMedia();
+  const motions: ProjectAsset[] = ["Placed Motion", "Unused Motion"].map((name, index) => ({
+    id: `motion-${index}`, name, kind: "motion", mimeType: MOTION_MIME, motion: emptyMotion(), durationMs: 5000, createdAt: config.createdAt,
+  }));
+  config.assets.push(...motions);
+  config.timeline.tracks[0].clips = [{ id: "placed-motion", assetId: motions[0].id, trackId: config.timeline.tracks[0].id,
+    startMs: 0, durationMs: 5000, sourceStartMs: 0, label: motions[0].name, status: "approved" }];
+  const { container, onChange } = render_(config);
+  fireEvent.click(screen.getByRole("tab", { name: "Media" }));
+  expect(cardFor(motions[0])).toBeNull();
+  expect(cardFor(motions[1])).toBeNull();
+  fireEvent.click(screen.getByRole("tab", { name: "Motions" }));
+  fireEvent.click(screen.getByRole("button", { name: layout }));
+  const panel = screen.getByRole("tabpanel", { name: "Motions" });
+  expect(panel.classList.contains(`media-grid--${layout.toLowerCase()}`)).toBe(true);
+  expect(within(panel).getByText("Placed Motion")).toBeTruthy();
+  expect(within(panel).getByText("Unused Motion")).toBeTruthy();
+  expect(within(panel).queryByText("Macro footage")).toBeNull();
+  const dataTransfer = fakeDataTransfer();
+  fireEvent.dragStart(cardFor(motions[1]), { dataTransfer });
+  expect(dataTransfer.getData("application/x-slopus-asset")).toBe(motions[1].id);
+  fireEvent.drop(laneAt(container, 1), { dataTransfer });
+  const next = wrote(onChange.mock.calls.at(-1)![0], config);
+  expect(next.assets).toEqual(config.assets);
+  expect(next.timeline.tracks[1].clips[0]).toMatchObject({ assetId: motions[1].id, durationMs: 5000, label: "Unused Motion" });
+  expect(parseProjectConfig(next)).toBeTruthy();
 });

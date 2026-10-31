@@ -235,7 +235,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
   const [playing, setPlaying] = useState(false);
   /* Shuttle speed: 1, 2, 4 forward or −1, −2, −4 in reverse (J/K/L). */
   const [rate, setRate] = useState(1);
-  const [panelTab, setPanelTab] = useState<"scenes" | "media">("scenes");
+  const [panelTab, setPanelTab] = useState<"scenes" | "media" | "motions">("scenes");
   const [sceneLocation, setSceneLocation] = useState<{ kind: "folder" | "video"; id: string } | null>(() => {
     const owner = config.videos?.find((video) => video.sceneIds.includes(openSceneId ?? ""));
     return owner ? { kind: "video", id: owner.id } : null;
@@ -339,7 +339,9 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
    *  asked for, however little of it is cut yet). */
   const contentEndMs = tracks.reduce((end, track) => track.clips.reduce((furthest, clip) => Math.max(furthest, clipEndMs(clip)), end), 0);
   const duration = useMemo(() => canvasDuration(config), [config]);
-  const mediaAssets = useMemo(() => config.assets.filter((asset) => asset.kind !== "generated"), [config.assets]);
+  const mediaAssets = useMemo(() => config.assets.filter((asset) => asset.kind !== "generated" && asset.kind !== "motion"), [config.assets]);
+  const motionAssets = useMemo(() => config.assets.filter((asset) => asset.kind === "motion"), [config.assets]);
+  const sourceAssets = panelTab === "motions" ? motionAssets : mediaAssets;
   const assetsById = useMemo(() => new Map(config.assets.map((asset) => [asset.id, asset])), [config.assets]);
   const generatedJobsByAssetId = useMemo(() => new Map(
     config.generationJobs.map((job) => [generationAssetId(job.id), job]),
@@ -1160,7 +1162,7 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
     const item: TimelineClip = { id: clipId, assetId: id, trackId: track.id, label: asset.name, startMs: start, durationMs: 5000, sourceStartMs: 0, status: "approved" };
     onChange((current) => ({ ...current, assets: [...current.assets, asset], timeline: { ...current.timeline,
       tracks: current.timeline.tracks.map((t) => t.id === track.id ? { ...t, clips: [...t.clips, item] } : t) } }));
-    setSelectedId(clipId); setMotionNodeId(null); setMediaSelectedId(id); setPanelTab("media"); setPlayhead(start);
+    setSelectedId(clipId); setMotionNodeId(null); setMediaSelectedId(id); setPanelTab("motions"); setPlayhead(start);
   };
   const addScene = () => {
     if (sceneVideo) {
@@ -1348,28 +1350,27 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
           no landmark for it. Sighted users already see the title bar. */}
       <h1 className="sr-only">Timeline editor</h1>
       <div className={panelsClass}>
-        {sourcesOpen && <aside className="scene-panel" aria-label="Scenes and media">
-          {/* One toolbar for both views: the views lead, the actions trail, and
-              the content below starts at the same height on either tab. */}
+        {sourcesOpen && <aside className="scene-panel" aria-label="Scenes, media and motions">
+          {/* One toolbar for the source views: the views lead, the actions trail, and
+              each tab supplies its own actions. */}
           <PaneHeader
             className="scene-panel__toolbar"
             views={<SelectorBar
               compact
-              aria-label="Scenes and media"
+              aria-label="Scenes, media and motions"
               value={panelTab}
               onChange={setPanelTab}
-              items={[{ value: "scenes", label: "Scenes" }, { value: "media", label: "Media" }]}
+              items={[{ value: "scenes", label: "Scenes" }, { value: "media", label: "Media" }, { value: "motions", label: "Motions" }]}
             />}
             actions={<>
-              <button type="button" className="scene-panel__import" aria-label="Add Motion" onClick={() => addMotion()} {...tooltipProps("Add empty Motion")}><Sparkle16 /><span className="sr-only">Add Motion</span></button>
-              <button
+              {panelTab === "motions" ? <button type="button" className="scene-panel__import" aria-label="Add Motion" onClick={() => addMotion()} {...tooltipProps("Add empty Motion")}><Sparkle16 /><span className="sr-only">Add Motion</span></button> : <button
                 type="button"
                 className="scene-panel__import"
                 onClick={() => void importMedia()}
                 disabled={importing || !isTauri()}
                 {...tooltipProps(isTauri() ? "Add video, sound or image files. Video and sound stay where they are; images are copied in." : "Importing files is available in the desktop app")}
-              ><Import16 aria-hidden="true" /><span className="sr-only">Import</span></button>
-              {panelTab === "media" && <div className="scene-panel__layout" role="group" aria-label="Media layout">
+              ><Import16 aria-hidden="true" /><span className="sr-only">Import</span></button>}
+              {panelTab !== "scenes" && <div className="scene-panel__layout" role="group" aria-label={panelTab === "motions" ? "Motions layout" : "Media layout"}>
                 <button
                   type="button"
                   className="ui-toggle-button scene-panel__toggle"
@@ -1445,14 +1446,14 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
               {(sceneVideo || !sceneFolder) && <button className="secondary-button scene-add" onClick={addScene}><Add16 /> Add scene</button>}
             </div>
           ) : (
-            <div className={`media-grid media-grid--${mediaLayout}`} role="tabpanel" aria-label="Media">
+            <div className={`media-grid media-grid--${mediaLayout}`} role="tabpanel" aria-label={panelTab === "motions" ? "Motions" : "Media"}>
               {/* Draggable onto the timeline. `draggable` on a <button> is the
                   whole mechanism — the button still clicks and still takes
                   focus, so keyboard users are not shut out of selecting it.
                   Removing a file is Delete on the focused card, or its context
                   menu: no × on every card. The selected card is the one Delete
                   acts on — the focused one, or the last one clicked. */}
-              {mediaAssets.map((asset) => <div className="media-card" key={asset.id}>
+              {sourceAssets.map((asset) => <div className="media-card" key={asset.id}>
                 <button
                   className={`media-card__source ui-selectable ui-selectable--card${asset.id === mediaSelectedId ? " is-selected" : ""}`}
                   draggable
@@ -1480,7 +1481,12 @@ export function TimelineView({ config, folderPath, generationCompletionTimes = {
                   <small>{asset.kind}{asset.durationMs ? ` · ${(asset.durationMs / 1000).toFixed(1)}s` : ""}</small>
                 </button>
               </div>)}
-              {mediaAssets.length === 0 && !importError && <EmptyState
+              {panelTab === "motions" && motionAssets.length === 0 && <EmptyState
+                className="media-grid__empty" icon={<Sparkle16 />} title="No motions yet"
+                description="Create a Motion, then drag it onto a video track to use it."
+                action={<button type="button" className="secondary-button" onClick={() => addMotion()}><Add16 aria-hidden="true" />New Motion</button>}
+              />}
+              {panelTab === "media" && mediaAssets.length === 0 && !importError && <EmptyState
                 className="media-grid__empty"
                 icon={<Film32 />}
                 title="No media yet"
