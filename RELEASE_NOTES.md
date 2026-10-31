@@ -21,6 +21,7 @@ Changes since 0.3.2.
 
 ## Fixes and improvements
 
+- Generate's dropdown arrow now shares its neutral disabled colors while keeping available upscale actions accessible.
 - Single Shot with Context video now matches the two-minute Keystone/Capstone test's fully locked 22-frame overlap, preserving earlier video and audio instead of regenerating their tail. Update LAN workers alongside the app.
 - Corrected Motion thumbnail sizing and title/duration alignment in the Timeline's list and grid layouts.
 - Send additional agent messages while it is working; queued messages join its context when the current call or generation finishes.
