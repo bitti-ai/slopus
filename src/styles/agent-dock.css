@@ -119,6 +119,13 @@
   line-height: var(--leading-snug);
 }
 
+.agent-message__queued {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  opacity: 0.8;
+}
+
 /* Yours: right-aligned, filled accent. The side already says who sent it, so
    "You" is kept for screen readers only. */
 .agent-conversation__user,

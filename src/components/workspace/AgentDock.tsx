@@ -71,7 +71,11 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
   const [requestId, setRequestId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
   const seenActivity = useRef(new Set<string>());
-  const [sessionMessages, setSessionMessages] = useState<AgentMessage[]>([]);
+  const sessionMessages = useRef<AgentMessage[]>([]);
+  const pendingMessages = useRef<AgentMessage[]>([]);
+  const [pendingIds, setPendingIds] = useState<string[]>([]);
+  const latest = useRef({ record, generation, onCommands });
+  latest.current = { record, generation, onCommands };
   const activeRequest = useRef<string | null>(null);
   const activeController = useRef<AbortController | null>(null);
   const [workDetail, setWorkDetail] = useState<string | null>(null);
@@ -110,8 +114,12 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
   };
 
   useEffect(() => {
-    setSessionMessages([]);
+    sessionMessages.current = [];
+    pendingMessages.current = [];
+    setPendingIds([]);
     setTranscript([]);
+    setPrompt("");
+    setLastPrompt(null);
     seenActivity.current.clear();
     setRequestId(null);
     setWorkDetail(null);
@@ -150,12 +158,6 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
     if (panel) panel.scrollTop = panel.scrollHeight;
   }, [transcript, requestId, workDetail]);
 
-  /* The text box is disabled while a turn runs; keep the focus in the pane
-     (on the stop button) so Esc still reaches it. */
-  useEffect(() => {
-    if (requestId && document.activeElement === field.current) cancelButton.current?.focus();
-  }, [requestId]);
-
   const blockedDetail = selected && !ready
     ? [selected.detail, providerNextStep(selected)].filter(Boolean).join(" ")
     : null;
@@ -170,35 +172,58 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
 
   const send = async () => {
     const clean = prompt.trim();
-    if (!clean || !ready || activeRequest.current) return;
+    if (!ready || (!clean && !pendingMessages.current.length)) return;
+    if (clean) {
+      const userMessage: AgentMessage = { id: crypto.randomUUID(), role: "user", content: clean, createdAt: new Date().toISOString() };
+      pendingMessages.current.push(userMessage);
+      setPendingIds(pendingMessages.current.map(({ id }) => id));
+      setTranscript((current) => [...current, { id: userMessage.id, kind: "user", text: clean }]);
+      setLastPrompt(clean);
+      setPrompt("");
+    }
+    if (activeRequest.current) return;
     onPromptStart();
     const id = crypto.randomUUID();
     activeRequest.current = id;
     setRequestId(id);
-    const userMessage: AgentMessage = { id: crypto.randomUUID(), role: "user", content: clean, createdAt: new Date().toISOString() };
-    setTranscript((current) => [...current, { id: userMessage.id, kind: "user", text: clean }]);
-    setLastPrompt(clean);
-    setPrompt("");
     seenActivity.current.clear();
     const controller = new AbortController();
     activeController.current = controller;
     try {
-      // The native agent uses this legacy field to select its instructions.
-      // Override only the request snapshot, never the saved project document.
-      setWorkDetail(null);
-      const response = await runAgentWorkflow({ ...record, config: { ...record.config, generationType: mode } },
-        provider, clean, id, sessionMessages, controller.signal, generation,
-        (detail) => { if (activeRequest.current === id) setWorkDetail(readableProviderOutput(detail)); }, scope);
-      controller.signal.throwIfAborted();
-      if (activeRequest.current !== id) return;
-      if ("commands" in response.result) await onCommands(response.result.commands);
-      controller.signal.throwIfAborted();
-      if (activeRequest.current !== id) return;
-      const content = "summary" in response.result ? response.result.summary : response.result.content;
-      setSessionMessages((current) => [...current, userMessage,
-        { id: crypto.randomUUID(), role: "assistant", content, createdAt: new Date().toISOString() }]);
-      const text = readableProviderOutput(content);
-      if (text) appendActivity({ kind: "assistant", text });
+      while (pendingMessages.current.length) {
+        controller.signal.throwIfAborted();
+        const userMessage = pendingMessages.current.shift()!;
+        setPendingIds(pendingMessages.current.map(({ id }) => id));
+        const conversation = sessionMessages.current;
+        sessionMessages.current = [...conversation, userMessage];
+        const takeInputs = () => {
+          controller.signal.throwIfAborted();
+          const messages = pendingMessages.current.splice(0);
+          if (messages.length) {
+            sessionMessages.current = [...sessionMessages.current, ...messages];
+            setPendingIds([]);
+          }
+          return messages;
+        };
+        const getRecord = () => latest.current.generation?.getRecord() ?? latest.current.record;
+        const current = getRecord();
+        // Override only the request snapshot, never the saved project document.
+        setWorkDetail(null);
+        seenActivity.current.clear();
+        const response = await runAgentWorkflow({ ...current, config: { ...current.config, generationType: mode } },
+          provider, userMessage.content, id, conversation, controller.signal, generation,
+          (detail) => { if (activeRequest.current === id) setWorkDetail(readableProviderOutput(detail)); }, scope, takeInputs, getRecord);
+        controller.signal.throwIfAborted();
+        if (activeRequest.current !== id) return;
+        if ("commands" in response.result) await latest.current.onCommands(response.result.commands);
+        controller.signal.throwIfAborted();
+        if (activeRequest.current !== id) return;
+        const content = "summary" in response.result ? response.result.summary : response.result.content;
+        sessionMessages.current = [...sessionMessages.current,
+          { id: crypto.randomUUID(), role: "assistant", content, createdAt: new Date().toISOString() }];
+        const text = readableProviderOutput(content);
+        if (text) appendActivity({ kind: "assistant", text });
+      }
     } catch (reason) {
       if (activeRequest.current !== id) return;
       if (controller.signal.aborted) {
@@ -225,7 +250,9 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
     if (requestId) void cancelAgentTurn(requestId);
   };
   const clear = () => {
-    setSessionMessages([]);
+    sessionMessages.current = [];
+    pendingMessages.current = [];
+    setPendingIds([]);
     setTranscript([]);
     seenActivity.current.clear();
   };
@@ -275,6 +302,7 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
         {transcript.map((item) => <Bubble key={item.id} className={`agent-conversation__${item.kind}`}
           speaker={item.kind === "user" ? "You" : item.kind === "assistant" || item.kind === "error" ? "Slop" : activityLabel(item.kind)}>
           {item.kind === "output" || item.kind === "assistant" ? <MessageText text={item.text} /> : item.text}
+          {pendingIds.includes(item.id) && <span className="agent-message__queued">Queued</span>}
         </Bubble>)}
         {requestId && <Bubble className="agent-conversation__waiting" speaker="Slop" aria-label="Waiting for the next agent response">
           <span className="agent-conversation__thinking"><ProgressRing size={16} aria-label={workDetail ? "Working" : "Thinking"} /><span aria-hidden="true">{workDetail ?? "Thinking…"}</span></span>
@@ -303,11 +331,10 @@ export function AgentDock({ context, record, scope = "project", mode = record.co
           }}
           placeholder={placeholder}
           data-tooltip={ready ? undefined : placeholder}
-          disabled={!ready || Boolean(requestId)}
+          disabled={!ready}
         />
-        {requestId
-          ? <button ref={cancelButton} type="button" className="agent-composer__send agent-cancel" onClick={cancel} aria-label="Cancel agent turn" aria-keyshortcuts="Escape" {...tooltipProps("Stop", "Esc")}><Stop14 aria-hidden="true" /></button>
-          : <button type="submit" className="agent-composer__send" disabled={!prompt.trim() || !ready} aria-label="Send to Slop" aria-keyshortcuts="Enter" {...tooltipProps(ready ? "Send" : blockedDetail ?? "No agent provider is available", ready ? "Enter" : undefined)}><Send16 aria-hidden="true" /></button>}
+        {requestId && <button ref={cancelButton} type="button" className="agent-composer__send agent-cancel" onClick={cancel} aria-label="Cancel agent turn" aria-keyshortcuts="Escape" {...tooltipProps("Stop", "Esc")}><Stop14 aria-hidden="true" /></button>}
+        <button type="submit" className="agent-composer__send" disabled={!ready || (!prompt.trim() && (busy || !pendingIds.length))} aria-label="Send to Slop" aria-keyshortcuts="Enter" {...tooltipProps(ready ? busy ? "Queue message" : pendingIds.length ? "Send queued messages" : "Send" : blockedDetail ?? "No agent provider is available", ready ? "Enter" : undefined)}><Send16 aria-hidden="true" /></button>
       </form>
     </div>
   );

@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { createProjectConfig, type ProjectRecord } from "./project";
+import { createProjectConfig, type AgentMessage, type ProjectRecord } from "./project";
 import { runAgentTurn, type AgentTurnResponse, type AgentTurnResult } from "./runtime";
 import { runAgentWorkflow } from "./agentWorkflow";
 import type { GenerationObservation } from "./agentGeneration";
@@ -12,6 +12,49 @@ const response = (result: AgentTurnResult): AgentTurnResponse => ({ result, even
 const generate = response({ kind: "generation", summary: "Generate this scene", command });
 const answer = response({ kind: "answer", content: "Reviewed the finished scene." });
 const outcome: GenerationObservation = { scene: command.scene, template: command.template, status: "completed", workId: "work-one", detail: "Video saved" };
+const input = (content: string): AgentMessage => ({ id: crypto.randomUUID(), role: "user", content, createdAt: new Date().toISOString() });
+
+it.each([generate, response({ kind: "commands", summary: "Old plan", commands: [{ op: "project.set", name: "Old name" }] })])(
+  "reconsiders a pending proposal with ordered user updates before returning actions", async (proposal) => {
+    const record = project();
+    let current = record;
+    const pending: AgentMessage[] = [];
+    const host = { getRecord: () => current, generate: vi.fn() };
+    vi.mocked(runAgentTurn).mockImplementationOnce(async () => {
+      pending.push(input("Use a warmer style"), input("Only update the plan; do not generate"));
+      current = { ...record, config: { ...record.config, name: "Edited while thinking" } };
+      return proposal;
+    }).mockResolvedValueOnce(answer);
+    const result = await runAgentWorkflow(record, "local", "Plan and generate", "turn", [], new AbortController().signal,
+      host, undefined, "project", () => pending.splice(0));
+    expect(host.generate).not.toHaveBeenCalled();
+    expect(runAgentTurn).toHaveBeenCalledTimes(2);
+    const retry = vi.mocked(runAgentTurn).mock.calls[1];
+    expect(retry[0].config.name).toBe("Edited while thinking");
+    expect(retry[2]).toContain('["Use a warmer style","Only update the plan; do not generate"]');
+    expect(retry[2]).toContain("its commands have not been applied");
+    expect(result.result).toEqual(answer.result);
+    expect(result.messages.map(({ content }) => content)).toEqual([
+      "Plan and generate", "Use a warmer style", "Only update the plan; do not generate", "Reviewed the finished scene.",
+    ]);
+  },
+);
+
+it("includes messages received during generation alongside its result when resuming", async () => {
+  const record = project();
+  const pending: AgentMessage[] = [];
+  const host = { getRecord: () => record, generate: vi.fn(async () => {
+    pending.push(input("Review the lighting too"), input("Then stop"));
+    return outcome;
+  }) };
+  vi.mocked(runAgentTurn).mockResolvedValueOnce(generate).mockResolvedValueOnce(answer);
+  await runAgentWorkflow(record, "local", "Generate and review", "turn", [], new AbortController().signal,
+    host, undefined, "project", () => pending.splice(0));
+  const resumed = vi.mocked(runAgentTurn).mock.calls[1][2];
+  expect(resumed).toContain('"status":"completed"');
+  expect(resumed).toContain('["Review the lighting too","Then stop"]');
+  expect(host.generate).toHaveBeenCalledOnce();
+});
 
 it("prepares and saves image drafts before generation and never reapplies duplicate preparation", async () => {
   const record = project();

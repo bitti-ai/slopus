@@ -71,11 +71,16 @@ describe("Slop output panel", () => {
     await waitFor(() => expect(screen.getByLabelText("Waiting for the next agent response")).toHaveTextContent("Encoding the generated video"));
     expect(runAgentTurn).toHaveBeenCalledOnce();
     expect(onCommands).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask Slop about this project" }), { target: { value: "Review the colors too" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+    expect(screen.getByText("Queued")).toBeInTheDocument();
     const editor = screen.getByRole("textbox", { name: "Scene editor" });
     editor.focus();
     await act(async () => complete());
     await waitFor(() => expect(onCommands).toHaveBeenCalledWith(commands));
     expect(runAgentTurn).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(runAgentTurn).mock.calls[1][2]).toContain("Review the colors too");
+    expect(screen.queryByText("Queued")).not.toBeInTheDocument();
     expect(editor).toHaveFocus();
     expect(screen.getByText("Reviewed and renamed")).toBeInTheDocument();
   });
@@ -200,7 +205,7 @@ describe("Slop output panel", () => {
     if (submit === "Enter") fireEvent.keyDown(field, { key: "Enter" });
     else fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
     expect(field).toHaveValue("");
-    expect(field).toBeDisabled();
+    expect(field).toBeEnabled();
     await waitFor(() => expect(runAgentTurn).toHaveBeenCalled());
     expect(onPromptStart).toHaveBeenCalledTimes(1);
 
@@ -231,6 +236,92 @@ describe("Slop output panel", () => {
     expect(field).toHaveValue("");
     fireEvent.keyDown(field, { key: "ArrowUp" });
     expect(field).toHaveValue("Create four shots");
+  });
+
+  it("accepts multiple messages while thinking and preserves them once in follow-up context", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof runAgentTurn>>) => void;
+    vi.mocked(runAgentTurn).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }))
+      .mockResolvedValueOnce({ result: { kind: "answer", content: "Updated plan" }, events: [], messages: [] })
+      .mockResolvedValueOnce({ result: { kind: "answer", content: "Next answer" }, events: [], messages: [] });
+    const record = project(), onCommands = vi.fn();
+    render(<AgentDock context="this project" record={record} providers={providers} onPromptStart={vi.fn()} onCommands={onCommands} />);
+    const field = screen.getByRole("textbox", { name: "Ask Slop about this project" });
+    field.focus();
+    const send = (text: string) => {
+      fireEvent.change(field, { target: { value: text } });
+      fireEvent.keyDown(field, { key: "Enter" });
+    };
+    send("Plan a song");
+    await waitFor(() => expect(runAgentTurn).toHaveBeenCalledOnce());
+    expect(field).toHaveFocus();
+    expect(field).toBeEnabled();
+    send("Make it jazz");
+    send("Use a piano");
+    expect(field).toHaveValue("");
+    expect(screen.getAllByText("Queued")).toHaveLength(2);
+    expect(runAgentTurn).toHaveBeenCalledOnce();
+    expect(cancelAgentTurn).not.toHaveBeenCalled();
+    fireEvent.change(field, { target: { value: "Unsent note" } });
+    await act(async () => finish({ result: { kind: "commands", summary: "Old proposal", commands: [] }, events: [], messages: [] }));
+    await screen.findByText("Updated plan");
+    expect(field).toHaveValue("Unsent note");
+    expect(onCommands).not.toHaveBeenCalled();
+    expect(screen.queryByText("Queued")).not.toBeInTheDocument();
+    expect(vi.mocked(runAgentTurn).mock.calls[1][2]).toContain('["Make it jazz","Use a piano"]');
+    send("What next?");
+    await screen.findByText("Next answer");
+    expect(vi.mocked(runAgentTurn).mock.calls[2][4]?.map(({ content }) => content))
+      .toEqual(["Plan a song", "Make it jazz", "Use a piano", "Updated plan"]);
+    expect(screen.getAllByText("Make it jazz")).toHaveLength(1);
+  });
+
+  it.each(["stop", "failure"])("keeps queued messages after %s without automatically restarting", async (ending) => {
+    let finish!: (value: Awaited<ReturnType<typeof runAgentTurn>>) => void;
+    let fail!: (error: Error) => void;
+    vi.mocked(runAgentTurn).mockImplementationOnce(() => new Promise((resolve, reject) => { finish = resolve; fail = reject; }))
+      .mockResolvedValueOnce({ result: { kind: "answer", content: "Resumed" }, events: [], messages: [] });
+    render(<AgentDock context="this project" record={project()} providers={providers} onPromptStart={vi.fn()} onCommands={async () => {}} />);
+    const field = screen.getByRole("textbox", { name: "Ask Slop about this project" });
+    fireEvent.change(field, { target: { value: "Original" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() => expect(runAgentTurn).toHaveBeenCalledOnce());
+    fireEvent.change(field, { target: { value: "Keep this follow-up" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+    if (ending === "stop") {
+      fireEvent.keyDown(field, { key: "Escape" });
+      await act(async () => finish({ result: { kind: "answer", content: "Late" }, events: [], messages: [] }));
+    } else await act(async () => fail(new Error("Connection failed")));
+    expect(screen.queryByRole("button", { name: "Cancel agent turn" })).not.toBeInTheDocument();
+    expect(screen.getByText("Queued")).toBeInTheDocument();
+    expect(runAgentTurn).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Send to Slop" }));
+    await screen.findByText("Resumed");
+    expect(vi.mocked(runAgentTurn).mock.calls[1][2]).toBe("Keep this follow-up");
+    expect(screen.getAllByText("Keep this follow-up")).toHaveLength(1);
+  });
+
+  it("runs messages queued during command application against the updated project", async () => {
+    const record = project();
+    let current = record, complete!: () => void;
+    const onCommands = vi.fn(async () => {
+      await new Promise<void>((resolve) => { complete = resolve; });
+      current = { ...record, config: { ...record.config, name: "Updated" } };
+    });
+    vi.mocked(runAgentTurn).mockResolvedValueOnce({ result: { kind: "commands", summary: "Applied", commands: [] }, events: [], messages: [] })
+      .mockResolvedValueOnce({ result: { kind: "answer", content: "Follow-up done" }, events: [], messages: [] });
+    render(<AgentDock context="this project" record={record} providers={providers} onPromptStart={vi.fn()} onCommands={onCommands}
+      generation={{ getRecord: () => current, generate: vi.fn() }} />);
+    const field = screen.getByRole("textbox", { name: "Ask Slop about this project" });
+    fireEvent.change(field, { target: { value: "Rename" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() => expect(onCommands).toHaveBeenCalledOnce());
+    fireEvent.change(field, { target: { value: "Review the new name" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(runAgentTurn).toHaveBeenCalledOnce();
+    await act(async () => complete());
+    await screen.findByText("Follow-up done");
+    expect(vi.mocked(runAgentTurn).mock.calls[1][0].config.name).toBe("Updated");
+    expect(vi.mocked(runAgentTurn).mock.calls[1][4]?.map(({ content }) => content)).toEqual(["Rename", "Applied"]);
   });
 
   it("clears the conversation from the pane header", async () => {
@@ -381,10 +472,13 @@ describe("Slop output panel", () => {
     };
     send("Old project request");
     await waitFor(() => expect(runAgentTurn).toHaveBeenCalledOnce());
+    send("Old queued message");
     view.rerender(<AgentDock {...props} record={project()} />);
     expect(screen.queryByText("Old project request")).not.toBeInTheDocument();
+    expect(screen.queryByText("Old queued message")).not.toBeInTheDocument();
     send("New project request");
     await waitFor(() => expect(runAgentTurn).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(runAgentTurn).mock.calls[1][2]).toBe("New project request");
     await act(async () => finishOld({ result: { kind: "commands", summary: "Stale reply", commands: [] }, events: [], messages: [] }));
     expect(screen.queryByText("Stale reply")).not.toBeInTheDocument();
     expect(onCommands).not.toHaveBeenCalled();
