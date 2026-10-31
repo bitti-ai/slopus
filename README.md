@@ -39,7 +39,7 @@ Slopus combines an AI assistant, local image, video and music generation, reusab
 
 Install a Windows x64 or Linux x86_64 release. In **Settings → Generators**, choose a model and download or select weights until the generator reads **Ready**. Configure OpenRouter or a local endpoint in **Settings → Agents**.
 
-Local generation needs a supported GPU; 24 GB or more VRAM is recommended, with requirements varying by model and settings. MOSS and Fibo require CUDA.
+Local generation needs a supported GPU; 16 GB or more VRAM is recommended, with requirements varying by model and settings. MOSS and Fibo require CUDA.
 
 | Windows GPU | Backend |
 | --- | --- |
