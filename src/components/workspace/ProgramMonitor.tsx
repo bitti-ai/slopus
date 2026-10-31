@@ -4,7 +4,7 @@ import { clipPlaybackRate, clipSourceTimeMs } from "../../lib/clipTiming";
 import { ProgramLayer } from "./ProgramLayer";
 import { ProgramPicture } from "./ProgramPicture";
 import { Film16 } from "../ui/icons";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { clipFrameStyle, clipVisualSettings, outputDimensions, fitRect } from "../../lib/export";
 import { isTauri } from "../../lib/persistence";
 import type { ClipTransform, ProjectAsset, ProjectConfig, TimelineClip } from "../../lib/project";
@@ -151,17 +151,32 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
   const media = useMemo(() => new PreviewMedia(), [folderPath]);
   const [composited, setComposited] = useState(false);
   const [pictureSize, setPictureSize] = useState({ width: 0, height: 0 });
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = pictureRef.current;
-    if (!element || !asset?.motion) return;
+    if (!element) return;
     const measure = () => setPictureSize({ width: element.clientWidth, height: element.clientHeight });
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure); observer.observe(element);
     return () => observer.disconnect();
-  }, [Boolean(asset?.motion)]);
+  }, []);
+  const [decodedSize, setDecodedSize] = useState<{ key: string; width: number; height: number } | null>(null);
+  const playerKey = clip ? playerKeys.get(clip.id) ?? clip.id : null;
+  useEffect(() => {
+    if (!playerKey) return;
+    const measure = () => {
+      const element = media.get(playerKey);
+      const width = element instanceof HTMLVideoElement ? element.videoWidth : element instanceof HTMLImageElement ? element.naturalWidth : element?.width;
+      const height = element instanceof HTMLVideoElement ? element.videoHeight : element instanceof HTMLImageElement ? element.naturalHeight : element?.height;
+      if (width && height) setDecodedSize((current) => current?.key === playerKey && current.width === width && current.height === height ? current : { key: playerKey, width, height });
+    };
+    measure();
+    return media.subscribe(measure);
+  }, [media, playerKey]);
   const dimensions = outputDimensions(config.settings.resolution, config.settings.aspectRatio);
   const projectFit = fitRect(dimensions.width, dimensions.height, pictureSize.width || dimensions.width, pictureSize.height || dimensions.height);
+  const sourceSize = decodedSize?.key === playerKey ? decodedSize : asset;
+  const clipFit = fitRect(sourceSize?.width ?? dimensions.width, sourceSize?.height ?? dimensions.height, projectFit.width, projectFit.height);
   const motionFit = asset?.motion ? fitRect(asset.motion.width, asset.motion.height, projectFit.width, projectFit.height) : projectFit;
   const previewScale = Math.min(1, 1280 / Math.max(dimensions.width, dimensions.height));
   useEffect(() => () => sources.dispose(), [sources]);
@@ -292,7 +307,7 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
   const hasClips = tracks.some((track) => track.clips.length > 0);
 
   const beginTransform = (kind: TransformGesture["kind"], event: React.PointerEvent<HTMLElement>) => {
-    if (!clip || !frameStyle || transformEditingDisabled || !onTransformChange) return;
+    if (event.button !== 0 || !clip || !frameStyle || transformEditingDisabled || !onTransformChange) return;
     const bounds = pictureRef.current?.getBoundingClientRect();
     if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
     event.preventDefault();
@@ -300,8 +315,9 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
     event.currentTarget.setPointerCapture?.(event.pointerId);
     onPlayingChange(false);
     const initial = frameStyle.transform;
-    const centerX = bounds.left + bounds.width / 2 + bounds.width * initial.positionX / 100;
-    const centerY = bounds.top + bounds.height / 2 + bounds.height * initial.positionY / 100;
+    const frame = fitRect(dimensions.width, dimensions.height, bounds.width, bounds.height);
+    const centerX = bounds.left + frame.x + frame.width / 2 + frame.width * initial.positionX / 100;
+    const centerY = bounds.top + frame.y + frame.height / 2 + frame.height * initial.positionY / 100;
     transformGesture.current = {
       kind,
       pointerId: event.pointerId,
@@ -312,8 +328,8 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
       startDistance: Math.max(1, Math.hypot(event.clientX - centerX, event.clientY - centerY)),
       startAngle: angleAt(event.clientX, event.clientY, centerX, centerY),
       initial,
-      frameWidth: bounds.width,
-      frameHeight: bounds.height,
+      frameWidth: frame.width,
+      frameHeight: frame.height,
       captureTarget: event.currentTarget,
     };
   };
@@ -377,7 +393,7 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
     <ProgramPicture key={folderPath} media={media} playerKeys={playerKeys} layers={layers} playheadMs={playheadMs}
       width={Math.round(dimensions.width * previewScale)} height={Math.round(dimensions.height * previewScale)}
       background={config.settings.backgroundColor} onAvailable={setComposited} />
-    <div className="program-media">{prepared.map(({ clip: layer, prepareAtMs, playerKey }) => {
+    <div className="program-media" style={{ left: projectFit.x, top: projectFit.y, width: projectFit.width, height: projectFit.height }}>{prepared.map(({ clip: layer, prepareAtMs, playerKey }) => {
       const depth = layers.findIndex((visible) => visible.id === layer.id);
       return <ProgramLayer
         key={`${folderPath}:${playerKey}`}
@@ -406,13 +422,15 @@ export function ProgramMonitor({ config, folderPath, playheadMs, playing, rate =
     </div>}
     {clip && !asset?.motion && frameStyle && editingClipId === clip.id && onTransformChange && !transformEditingDisabled && <div
       className="program-transform"
-      style={{ transform: `translate(${frameStyle.transform.positionX}%, ${frameStyle.transform.positionY}%) scale(${frameStyle.transform.scale / 100}) rotate(${frameStyle.transform.rotation}deg)` }}
+      style={{ left: projectFit.x + clipFit.x, top: projectFit.y + clipFit.y, width: clipFit.width, height: clipFit.height,
+        transform: `translate(${frameStyle.transform.positionX / 100 * projectFit.width}px, ${frameStyle.transform.positionY / 100 * projectFit.height}px) scale(${frameStyle.transform.scale / 100}) rotate(${frameStyle.transform.rotation}deg)` }}
       role="group"
       aria-label={`Transform ${clip.label}`}
       onPointerDown={(event) => beginTransform("move", event)}
       onPointerMove={moveTransform}
       onPointerUp={endTransform}
       onPointerCancel={endTransform}
+      onLostPointerCapture={endTransform}
     >
       <button className="program-transform__rotate" type="button" aria-label="Rotate clip" data-tooltip="Drag to rotate" onPointerDown={(event) => beginTransform("rotate", event)} />
       <button className="program-transform__scale program-transform__scale--br" type="button" aria-label="Scale clip" data-tooltip="Drag to scale" onPointerDown={(event) => beginTransform("scale", event)} />

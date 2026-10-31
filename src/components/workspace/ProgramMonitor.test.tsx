@@ -334,6 +334,84 @@ describe("the program monitor", () => {
     expect(screen.getByRole("button", { name: "Rotate clip" })).toBeTruthy();
   });
 
+  it.each([[1080, 1350, 600], [1920, 1080, 270]])("fits selection to a %sx%s clip in a 4:5 project and moves and resizes it", (width, height, fittedHeight) => {
+    let panelWidth = 1000, panelHeight = 600;
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) { return this.classList.contains("program-picture") ? panelWidth : 0; });
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) { return this.classList.contains("program-picture") ? panelHeight : 0; });
+    let resized = () => {};
+    vi.stubGlobal("ResizeObserver", class { constructor(callback: () => void) { resized = callback; } observe() {} disconnect() {} });
+    const initial = project([clip()]);
+    initial.settings.aspectRatio = "4:5";
+    initial.assets[0] = { ...initial.assets[0], width, height };
+    const changed = vi.fn(), paused = vi.fn();
+    function Harness() {
+      const [config, setConfig] = useState(initial);
+      return <ProgramMonitor config={config} folderPath="C:/Project" playheadMs={3000} playing={false}
+        selectedClipId="clip-1" onSelectClip={() => {}} onSeek={() => {}} onPlayingChange={paused}
+        onTransformChange={(id, transform) => {
+          changed(id, transform);
+          setConfig((current) => ({ ...current, timeline: { tracks: current.timeline.tracks.map((track) => ({ ...track,
+            clips: track.clips.map((item) => item.id === id ? { ...item, transform } : item) })) } }));
+        }} />;
+    }
+    const { container } = render(<Harness />);
+    const picture = container.querySelector(".program-picture") as HTMLElement;
+    picture.getBoundingClientRect = () => ({ left: 20, top: 30, width: panelWidth, height: panelHeight }) as DOMRect;
+    fireEvent.click(picture);
+    const box = screen.getByRole("group", { name: "Transform Macro footage" });
+    expect(box.style.width).toBe("480px");
+    expect(box.style.height).toBe(`${fittedHeight}px`);
+    expect(box.style.left).toBe("260px");
+    expect(box.style.top).toBe(`${(600 - fittedHeight) / 2}px`);
+    const pointer = (target: Element, type: string, x: number, y: number) => {
+      const event = new Event(type, { bubbles: true });
+      Object.defineProperties(event, { pointerId: { value: 1 }, button: { value: 0 }, clientX: { value: x }, clientY: { value: y } });
+      fireEvent(target, event);
+    };
+    pointer(box, "pointerdown", 520, 330);
+    pointer(box, "pointermove", 568, 390);
+    pointer(box, "pointerup", 568, 390);
+    expect(paused).toHaveBeenCalledWith(false);
+    expect(changed).toHaveBeenLastCalledWith("clip-1", expect.objectContaining({ positionX: 10, positionY: 10, scale: 100 }));
+    expect(box.style.transform).toContain("translate(48px, 60px)");
+    const handle = screen.getByRole("button", { name: "Scale clip" });
+    pointer(handle, "pointerdown", 808, 390 + fittedHeight / 2);
+    pointer(handle, "pointermove", 928, 390 + fittedHeight * 0.75);
+    pointer(handle, "pointerup", 928, 390 + fittedHeight * 0.75);
+    expect(changed.mock.calls.at(-1)![1].scale).toBeCloseTo(150);
+    expect(box.style.transform).toContain("scale(1.5)");
+    const calls = changed.mock.calls.length;
+    pointer(box, "pointermove", 980, 800);
+    expect(changed).toHaveBeenCalledTimes(calls);
+    act(() => { panelWidth = 800; panelHeight = 400; resized(); });
+    expect(box.style.width).toBe("320px");
+    expect(box.style.height).toBe(`${fittedHeight * 2 / 3}px`);
+    expect(box.style.left).toBe("240px");
+    expect(box.style.transform).toContain("translate(32px, 40px)");
+  });
+
+  it("uses decoded clip dimensions when imported media has no saved size", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1000);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(600);
+    vi.spyOn(PreviewSources.prototype, "url").mockResolvedValue("blob:clip");
+    const config = project([clip()]);
+    config.settings.aspectRatio = "4:5";
+    config.assets[0] = { ...config.assets[0], width: null, height: null };
+    const view = render(<ProgramMonitor config={config} folderPath="C:/Project" playheadMs={3000} playing={false}
+      selectedClipId="clip-1" onSelectClip={() => {}} onSeek={() => {}} onPlayingChange={() => {}} onTransformChange={() => {}} />);
+    await act(async () => {});
+    fireEvent.click(view.container.querySelector(".program-picture")!);
+    const box = screen.getByRole("group", { name: "Transform Macro footage" });
+    expect(box.style.height).toBe("600px");
+    const video = view.container.querySelector("video")!;
+    Object.defineProperties(video, { videoWidth: { value: 1920 }, videoHeight: { value: 1080 } });
+    fireEvent.loadedData(video);
+    expect(box.style.width).toBe("480px");
+    expect(box.style.height).toBe("270px");
+    expect(box.style.top).toBe("165px");
+  });
+
   it("shows a gap as the empty frame it will be exported as, and says nothing about it", () => {
     const { container } = monitor(project([clip()]), 9_000);
     // No element for a clip that is not there, and no panel over the picture

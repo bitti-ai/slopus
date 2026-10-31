@@ -494,7 +494,7 @@
 .program-transform {
   position: absolute;
   z-index: 3;
-  inset: 10px;
+  box-sizing: border-box;
   border: 1px solid var(--accent-bright);
   cursor: move;
   touch-action: none;
@@ -1728,7 +1728,7 @@ button.transport-time:hover { background: var(--fill-subtle-hover); }
   background: var(--panel);
 }
 
-.program-media { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.program-media { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
 .program-composited-picture { position: absolute; inset: 0; pointer-events: none; }
 .program-layer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .program-picture > video, .program-picture > img, .program-keyed-picture { position: absolute; inset: 0; }
