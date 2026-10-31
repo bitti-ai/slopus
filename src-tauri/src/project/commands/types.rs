@@ -12,6 +12,8 @@ pub const MAX_COMMANDS_PER_TURN: usize = 100;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", deny_unknown_fields)]
 pub enum ProjectCommand {
+    #[serde(rename = "video.music.set")]
+    VideoMusicSet { video: String, song: String },
     #[serde(rename = "music.add")]
     MusicAdd { id: String, title: String, style: String, #[serde(default)] settings: slopus_core::slopfab::music::MusicSettings,
         #[serde(default, rename = "folderId")] folder_id: Option<String>, #[serde(default)] steps: Option<i32>, #[serde(default)] seed: Option<i64> },
@@ -333,6 +335,7 @@ pub(super) struct CommitLine {
 }
 pub(super) fn command_name(command: &ProjectCommand) -> &'static str {
     match command {
+        ProjectCommand::VideoMusicSet { .. } => "video.music.set",
         ProjectCommand::MusicAdd { .. } => "music.add",
         ProjectCommand::MusicSet { .. } => "music.set",
         ProjectCommand::MotionSync { .. } => "motion.sync",

@@ -50,6 +50,7 @@ export interface SlopfabStatus {
 export interface RuntimeStatus { providers: ProviderStatus[]; slopfab: SlopfabStatus }
 
 export type ProjectCommand =
+  | { op: "video.music.set"; video: string; song: string }
   | { op: "music.add"; id: string; title: string; style: string; settings?: Partial<import("./music").MusicSettings>; folderId?: string; steps?: number; seed?: number }
   | { op: "music.set"; id: string; title?: string; style?: string; settings?: Partial<import("./music").MusicSettings>; folderId?: string | null; steps?: number; seed?: number }
   | { op: "motion.add"; id: string; name: string; motion: import("./motion").Motion }
@@ -375,7 +376,7 @@ function executeDemoCommands(config: ProjectConfig, commands: ProjectCommand[]):
   };
   for (const command of commands) {
     switch (command.op) {
-      case "music.add": case "music.set": case "motion.add": case "motion.set": case "motion.sync":
+      case "video.music.set": case "music.add": case "music.set": case "motion.add": case "motion.set": case "motion.sync":
         throw new Error("Music and Motion agent commands require the desktop app.");
       case "image.draft.add": case "image.draft.select": {
         Object.assign(next, applyImageDraftCommand(next, command, now));

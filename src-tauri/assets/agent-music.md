@@ -17,6 +17,11 @@ Inspect generator.list/get and choose an existing music template. Supported mode
 
 Generation runs in the normal queue and resumes the agent with a completion/failure/cancellation receipt. A completed source produces a NEW song; use the receipt's song and assetId, not the source ID, for follow-up operations. Duplicate requests within the same turn reuse receipts. Never retry failed generation automatically. Results are audio assets usable by clip.add on a timeline track. Do not claim completion until the receipt confirms it; needsSave means persistence failed.
 
+Assign generated music to a Video
+---------------------------------
+Use {"op":"video.music.set","video":"existing-video-id","song":"generated-song-id"} as a project JSONL command followed by a commit line, or in generation.prepare. Resolve the Video from project JSON videos and the song with music.list/get. The song must have a saved audio asset at least two seconds long. After music.generate, use the receipt's song ID, which may be a new variation.
+This replaces only the Video's Music reference (musicSource) with a link to the song's existing audio asset. It preserves the song, scene settings, other references and timeline, and does not generate or regenerate video. Each scene receives the audio segment at its cumulative time offset when subsequently generated. Existing scene generation checks still apply: the song must cover each scene's time range, and music guidance needs a visual reference and a compatible References/Singularity generator. This is audio guidance for generation; use clip.add with the song's assetId to place the actual song on a timeline audio track.
+
 Album cover generation
 ----------------------
 When the user requests album artwork, use {"kind":"generation","summary":"Generate the song's album cover","command":{"op":"music.cover.generate","song":"existing-song-id"}}. No template argument: this uses the dedicated album-cover generator selected in Settings → Generators → Icons, with the same defaults as the song context-menu action. The song must exist after optional prepare commands; its audio does not need to be generated first. Artwork is a square 1024×1024 image derived from its title, style and lyrics. To update those inputs, use music.set in prepare.
