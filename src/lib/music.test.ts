@@ -3,6 +3,16 @@ import { createProjectConfig, parseProjectConfig, type ProjectAsset } from "./pr
 import { albumCoverPrompt, moveSong, musicFolderLabel, musicSettingsForModel, musicSettingsSchema, newMusicFolder, newSong, songReference } from "./music";
 
 describe("music projects", () => {
+  it("defaults new YuE2 songs to six DPM++ 2M steps and preserves explicit baselines", () => {
+    expect(newSong()).toMatchObject({ steps: 6, settings: { flow_sampler: "dpmpp_2m" } });
+    expect(newSong("minimax_music3")).toMatchObject({ steps: 30, settings: { flow_sampler: "default" } });
+    expect(newSong("yue2", 32).steps).toBe(32);
+    expect(musicSettingsForModel(musicSettingsSchema.parse({}), "yue2").flow_sampler).toBe("dpmpp_2m");
+    const baseline = musicSettingsSchema.parse({ flow_sampler: "midpoint" });
+    expect(musicSettingsForModel(baseline, "yue2").flow_sampler).toBe("midpoint");
+    expect(musicSettingsForModel(baseline, "minimax_music3").flow_sampler).toBe("default");
+    expect(musicSettingsSchema.safeParse({ flow_sampler: "dpm_2" }).success).toBe(false);
+  });
   it("persists folders and song moves without moving or rewriting generated audio", () => {
     const parent = newMusicFolder("Jazz", null), child = newMusicFolder("Piano", parent.id);
     const song = { ...newSong("yue2", 32, parent.id), assetId: "audio-1" };

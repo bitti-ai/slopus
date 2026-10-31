@@ -31,6 +31,32 @@ fn music_plans_on_cuda_and_vulkan_without_video_controls() {
 }
 
 #[test]
+fn yue_fast_flow_sampler_reaches_native_planning_and_generation() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
+    let api = ffi::Api::load(&path).unwrap();
+    let mut config = Configuration::from_settings(&BTreeMap::new());
+    config.model_type = "yue2".into();
+    for backend in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+        for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+            for (sampler, resolved, steps, evaluations) in [("default", "dpmpp_2m", 6, 6), ("dpmpp_2m", "dpmpp_2m", 6, 6), ("midpoint", "midpoint", 32, 64)] {
+                let request = GenerationRequest { prompt: "Quiet piano".into(), steps, seed: 42,
+                    music: Some(music::MusicSettings { duration: 2.0, flow_sampler: sampler.into(), ..Default::default() }), ..Default::default() };
+                let handle = RequestHandle::new(&api).unwrap();
+                configure_request(&api, &handle, &request, &config, backend, purpose, &ReferenceVideos::default()).unwrap();
+                let description = api.describe(&handle).unwrap();
+                assert!(description.contains(&format!("{steps} ({resolved})")), "{description}");
+                assert_eq!(api.resolve(&handle).unwrap().num_model_evaluations, evaluations);
+            }
+        }
+    }
+    config.model_type = "minimax_music3".into();
+    let request = GenerationRequest { prompt: "Quiet piano".into(), steps: 30, seed: 42,
+        music: Some(music::MusicSettings { flow_sampler: "dpmpp_2m".into(), ..Default::default() }), ..Default::default() };
+    assert!(config.validate_inputs(&request).unwrap_err().contains("MiniMax Music3"));
+    assert!(serde_json::from_value::<music::MusicSettings>(serde_json::json!({"flow_sampler":"dpm_2"})).unwrap().validate().is_err());
+}
+
+#[test]
 fn sampler_and_scheduler_options_reach_planning_and_generation_and_reset() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
     let api = ffi::Api::load(&path).unwrap();

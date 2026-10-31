@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { MusicView } from "./MusicView";
+import { choose, comboValue } from "./comboTestUtils";
 import { createProjectConfig, type ProjectConfig } from "../../lib/project";
 import { newMusicFolder, newSong, newSongVariation } from "../../lib/music";
 import { readMediaFileUrl } from "../../lib/persistence";
@@ -52,6 +53,19 @@ it.each(["Grid", "List"])("clears song selection on empty %s space and allows se
   fireEvent.click(screen.getByLabelText("Folder name"));
   expect(first).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByLabelText("Song title")).toHaveValue("First");
+});
+
+it("starts YuE2 at six steps and lets the song select the Midpoint baseline", () => {
+  render(<Harness />);
+  fireEvent.click(within(screen.getByRole("toolbar", { name: "Music tools" })).getByRole("button", { name: "New song" }));
+  expect(latest.musicSongs![0]).toMatchObject({ steps: 6, settings: { flow_sampler: "dpmpp_2m" } });
+  fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
+  expect(comboValue(screen.getByRole("combobox", { name: "Music flow sampler" }))).toBe("dpmpp_2m");
+  choose("Music flow sampler", "Midpoint");
+  expect(latest.musicSongs![0].settings.flow_sampler).toBe("midpoint");
+  const saved = latest;
+  cleanup(); render(<Harness initial={saved} />);
+  expect(latest.musicSongs![0].settings.flow_sampler).toBe("midpoint");
 });
 
 it("generates artwork for the context-menu song and displays saved covers in both views", async () => {

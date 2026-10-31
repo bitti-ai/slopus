@@ -2,6 +2,9 @@
 use super::{config::Configuration, ffi::{Api, RequestHandle}, platform::ComputePlatform, types::GenerationRequest};
 use serde::{Deserialize, Serialize};
 
+pub const YUE2_DEFAULT_STEPS: i32 = 6;
+fn default_flow_sampler(value: &String) -> bool { value == "default" }
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct MusicSettings {
@@ -16,16 +19,19 @@ pub struct MusicSettings {
     pub repetition_penalty: f64,
     pub semantic_guidance: f64,
     pub flow_guidance: f64,
+    #[serde(skip_serializing_if = "default_flow_sampler")]
+    pub flow_sampler: String,
 }
 impl Default for MusicSettings {
     fn default() -> Self { Self { lyrics: String::new(), duration: 30.0, planning: "full".into(), abc: String::new(),
         abc_max_tokens: 4096, temperature: 1.0, top_p: 0.95, top_k: 0, repetition_penalty: 1.2,
-        semantic_guidance: 0.0, flow_guidance: 0.0 } }
+        semantic_guidance: 0.0, flow_guidance: 0.0, flow_sampler: "default".into() } }
 }
 impl MusicSettings {
     pub fn validate(&self) -> Result<(), String> {
         if !self.duration.is_finite() || !(2.0..=300.0).contains(&self.duration)
             || !matches!(self.planning.as_str(), "full" | "melody" | "off")
+            || !matches!(self.flow_sampler.as_str(), "default" | "midpoint" | "dpmpp_2m")
             || !(32..=4096).contains(&self.abc_max_tokens) || !(0..=1024).contains(&self.top_k)
             || !self.temperature.is_finite() || !(0.0..=10.0).contains(&self.temperature)
             || !self.top_p.is_finite() || self.top_p <= 0.0 || self.top_p > 1.0
@@ -60,7 +66,7 @@ pub(super) fn validate(request: &GenerationRequest, config: &Configuration) -> R
     let defaults = MusicSettings::default();
     if config.model_type == "minimax_music3" && (settings.planning != defaults.planning || !settings.abc.is_empty()
         || settings.abc_max_tokens != defaults.abc_max_tokens || settings.temperature != defaults.temperature
-        || settings.top_p != defaults.top_p || settings.repetition_penalty != defaults.repetition_penalty) {
+        || settings.top_p != defaults.top_p || settings.repetition_penalty != defaults.repetition_penalty || settings.flow_sampler != "default") {
         return Err("MiniMax Music3 does not support YuE2 planning and sampling controls.".into());
     }
     if config.model_type == "yue2" && settings.flow_guidance != 0.0 { return Err("Flow guidance is available for MiniMax Music3 only.".into()); }
@@ -71,7 +77,9 @@ pub(super) fn configure(api: &Api, handle: &RequestHandle, request: &GenerationR
     validate(request, config)?;
     api.set_model_family(handle, &config.model_type)?;
     api.set_prompt(handle, &request.prompt)?;
-    api.set_music_settings(handle, &serde_json::to_string(request.music.as_ref().unwrap()).map_err(|e| e.to_string())?)?;
+    let mut settings = request.music.as_ref().unwrap().clone();
+    if config.model_type == "yue2" && settings.flow_sampler == "default" { settings.flow_sampler = "dpmpp_2m".into(); }
+    api.set_music_settings(handle, &serde_json::to_string(&settings).map_err(|e| e.to_string())?)?;
     api.set_steps(handle, request.steps)?;
     api.set_seed(handle, super::planning::generation_seed(request.seed)?)?;
     api.set_inference_backend(handle, platform.backend())?;

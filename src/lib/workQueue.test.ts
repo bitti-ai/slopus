@@ -450,17 +450,38 @@ it("queues an immutable music request and saves its audio into timeline media", 
   first.update((config) => ({ ...config, musicSongs: config.musicSongs!.map((item) => ({ ...item, style: "Changed later" })) }));
   await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
   const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
-  expect(request).toMatchObject({ prompt: "Soft jazz", seed: 42, steps: 32, music: { duration: 30 }, referencePaths: [] });
+  expect(request).toMatchObject({ prompt: "Soft jazz", seed: 42, steps: 6, music: { duration: 30, flow_sampler: "dpmpp_2m" }, referencePaths: [] });
   expect(request).not.toHaveProperty("saveLatentsPath");
   const id = queue.getSnapshot()[0].id;
   await finish(queue, id);
   expect(invoke).toHaveBeenCalledWith("save_generated_music", { folderPath: first.record.folderPath, jobId: id });
   expect(first.getSnapshot().config.musicSongs![0]).toMatchObject({ status: "completed", assetId: id, style: "Changed later",
-    generation: { style: "Soft jazz", seed: 42, steps: 32, generatorId: template.id, settings: { lyrics: "", duration: 30 } } });
+    generation: { style: "Soft jazz", seed: 42, steps: 6, generatorId: template.id, settings: { lyrics: "", duration: 30, flow_sampler: "dpmpp_2m" } } });
   expect(first.getSnapshot().config.assets).toContainEqual(expect.objectContaining({ id, kind: "audio", name: "Evening", relativePath: "media/generated/song.wav", durationMs: 30000 }));
   expect(saved).toHaveBeenCalled();
   expect(releaseRendered).toHaveBeenCalledWith(id);
   expect(saveGeneratedScene).not.toHaveBeenCalled();
+});
+
+it.each(["yue2", "minimax_music3"])("records the actual flow sampler sent for %s", async modelType => {
+  const { queue, first } = setup();
+  const song = { ...newSong(), style: "Jazz", steps: 32 };
+  song.settings.flow_sampler = "midpoint";
+  first.update(config => ({ ...config, musicSongs: [song] }));
+  const template = musicTemplates().find(template => template.modelType === modelType)!;
+  template.sources = {};
+  template.paths.transformer = "C:/weights/music.safetensors";
+  if (modelType === "minimax_music3") {
+    template.paths.textEncoder = "C:/weights/text.safetensors";
+    template.paths.audioVae = "C:/weights/vae.safetensors";
+  }
+  vi.mocked(invoke).mockResolvedValue({ relativePath: "media/generated/song.wav", durationMs: 30000 });
+  queue.enqueueMusic(first, song.id, template);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  const expected = modelType === "yue2" ? "midpoint" : "default";
+  expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0]).toMatchObject({ steps: 32, music: { flow_sampler: expected } });
+  await finish(queue, queue.getSnapshot()[0].id);
+  expect(first.getSnapshot().config.musicSongs![0].generation?.settings.flow_sampler).toBe(expected);
 });
 
 it("cancels a queued song without altering another song", async () => {

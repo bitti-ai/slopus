@@ -15,6 +15,7 @@
 import { isSigmaShift, isSampler, isScheduler, type SigmaShifts, type SamplingChoices, type Sampler, type Scheduler } from "./sampling";
 import { initialH3Components, normalizeH3Library, resolveH3Components, type H3Components } from "./h3Components";
 import { generatorModel } from "./generatorModels";
+import { YUE2_DEFAULT_STEPS } from "./music";
 export { generatorModel, GENERATOR_MODELS } from "./generatorModels";
 import { latentUpscalerPath, otherWeightPaths, TAEH3_URL } from "./upscalers";
 import { loadGenerationPreviewsEnabled } from "./generationPreviewSettings";
@@ -139,6 +140,7 @@ export function templateSamplingOptions(template: Partial<GeneratorTemplate>, ov
   const reason = preset ? "The active LoRA recipe controls the sampler and scheduler."
     : omni ? "FastH3 Omni requires Euler and its trained schedule."
     : template.mode === "animate" ? "Animate requires Euler. Adapters may also require a fixed schedule."
+    : template.modelType === "yue2" ? "Choose the flow sampler in the song's Advanced settings."
     : model.musicGeneration ? "This music model uses its built-in solver and schedule." : undefined;
   return { samplers, schedulers, reason };
 }
@@ -282,7 +284,7 @@ export function createGeneratorTemplate(name = "New template", modelType = MINIM
     name,
     modelType,
     editingModel: generatorModel(modelType).imageEditing,
-    defaultSteps: modelType === KREA_MODEL_TYPE ? 8 : modelType === "yue2" ? 32 : modelType === "minimax_music3" ? 30 : modelType === MOSS_MODEL_TYPE ? 50 : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS,
+    defaultSteps: modelType === KREA_MODEL_TYPE ? 8 : modelType === "yue2" ? YUE2_DEFAULT_STEPS : modelType === "minimax_music3" ? 30 : modelType === MOSS_MODEL_TYPE ? 50 : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS,
     attention: modelType === KREA_MODEL_TYPE || generatorModel(modelType).cudaOnly || generatorModel(modelType).musicGeneration ? "flash2" : "sage2",
     paths: copyPaths(EMPTY_ENGINE_SETTINGS),
   };
@@ -449,7 +451,7 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => normalizeTemplateSettings({
   templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates(), ...kreaImageTemplates(), minimaxSingularityV2Template()],
   defaultTemplateId: "default",
-  catalogVersion: 21,
+  catalogVersion: 22,
 })!;
 
 const normalizeTemplateSettings = (value: unknown, shareComponents = true): GeneratorTemplateSettings | null => {
@@ -470,7 +472,7 @@ const normalizeTemplateSettings = (value: unknown, shareComponents = true): Gene
       && candidate.defaultSteps >= 2
       && candidate.defaultSteps <= MAX_GENERATION_STEPS
       ? candidate.defaultSteps
-      : modelType === KREA_MODEL_TYPE ? candidate.kreaVariant === "raw" ? 52 : 8 : modelType === "yue2" ? 32 : modelType === "minimax_music3" ? 30 : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS;
+      : modelType === KREA_MODEL_TYPE ? candidate.kreaVariant === "raw" ? 52 : 8 : modelType === "yue2" ? YUE2_DEFAULT_STEPS : modelType === "minimax_music3" ? 30 : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS;
     const attention = candidate.attention === "exact" || candidate.attention === "flash2" || candidate.attention === "sol" ? candidate.attention : "sage2";
     const paths = pathsFrom(candidate.paths);
     const sources: GeneratorTemplate["sources"] = {};
@@ -519,7 +521,7 @@ const normalizeTemplateSettings = (value: unknown, shareComponents = true): Gene
     ...shared,
     defaultTemplateId: !shareComponents ? requestedDefault : shared.templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? shared.templates.find(templateUsable)?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -793,6 +795,12 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           const singularity = minimaxSingularityV2Template();
           if (!normalized.templates.some(({ id }) => id === singularity.id)) normalized.templates.push(singularity);
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 21 }, false)!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
+        if ((normalized.catalogVersion ?? 0) < 22) {
+          normalized.templates = normalized.templates.map(template => template.modelType === "yue2" && template.defaultSteps === 32
+            ? { ...template, defaultSteps: YUE2_DEFAULT_STEPS } : template);
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 22 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         const shared = normalizeTemplateSettings(normalized)!;

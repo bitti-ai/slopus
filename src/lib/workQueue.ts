@@ -333,11 +333,11 @@ export class WorkQueue {
     const song = source.assetId || source.status === "completed" ? newSongVariation(source, current.musicSongs ?? []) : source;
     songId = song.id;
     const id = `music-${crypto.randomUUID()}`;
-    const captured = { ...structuredClone(song), generatorId: template.id, seed: imageGenerationSeed(song.seed) };
+    const captured = { ...structuredClone(song), generatorId: template.id, seed: imageGenerationSeed(song.seed), settings: musicSettingsForModel(song.settings, template.modelType) };
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
       slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, "flash2", [], "prompt", [], false, template.sources, { modelType: template.modelType }) } });
     const request: SlopfabGenerationRequest = { jobId: id, prompt: song.style, steps: song.steps, seed: captured.seed,
-      music: musicSettingsForModel(song.settings, template.modelType), frames: 0, canvasWidth: 0, canvasHeight: 0, referencePaths: [] };
+      music: captured.settings, frames: 0, canvasWidth: 0, canvasHeight: 0, referencePaths: [] };
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
     this.work.set(id, { id, music: captured, session, sceneId: songId, request, config, snapshot: JSON.stringify(captured), cancelled: false, submitted: false, done, finish });

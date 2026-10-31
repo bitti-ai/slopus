@@ -16,7 +16,7 @@ pub(super) fn apply(project: &mut ProjectConfig, command: &ProjectCommand, times
         ProjectCommand::MusicAdd { id, title, style, settings, folder_id, steps, seed } => {
             if id.trim().is_empty() || project.music_songs.iter().any(|s| s.id == *id) { return Err("Song requires a unique id.".into()); }
             project.music_songs.push(MusicSong { id: id.clone(), title: title.clone(), style: style.clone(), settings: settings.clone(),
-                folder_id: folder_id.clone(), steps: steps.unwrap_or(32), seed: seed.unwrap_or(-1), generator_id: String::new(),
+                folder_id: folder_id.clone(), steps: steps.unwrap_or(slopus_core::slopfab::music::YUE2_DEFAULT_STEPS), seed: seed.unwrap_or(-1), generator_id: String::new(),
                 status: "draft".into(), asset_id: None, cover_relative_path: None, error: None, generation: None, created_at: timestamp.into() });
         }
         ProjectCommand::MusicSet { id, title, style, settings, folder_id, steps, seed } => {
@@ -159,7 +159,7 @@ mod tests {
         let p: ProjectConfig = serde_json::from_str(include_str!("../../../../fixtures/project-v1-complete.json")).unwrap();
         let added = run(&p,json!([{"op":"music.add","id":"song","title":"Intro","style":"Jazz","settings":{"lyrics":"Hello"}}])).unwrap();
         assert_eq!(added.music_songs[0].settings.lyrics,"Hello");
-        assert_eq!(added.music_songs[0].steps,32);
+        assert_eq!(added.music_songs[0].steps,6);
         assert!(run(&added,json!([{"op":"music.set","id":"song","title":"Changed"},{"op":"music.set","id":"song","steps":1000}])).is_err());
         assert_eq!(added.music_songs[0].title,"Intro");
         assert!(run(&p,json!([{"op":"music.add","id":"song","title":"Intro","style":"Jazz","folderId":"missing"}])).is_err());

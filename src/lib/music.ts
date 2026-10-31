@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { ProjectAsset, ProjectConfig, ProjectReference } from "./project";
 
+export const YUE2_DEFAULT_STEPS = 6;
+
 export const musicSettingsSchema = z.object({
   lyrics: z.string().max(30000).default(""),
   duration: z.number().finite().min(2).max(300).default(30),
@@ -13,6 +15,7 @@ export const musicSettingsSchema = z.object({
   repetition_penalty: z.number().finite().min(1).max(10).default(1.2),
   semantic_guidance: z.number().finite().min(0).max(10).default(0),
   flow_guidance: z.number().finite().min(0).max(10).default(0),
+  flow_sampler: z.enum(["default", "midpoint", "dpmpp_2m"]).default("default"),
 }).refine((value) => value.semantic_guidance === 0 || value.semantic_guidance >= 1, "Semantic guidance must be zero (automatic) or at least one.")
   .refine((value) => value.planning !== "off" || !value.abc, "ABC requires full or melody planning.");
 export const musicSongSchema = z.object({
@@ -21,7 +24,7 @@ export const musicSongSchema = z.object({
   style: z.string().max(10000).default(""),
   generatorId: z.string().default("yue2"),
   settings: musicSettingsSchema.default({}),
-  steps: z.number().int().min(2).max(100).default(32),
+  steps: z.number().int().min(2).max(100).default(YUE2_DEFAULT_STEPS),
   seed: z.number().int().min(-1).max(Number.MAX_SAFE_INTEGER).default(-1),
   status: z.enum(["draft", "queued", "generating", "completed", "failed", "cancelled"]).default("draft"),
   assetId: z.string().nullish(), error: z.string().nullish(),
@@ -48,8 +51,10 @@ export function albumCoverPrompt(song: MusicSong, modelType: string): string {
 export const musicFolderSchema = z.object({ id: z.string().min(1), name: z.string().trim().min(1).max(200), parentId: z.string().min(1).nullish() });
 export type MusicFolder = z.infer<typeof musicFolderSchema>;
 
-export function newSong(generatorId = "yue2", steps = 32, folderId?: string | null): MusicSong {
-  return musicSongSchema.parse({ id: `song-${crypto.randomUUID()}`, title: "New song", generatorId, steps, ...(folderId ? { folderId } : {}), createdAt: new Date().toISOString() });
+export function newSong(generatorId = "yue2", steps = generatorId === "minimax_music3" ? 30 : YUE2_DEFAULT_STEPS, folderId?: string | null): MusicSong {
+  return musicSongSchema.parse({ id: `song-${crypto.randomUUID()}`, title: "New song", generatorId, steps,
+    settings: { flow_sampler: generatorId === "minimax_music3" ? "default" : "dpmpp_2m" },
+    ...(folderId ? { folderId } : {}), createdAt: new Date().toISOString() });
 }
 
 export function newSongVariation(source: MusicSong, songs: readonly MusicSong[]): MusicSong {
@@ -95,7 +100,8 @@ export function musicFolderLabel(folders: readonly MusicFolder[], id: string): s
 export function musicSettingsForModel(settings: MusicSettings, modelType: string): MusicSettings {
   const defaults = musicSettingsSchema.parse({});
   return modelType === "minimax_music3" ? { ...defaults, lyrics: settings.lyrics, duration: settings.duration,
-    top_k: settings.top_k, semantic_guidance: settings.semantic_guidance, flow_guidance: settings.flow_guidance } : { ...settings, flow_guidance: 0 };
+    top_k: settings.top_k, semantic_guidance: settings.semantic_guidance, flow_guidance: settings.flow_guidance }
+    : { ...settings, flow_guidance: 0, flow_sampler: settings.flow_sampler === "midpoint" ? "midpoint" : "dpmpp_2m" };
 }
 
 export function songReference(song: MusicSong, asset: ProjectAsset): ProjectReference {

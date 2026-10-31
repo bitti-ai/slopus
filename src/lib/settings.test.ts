@@ -78,7 +78,7 @@ describe("generator templates", () => {
     singularity.sources!.transformer = [singularity.sources!.transformer![0]];
     saveGeneratorTemplateSettings({ templates: [original, fast, singularity], defaultTemplateId: "", catalogVersion: 20 });
     const migrated = loadGeneratorTemplateSettings();
-    expect(migrated.catalogVersion).toBe(21);
+    expect(migrated.catalogVersion).toBe(22);
     expect(migrated.templates.map(({ id }) => id)).toEqual([original.id, fast.id, singularity.id, "minimax-h3-singularity-v2"]);
     expect(migrated.templates[0]).toMatchObject({ name: original.name, defaultSteps: 27, paths: { transformer: cached },
       sources: { transformer: [original.sources!.transformer![0], { ...original.sources!.transformer![1], minVramGb: 13 }, custom, minimaxOriginalTemplate().sources!.transformer![2]] } });
@@ -168,7 +168,7 @@ describe("generator templates", () => {
       sources: { ...template.sources, transformer: [{ ...int8, downloadedPath: cached }, customFp16, custom] } };
     saveGeneratorTemplateSettings({ templates: [previous], defaultTemplateId: previous.id, catalogVersion: 18 });
     const upgraded = loadGeneratorTemplateSettings();
-    expect(upgraded.catalogVersion).toBe(21);
+    expect(upgraded.catalogVersion).toBe(22);
     expect(upgraded.templates[0]).toMatchObject({ name: "My music", paths: { transformer: cached },
       sources: { transformer: [fp32, { ...int8, downloadedPath: cached }, customFp16, custom] } });
     expect(loadGeneratorTemplateSettings()).toEqual(upgraded);
@@ -182,6 +182,18 @@ describe("generator templates", () => {
     expect(loadGeneratorTemplateSettings().templates[0].sources!.transformer).toEqual([custom]);
   });
 
+  it("upgrades YuE2's old step default once and leaves custom steps and Music3 unchanged", () => {
+    const yue = { ...musicTemplates()[0], defaultSteps: 32 };
+    const custom = { ...yue, id: "custom-yue", defaultSteps: 12 };
+    const music3 = musicTemplates()[1];
+    saveGeneratorTemplateSettings({ templates: [yue, custom, music3], defaultTemplateId: yue.id, catalogVersion: 21 });
+    const updated = loadGeneratorTemplateSettings();
+    expect(updated.catalogVersion).toBe(22);
+    expect(updated.templates.map(template => template.defaultSteps)).toEqual([6, 12, 30]);
+    saveGeneratorTemplateSettings({ ...updated, templates: updated.templates.map(template => ({ ...template, defaultSteps: 32 })) });
+    expect(loadGeneratorTemplateSettings().templates.every(template => template.defaultSteps === 32)).toBe(true);
+  });
+
   it("upgrades existing YuE2 sources once while preserving downloaded and custom choices", () => {
     const template = musicTemplates()[0];
     const int8 = template.sources!.transformer![1];
@@ -190,7 +202,7 @@ describe("generator templates", () => {
       sources: { transformer: [{ ...int8, downloadedPath: cached }] } };
     saveGeneratorTemplateSettings({ templates: [previous], defaultTemplateId: previous.id, catalogVersion: 16 });
     const upgraded = loadGeneratorTemplateSettings();
-    expect(upgraded.catalogVersion).toBe(21);
+    expect(upgraded.catalogVersion).toBe(22);
     expect(upgraded.templates[0]).toMatchObject({ name: "My music", paths: { transformer: cached },
       sources: { transformer: [template.sources!.transformer![0], { ...int8, downloadedPath: cached }] } });
     expect(loadGeneratorTemplateSettings()).toEqual(upgraded);
@@ -395,7 +407,7 @@ describe("generator templates", () => {
     expect(generatorOwned(settings.templates[2])).toEqual(generatorOwned(minimaxFastTemplate()));
     expect(generatorOwned(settings.templates[3])).toEqual(generatorOwned(minimaxSingularityTemplate()));
     expect(settings.defaultTemplateId).toBe(template.id);
-    expect(settings.catalogVersion).toBe(21);
+    expect(settings.catalogVersion).toBe(22);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [settings.templates[0]] });
     expect(loadGeneratorTemplateSettings().templates).toHaveLength(1);
@@ -416,7 +428,7 @@ describe("generator templates", () => {
     const settings = loadGeneratorTemplateSettings();
     expect(generatorOwned(settings.templates)).toEqual(generatorOwned([custom, minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates(), ...kreaImageTemplates(), minimaxSingularityV2Template()]));
     expect(settings.defaultTemplateId).toBe(custom.id);
-    expect(settings.catalogVersion).toBe(21);
+    expect(settings.catalogVersion).toBe(22);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
     saveGeneratorTemplateSettings({ ...settings, templates: [custom] });
     expect(generatorOwned(loadGeneratorTemplateSettings().templates)).toEqual(generatorOwned([custom]));
@@ -481,7 +493,7 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 8 }));
     const settings = loadGeneratorTemplateSettings();
     expect(generatorOwned(settings.templates)).toEqual(generatorOwned([minimaxFastTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates(), ...kreaImageTemplates(), minimaxSingularityV2Template()]));
-    expect(settings.catalogVersion).toBe(21);
+    expect(settings.catalogVersion).toBe(22);
     expect(templateNeedsDownload(settings.templates[0])).toBe(true);
     expect(loadGeneratorTemplateSettings()).toEqual(settings);
   });
@@ -496,7 +508,7 @@ describe("generator templates", () => {
     const otherPaths = { ...template.paths };
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 10 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.catalogVersion).toBe(21);
+    expect(settings.catalogVersion).toBe(22);
     expect(settings.templates).toHaveLength(8);
     expect(settings.templates[0]).toMatchObject({ id: template.id, name: "FastH3 Omni", defaultSteps: 8,
       paths: { ...otherPaths, transformer: minimaxFastTemplate().paths.transformer },
@@ -592,7 +604,7 @@ describe("generator templates", () => {
     template.paths[field] = downloadedPath;
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], catalogVersion: 1 }));
     const settings = loadGeneratorTemplateSettings();
-    expect(settings.catalogVersion).toBe(21);
+    expect(settings.catalogVersion).toBe(22);
     expect(settings.templates[0].paths[field]).toBe(downloadedPath);
     expect(settings.templates[0].sources![field]).toEqual(minimaxOriginalTemplate().sources![field]!.map((source, index) =>
       index === 0 ? { ...source, downloadedPath } : source));
@@ -627,7 +639,7 @@ describe("generator templates", () => {
     localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ templates: [template], defaultTemplateId: template.id, catalogVersion: 2 }));
     const settings = loadGeneratorTemplateSettings();
     const migrated = settings.templates[0];
-    expect(settings.catalogVersion).toBe(21);
+    expect(settings.catalogVersion).toBe(22);
     expect(migrated.sources!.textEncoder).toEqual([
       { url: originalUrl, gpuModel: "", minVramGb: 16, ...(selection === "cached original" ? { downloadedPath: cachedOriginal } : {}) },
       custom,

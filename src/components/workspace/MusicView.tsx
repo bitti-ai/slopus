@@ -3,7 +3,7 @@ import { loadActiveGeneratorId, saveActiveGeneratorId, selectedGeneratorTemplate
 import type { ProjectAsset, ProjectConfig } from "../../lib/project";
 import { isTauri, readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateSupportsMusic, templateUsable, generatorPathFields, type GeneratorTemplate } from "../../lib/settings";
-import { musicSettingsForModel, moveSong, newMusicFolder, newSong, newSongVariation, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
+import { YUE2_DEFAULT_STEPS, musicSettingsForModel, moveSong, newMusicFolder, newSong, newSongVariation, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import { ComboBox, CommandBarButton, InfoBar, ProgressBar, ProgressRing, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
 import { Add16, Audio16, Delete16, Edit16, FolderAdd16, FolderOpen16, GridView16, ListView16, Pause16, Play16, References16, Sparkle16, Stop14 } from "../ui/icons";
@@ -79,7 +79,8 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
   };
   const setting = (patch: Partial<MusicSettings>) => { if (selected) edit({ settings: { ...selected.settings, ...patch } }); };
   const add = () => {
-    const song = newSong(template?.id, Math.min(100, template?.defaultSteps ?? 32), currentFolderId);
+    const song = newSong(template?.id, Math.min(100, template?.defaultSteps ?? YUE2_DEFAULT_STEPS), currentFolderId);
+    if (template) song.settings = musicSettingsForModel(song.settings, template.modelType);
     onChange((current) => ({ ...current, musicSongs: [...(current.musicSongs ?? []), song] }));
     setSelectedId(song.id); setError(null);
   };
@@ -315,6 +316,9 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
               <PropRow label="Seed" tooltip="Use -1 for a random seed."><input className="text-field" aria-label="Music seed" type="number" min={-1} max={Number.MAX_SAFE_INTEGER} step={1} value={selected.seed} disabled={busy} onChange={(event) => { const seed = event.target.valueAsNumber; if (Number.isSafeInteger(seed) && seed >= -1) edit({ seed }); }} /></PropRow>
             </PropSection>
             <PropSection title="Advanced" persistKey="music.advanced" defaultOpen={false}>
+              {template?.modelType === "yue2" && <PropRow label="Flow sampler"><ComboBox aria-label="Music flow sampler" value={musicSettingsForModel(selected.settings, "yue2").flow_sampler} disabled={busy}
+                options={[{ value: "dpmpp_2m", label: "DPM++ 2M" }, { value: "midpoint", label: "Midpoint" }]}
+                onChange={(flow_sampler) => setting({ flow_sampler: flow_sampler as MusicSettings["flow_sampler"] })} /></PropRow>}
               {template?.modelType === "yue2" && <PropRow label="Planning"><ComboBox aria-label="Music planning" value={selected.settings.planning} disabled={busy} options={[{ value: "full", label: "Full (melody and chords)" }, { value: "melody", label: "Melody" }, { value: "off", label: "Off" }]} onChange={(planning) => setting({ planning: planning as MusicSettings["planning"], ...(planning === "off" ? { abc: "" } : {}) })} /></PropRow>}
               {([
                 ["top_k", "Top K", 0, 1024, 1], ["semantic_guidance", "Guidance", 0, 5, 1],
