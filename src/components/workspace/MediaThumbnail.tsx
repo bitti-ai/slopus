@@ -290,5 +290,7 @@ function FileMediaThumbnail({ folderPath, asset, onMeasured, posterTimeSeconds =
 }
 
 export function MediaThumbnail(props: React.ComponentProps<typeof FileMediaThumbnail>) {
-  return props.asset.motion ? <MotionCanvas motion={props.asset.motion} time={0} /> : <FileMediaThumbnail {...props} />;
+  return props.asset.motion ? <span className="media-thumb media-thumb--motion">
+    <MotionCanvas motion={props.asset.motion} time={0} />
+  </span> : <FileMediaThumbnail {...props} />;
 }

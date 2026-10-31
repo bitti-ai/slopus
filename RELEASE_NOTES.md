@@ -21,6 +21,7 @@ Changes since 0.3.2.
 
 ## Fixes and improvements
 
+- Corrected Motion thumbnail sizing and title/duration alignment in the Timeline's list and grid layouts.
 - Send additional agent messages while it is working; queued messages join its context when the current call or generation finishes.
 - Limited generation progress updates to keep music playback controls responsive during song generation.
 - Unavailable Generate buttons use a neutral background with readable text in both themes.
