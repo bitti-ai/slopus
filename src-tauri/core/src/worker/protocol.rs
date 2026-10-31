@@ -32,7 +32,8 @@ pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 // v26 replaces Single Shot's 39-frame overlap, holding 22 and regenerating 17.
 // v27 grades Tone once after joining Single Shot's neutral ending and main clip.
 // v28 bounds image-edit inference to the target region and preserves the original canvas.
-pub const PROTOCOL_VERSION: u32 = 28;
+// v29 aligns Single Shot's Keystone conditioning guide with its original context anchor.
+pub const PROTOCOL_VERSION: u32 = 29;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -387,7 +388,7 @@ mod tests {
         let single = restored.single_shot.unwrap();
         assert_eq!(single.ending_prompt, "The subject waves goodbye");
         assert!(single.ending_path.is_none());
-        assert_eq!(PROTOCOL_VERSION, 28);
+        assert_eq!(PROTOCOL_VERSION, 29);
     }
 
     #[test]

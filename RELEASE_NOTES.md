@@ -9,7 +9,7 @@ Changes since 0.3.2.
 - **Album covers:** Generate artwork from a song’s context menu using a dedicated generator selected under Settings → Generators → Icons.
 - **Video library:** Organize Videos → Scenes → Shots, play scenes together, split songs into scenes, and share prompts and timed references. Videos can override project Look and resolution settings, and dependent scenes can be queued together. Cancelling a generation also cancels its downstream dependents while preserving earlier generations.
 - **Scene takes:** Keep up to four takes plus a draft, restore settings, choose the primary take, and upscale saved takes by 1.5×, 2× or 4×. Non-primary takes can be removed during generation.
-- **Single Shot:** Continue with Context and Previous video anchors, optional generated endings, improved overlap joining and consistent Tone. Use Bridge for new connections instead of Long Shot.
+- **Single Shot:** Continue with Context and Previous video anchors, optional generated endings, improved overlap joining and consistent Tone. Context guidance now matches the original anchor to reduce appearance degradation across continuations. Use Bridge for new connections instead of Long Shot.
 - **Motions and agents:** Create editable JavaScript animations for the timeline or references. Agents can inspect media frames, generate music and sync Motions to audio.
 - **Image editing:** Combine or subtract lasso selections, queue batches of up to 100 images, and edit bounded regions of larger images while preserving their original resolution.
 - **Live previews:** Watch MiniMax H3 video and image generation in the editor. Optional TAEH3 preview weights are available in Settings.

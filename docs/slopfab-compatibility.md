@@ -2,7 +2,7 @@
 
 ## Bundled runtime (API 1.48.0)
 
-Windows and Linux runtimes use SlopFab commit `fd264f6bc293d21e76cf26aaae3e70ed25f1e491`
+Windows and Linux runtimes use SlopFab commit `c5297c243923f336d4f174980a80452f0003bd0f`
 from `D:\Projects\slopfab`, with CUDA and Vulkan enabled and FFmpeg disabled.
 This update keeps Keystone and delayed Capstone context inside sampling: the
 original front latent is restored before output, and Capstone adds one clean
@@ -15,7 +15,8 @@ Video previews autoplay and loop inside the existing shot card player; image
 previews update the image canvas and thumbnail. Both use the generation previews
 setting and require the optional TAEH3 weights. Saved-latent upscaling remains supported.
 
-LAN protocol is 28 so workers use the same image crop merging, Single Shot Tone and overlap behavior. Single Shot automatically shortens its preferred four-update
+LAN protocol is 29 so workers use the same Keystone conditioning, image crop
+merging, Single Shot Tone and overlap behavior. Single Shot automatically shortens its preferred four-update
 Capstone delay when the resolved video schedule is shorter, without changing the
 LoRA recipe. Restart Slopus and update workers to load the new runtime.
 
@@ -25,6 +26,23 @@ causal first-frame reference exactly on CUDA and Vulkan. Linux retains the Fibo 
 workaround documented below.
 
 ## Single Shot
+
+The bundled runtime includes the Keystone conditioning correction from SlopFab
+`89e1cca`. With Context video selected, the original context's first latent slice
+now guides both the locked target overlap and its visual conditioning at the
+same position. Previously the guide retained the advancing video's slice,
+contradicting the original anchor and weakening its influence early in sampling.
+The correction applies to CUDA and Vulkan and is intended to reduce appearance
+degradation across continuations. It requires no new C API calls. Context-video
+generation snapshots record the corrected guide so older takes can be regenerated;
+existing saved media and latents are not modified.
+
+Validation for this update includes SlopFab's host continuation tests, C API and
+embedded-tokenizer checks on Windows and Linux, and Slopus core and frontend
+tests. The bundled Windows DLL also passes the real-weight Keystone smoke test
+on CUDA and Vulkan, using Slopus's portable arithmetic policy for Vulkan. These
+small synthetic-prompt runs verify early anchor influence, source preservation
+and retained/file parity; they are not a visual quality benchmark.
 
 With Context video selected, Single Shot continues from Previous video's saved
 latents while using the sequence's first video as its persistent Keystone and
