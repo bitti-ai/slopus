@@ -26,7 +26,7 @@ Changes since 0.3.2.
 - Saving now deletes unused files from replaced video takes and removed video, image and music generations, including latents and derived caches. Files still used by timeline clips, references or other generations are preserved; saved deletions cannot be undone.
 - Fixed a Windows file-sharing error when Minimax reads a cropped image-edit reference.
 - Local image edits now generate only the selected bounding box or lasso bounds, padded to multiples of 32, and merge into the original image without changing surrounding pixels.
-- Generate's dropdown arrow now shares its neutral disabled colors while keeping available upscale actions accessible.
+- Generate's dropdown arrow now shares its neutral disabled colors in both video and image editors while keeping available options accessible.
 - Single Shot with Context video now matches the two-minute Keystone/Capstone test's fully locked 22-frame overlap, preserving earlier video and audio instead of regenerating their tail.
 - Corrected Motion thumbnail sizing and title/duration alignment in the Timeline's list and grid layouts.
 - Send additional agent messages while it is working; queued messages join its context when the current call or generation finishes.
