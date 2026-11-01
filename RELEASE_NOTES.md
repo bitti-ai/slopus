@@ -21,6 +21,7 @@ Changes since 0.3.2.
 
 ## Fixes and improvements
 
+- Fixed Extend rejecting editing drafts that already have a saved source image.
 - YuE2 now defaults to six flow steps with DPM++ 2M. The previous Midpoint solver remains available in music's Advanced settings, and saved generator templates using the old 32-step default upgrade once to six steps.
 - On first launch after updating, each recent project gets a one-time cleanup of orphaned generated media, latents and caches. Other projects receive the cleanup when first opened; files still referenced by the project are preserved.
 - Saving now deletes unused files from replaced video takes and removed video, image and music generations, including latents and derived caches. Files still used by timeline clips, references or other generations are preserved; saved deletions cannot be undone.

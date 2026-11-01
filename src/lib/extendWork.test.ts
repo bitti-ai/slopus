@@ -90,6 +90,36 @@ it.each([false, true])("extends a frozen source and saves a child with a durable
   expect(releaseRendered).toHaveBeenCalledWith(jobId);
 });
 
+it("extends the saved pixels of an editing draft without replacing its pending edits", async () => {
+  const { queue, session } = setup();
+  session.edit((config) => restoreGeneratedImage(config, "source"));
+  session.edit((config) => ({ ...config, imageScene: { ...config.imageScene!,
+    nodes: config.imageScene!.nodes.map((node) => ({ ...node, description: "Add snow" })) } }));
+  const before = structuredClone(session.getSnapshot().config);
+  const draft = before.assets.find((asset) => asset.id === before.imageScene!.outputAssetId)!;
+  expect(draft).toMatchObject({ imageDraft: true, relativePath: "media/source.png", parentAssetId: "root" });
+
+  queue.enqueueExtendImage(session, template, draft.id, options());
+  const request = await submitted();
+  expect(invoke).toHaveBeenCalledWith("prepare_extend_image", { folderPath: "C:/Extend", jobId: request.jobId,
+    sourceId: draft.id, bounds: options().bounds, output: { width: 960, height: 576 } });
+  emit("framesReady", request.jobId);
+  await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));
+  const saved = session.getSnapshot().config;
+  expect(saved.assets.slice(0, before.assets.length)).toEqual(before.assets);
+  expect(saved.assets.at(-1)).toMatchObject({ imageDraft: false, parentAssetId: "root", ...result,
+    imageGeneration: { template: { kind: "extend", sourceId: draft.id } } });
+});
+
+it.each([false, true])("rejects images without saved pixels (draft: %s)", (imageDraft) => {
+  const { queue, session } = setup();
+  session.update((config) => ({ ...config, assets: config.assets.map((asset) => asset.id === "source"
+    ? { ...asset, imageDraft, relativePath: undefined, sourcePath: undefined } : asset) }));
+  expect(() => queue.enqueueExtendImage(session, template, "source", options())).toThrow("Select a saved image to extend.");
+  expect(queue.getSnapshot()).toHaveLength(0);
+  expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
+});
+
 it("passes prompt reference images and refmods to the extension", async () => {
   const { queue, session } = setup();
   session.update((config) => ({ ...config, references: [{ id: "trees", name: "Trees", kind: "image", description: "Tall pines", relativePath: "references/trees.png", intendedUse: [], createdAt: config.createdAt,

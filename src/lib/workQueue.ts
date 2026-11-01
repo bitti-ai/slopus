@@ -447,7 +447,8 @@ export class WorkQueue {
     if (!templateSupportsOutpainting(template)) throw new Error("Choose a generator that supports image editing for Zoom.");
     if (template.mode === "animate") throw new Error("Choose a prompt generator for Zoom.");
     const current = session.getSnapshot().config;
-    const source = current.assets.find((asset) => asset.id === sourceId && asset.kind === "image" && !asset.imageDraft);
+    // Editing drafts retain saved source pixels that the Zoom canvas displays.
+    const source = current.assets.find((asset) => asset.id === sourceId && asset.kind === "image");
     if (!source || (!source.relativePath && !source.sourcePath)) throw new Error("Select a saved image to extend.");
     const projectKey = projectQueueKey(session.record);
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === sourceId && isWorkActive(item))) return;
