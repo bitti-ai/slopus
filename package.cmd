@@ -175,7 +175,8 @@ where.exe wsl.exe >nul 2>nul || (
   echo        Linux:     skipped - WSL was not found. Releases require it.
   exit /b 0
 )
-wsl.exe --cd "%ROOT_DIR%" -e bash scripts/package-linux-worker.sh "%APP_VERSION%" "artifacts/%LINUX_WORKER_NAME%" || exit /b 1
+if not defined SLOPUS_WSL_DISTRO set "SLOPUS_WSL_DISTRO=Ubuntu-22.04"
+wsl.exe --distribution "%SLOPUS_WSL_DISTRO%" --cd "%ROOT_DIR%" -e bash scripts/package-linux-worker.sh "%APP_VERSION%" "artifacts/%LINUX_WORKER_NAME%" || exit /b 1
 echo        Linux:     %LINUX_WORKER_NAME%
 exit /b 0
 
@@ -186,7 +187,8 @@ where.exe wsl.exe >nul 2>nul || (
   echo        Linux app: skipped - WSL was not found. Releases require it.
   exit /b 0
 )
-wsl.exe --cd "%ROOT_DIR%" -e bash scripts/package-linux-app.sh "%APP_VERSION%" artifacts || exit /b 1
+if not defined SLOPUS_WSL_DISTRO set "SLOPUS_WSL_DISTRO=Ubuntu-22.04"
+wsl.exe --distribution "%SLOPUS_WSL_DISTRO%" --cd "%ROOT_DIR%" -e bash scripts/package-linux-app.sh "%APP_VERSION%" artifacts || exit /b 1
 echo        Linux app: %LINUX_APP_STEM%.deb, .rpm and .AppImage
 exit /b 0
 

@@ -18,15 +18,59 @@ build, through `scripts/package-linux-app.sh`:
 The script reuses the frontend that the Windows build has just written to
 `dist/` (it is platform independent, and WSL usually has no Linux Node.js), and
 runs the Tauri CLI version pinned in `package-lock.json`, installed with cargo
-into `~/.cache/slopus/tauri-cli-<version>` on first use. Cargo builds in
-`~/.cache/slopus/linux-app-target`, on the Linux filesystem.
+into `~/.cache/slopus/glibc235/tauri-cli-<version>` on first use. Cargo builds in
+`~/.cache/slopus/glibc235/linux-app-target`, on the Linux filesystem. These paths
+are separate from caches built against newer distributions.
 
-One-time WSL setup on Ubuntu (Rust as for the Linux worker):
+## glibc baseline
+
+Linux packages target **glibc 2.35**, the Ubuntu 22.04 baseline. The Windows
+packaging commands select WSL `Ubuntu-22.04`; install it with
+`wsl --install -d Ubuntu-22.04`. `SLOPUS_WSL_DISTRO` can select another WSL
+distribution with glibc <=2.35. Native packaging rejects newer build hosts.
+This follows [Tauri's AppImage guidance](https://tauri.app/distribute/appimage/):
+the app and its GTK/WebKit/GStreamer dependencies must be built on the oldest
+supported base system, since AppImage uses the host's glibc.
+
+Rebuild `lib/slopfab/libslopfab.so` on that baseline too, using slopfab's
+`tools/linux-build.Dockerfile` (CUDA 13) or Ubuntu 22.04 with CUDA 13, and copy
+`dist/linux/libslopfab.so` here before packaging. The old runtime built on
+Ubuntu 26.04 requires glibc 2.43 and is rejected before Cargo starts.
+Changing version strings or replacing only the app executable does not fix
+incompatible bundled libraries.
+
+One-time WSL setup on Ubuntu 22.04 (install Rust as for the Linux worker):
 
 ```sh
 sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
-  librsvg2-dev libxdo-dev libssl-dev build-essential file patchelf squashfs-tools
+  librsvg2-dev libxdo-dev libssl-dev build-essential file patchelf squashfs-tools \
+  python3 binutils pkg-config gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-bad
 ```
+
+An isolated build is also available through Docker in Linux/WSL. Build the
+frontend first with `npm ci && npm run build`, then, after replacing slopfab:
+
+```sh
+docker build -t slopus-linux-glibc235 -f scripts/linux/build.Dockerfile scripts/linux
+docker run --rm -v "$PWD:/src" -v slopus-linux-glibc235:/root/.cache \
+  slopus-linux-glibc235 bash scripts/package-linux-app.sh 0.4.0 artifacts
+docker run --rm -v "$PWD:/src" -v slopus-linux-glibc235:/root/.cache \
+  slopus-linux-glibc235 bash scripts/package-linux-worker.sh 0.4.0 artifacts/Slopus-0.4.0-linux-x64-worker.tar.gz
+```
+
+Use the checkout's version in both commands. For signed builds pass
+`-e TAURI_SIGNING_PRIVATE_KEY -e TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; if the key
+is a file, mount it read-only and set the variable to its path inside the
+container. The toolkit libraries are available for dependency discovery but
+are excluded from the package as before.
+
+Before publishing, `scripts/linux/check_glibc.py` checks the AppImage runtime
+and **every ELF file in the extracted image**, including weak requirements,
+and rejects anything above 2.35. It also checks worker artifacts. Run its
+regressions with `python3 -m unittest discover -s scripts/linux -p test_check_glibc.py`.
+GPU drivers and webview capabilities remain separate requirements; the older
+distribution's WebKitGTK/GStreamer capabilities need functional validation.
 
 `release.cmd` passes `TAURI_SIGNING_PRIVATE_KEY` (and its password) into WSL
 through `WSLENV`; a Windows key path is translated with `wslpath`. Without a key,

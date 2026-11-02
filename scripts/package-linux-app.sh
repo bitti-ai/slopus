@@ -31,6 +31,7 @@ if [[ $(uname -s) != Linux || $(uname -m) != x86_64 ]]; then
   printf 'package-linux-app: run on x86_64 Linux (including WSL).\n' >&2
   exit 2
 fi
+python3 "$root/scripts/linux/check_glibc.py" --check-host
 # rustup installs into ~/.cargo; a non-login WSL shell has not sourced it.
 if ! command -v cargo >/dev/null && [[ -f $HOME/.cargo/env ]]; then
   # shellcheck source=/dev/null
@@ -44,7 +45,7 @@ missing=()
 for module in webkit2gtk-4.1 gtk+-3.0 librsvg-2.0 ayatana-appindicator3-0.1; do
   pkg-config --exists "$module" 2>/dev/null || missing+=("$module")
 done
-for tool in file patchelf unsquashfs; do
+for tool in file patchelf unsquashfs readelf; do
   command -v "$tool" >/dev/null || missing+=("$tool")
 done
 if ((${#missing[@]})); then
@@ -56,6 +57,7 @@ runtime="$root/lib/slopfab/libslopfab.so"
 if [[ $(head -c 4 "$runtime" 2>/dev/null | od -An -c | tr -d ' ') != '177ELF' ]]; then
   fail "$runtime is missing or a Git LFS pointer. Run git lfs pull."
 fi
+python3 "$root/scripts/linux/check_glibc.py" "$runtime"
 
 # A Windows checkout has CRLF line endings; keep the \r out of the comparison.
 cargo_version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' "$root/src-tauri/Cargo.toml" | tr -d '\r')
@@ -70,7 +72,7 @@ asset=$(find "$root/dist/assets" -maxdepth 1 -name '*.js' -printf '%f\n' 2>/dev/
 # The same CLI version as package-lock.json, installed once per version.
 cli_version=$(sed -n '/"node_modules\/@tauri-apps\/cli": {/,/}/s/.*"version": "\(.*\)".*/\1/p' "$root/package-lock.json" | tr -d '\r' | head -n 1)
 [[ -n $cli_version ]] || fail 'could not read the @tauri-apps/cli version from package-lock.json.'
-tools="$HOME/.cache/slopus/tauri-cli-$cli_version"
+tools="$HOME/.cache/slopus/glibc235/tauri-cli-$cli_version"
 if [[ ! -x $tools/bin/cargo-tauri ]]; then
   printf 'package-linux-app: installing tauri-cli %s (once)...\n' "$cli_version"
   cargo install tauri-cli --version "=$cli_version" --locked --root "$tools"
@@ -92,7 +94,7 @@ else
   signed=0
 fi
 
-target_dir=${SLOPUS_LINUX_TARGET_DIR:-"$HOME/.cache/slopus/linux-app-target"}
+target_dir=${SLOPUS_LINUX_TARGET_DIR:-"$HOME/.cache/slopus/glibc235/linux-app-target"}
 bundle="$target_dir/release/bundle"
 rm -rf -- "$bundle"
 mkdir -p "$target_dir/.tauri"
@@ -121,6 +123,9 @@ trap 'rm -rf -- "$extract"' EXIT
 # Preserve the archived modes: --appimage-extract creates directories as 0700,
 # which would make permission checks report failures unrelated to the package.
 unsquashfs -no-progress -offset "$("$appimage" --appimage-offset)" -d "$extract/squashfs-root" "$appimage" >/dev/null
+# Check the outer runtime as well as every ELF inside, including GTK, WebKit,
+# GStreamer helpers/plugins and libslopfab. Weak version needs count too.
+python3 "$root/scripts/linux/check_glibc.py" "$appimage" "$extract/squashfs-root"
 forbidden=$(find "$extract/squashfs-root" -type f \( -name 'libavcodec.so*' -o -name 'libavformat.so*' \
   -o -name 'libavutil.so*' -o -name 'libavfilter.so*' -o -name 'libavdevice.so*' -o -name 'libswscale.so*' \
   -o -name 'libswresample.so*' -o -name 'libpostproc.so*' -o -name 'libx264*.so*' -o -name 'libx265*.so*' -o -name 'libgstlibav.so' \

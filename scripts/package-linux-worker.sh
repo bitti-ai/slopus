@@ -21,6 +21,7 @@ if [[ $(uname -s) != Linux || $(uname -m) != x86_64 ]]; then
   printf 'package-linux-worker: run on x86_64 Linux (including WSL).\n' >&2
   exit 2
 fi
+python3 "$root/scripts/linux/check_glibc.py" --check-host
 # rustup installs into ~/.cargo; a non-login WSL shell has not sourced it.
 if ! command -v cargo >/dev/null && [[ -f $HOME/.cargo/env ]]; then
   # shellcheck source=/dev/null
@@ -38,7 +39,8 @@ if [[ $(head -c 4 "$runtime" 2>/dev/null | od -An -c | tr -d ' ') != '177ELF' ]]
   exit 1
 fi
 
-target_dir=${SLOPUS_LINUX_TARGET_DIR:-"$HOME/.cache/slopus/linux-worker-target"}
+python3 "$root/scripts/linux/check_glibc.py" "$runtime"
+target_dir=${SLOPUS_LINUX_TARGET_DIR:-"$HOME/.cache/slopus/glibc235/linux-worker-target"}
 CARGO_TARGET_DIR=$target_dir cargo build --release --locked \
   --manifest-path "$root/src-tauri/Cargo.toml" -p slopus-worker
 
@@ -56,6 +58,7 @@ package="$stage/$name"
 mkdir -p "$package"
 install -m 0755 "$target_dir/release/slopus-worker" "$package/slopus-worker"
 install -m 0755 "$runtime" "$package/libslopfab.so"
+python3 "$root/scripts/linux/check_glibc.py" "$package"
 cat > "$package/README.txt" <<EOF
 Slopus worker $version (linux-x64)
 
@@ -65,7 +68,7 @@ Slopus finds it automatically; choose it in Settings, Workers. Open TCP port 473
 Keep libslopfab.so beside slopus-worker.
 
 REQUIREMENTS
-  x86_64 Linux with glibc, an NVIDIA GPU, the NVIDIA driver (libcuda.so.1) and
+  x86_64 Linux with glibc 2.35 or newer, an NVIDIA GPU, the NVIDIA driver (libcuda.so.1) and
   CUDA 13 cuBLAS (libcublas.so.13). The worker finds cuBLAS in /usr/local/cuda*
   if the system linker does not. The Vulkan backend (--backend vulkan) also needs
   the NVIDIA driver and cuBLAS, because the runtime links them. FFmpeg 8 shared

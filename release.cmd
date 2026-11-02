@@ -255,7 +255,8 @@ where.exe wsl.exe >nul 2>nul || (
   echo        Install WSL with Ubuntu and Rust, then retry.
   exit /b 1
 )
-wsl.exe --cd "%ROOT_DIR%" -e bash scripts/package-linux-worker.sh "%APP_VERSION%" "artifacts/%LINUX_WORKER_NAME%" || exit /b 1
+if not defined SLOPUS_WSL_DISTRO set "SLOPUS_WSL_DISTRO=Ubuntu-22.04"
+wsl.exe --distribution "%SLOPUS_WSL_DISTRO%" --cd "%ROOT_DIR%" -e bash scripts/package-linux-worker.sh "%APP_VERSION%" "artifacts/%LINUX_WORKER_NAME%" || exit /b 1
 echo        Linux:     %LINUX_WORKER_NAME%
 exit /b 0
 
@@ -273,7 +274,8 @@ if defined WSLENV (
 ) else (
   set "WSLENV=TAURI_SIGNING_PRIVATE_KEY:TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
 )
-wsl.exe --cd "%ROOT_DIR%" -e bash scripts/package-linux-app.sh "%APP_VERSION%" artifacts || exit /b 1
+if not defined SLOPUS_WSL_DISTRO set "SLOPUS_WSL_DISTRO=Ubuntu-22.04"
+wsl.exe --distribution "%SLOPUS_WSL_DISTRO%" --cd "%ROOT_DIR%" -e bash scripts/package-linux-app.sh "%APP_VERSION%" artifacts || exit /b 1
 echo        Linux app: %LINUX_APP_STEM%.deb, .rpm and .AppImage
 exit /b 0
 

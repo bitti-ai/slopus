@@ -25,7 +25,9 @@ ALLOWED_PLUGINS=(
   audioconvert audioresample audiorate audioparsers volume interleave audiomixer
   wavparse flac opus opusparse vorbis ogg mpg123 id3demux apetag pulseaudio
   # Video
-  videoconvertscale videorate videofilter videoparsersbad codecalpha
+  # GStreamer 1.20 (Ubuntu 22.04) has separate convert/scale plugins;
+  # newer releases combine them into videoconvertscale.
+  videoconvert videoscale videoconvertscale videorate videofilter videoparsersbad codecalpha
   codectimestamper opengl alpha
   # Containers
   isomp4 matroska
