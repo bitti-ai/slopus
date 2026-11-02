@@ -72,6 +72,15 @@ regressions with `python3 -m unittest discover -s scripts/linux -p test_check_gl
 GPU drivers and webview capabilities remain separate requirements; the older
 distribution's WebKitGTK/GStreamer capabilities need functional validation.
 
+Validation on 2026-11-02 rebuilt the CUDA/Vulkan runtime, desktop app and worker
+in an isolated Ubuntu 22.04 filesystem. The completed AppImage passed all 262
+ELF checks (including its outer launcher); both worker ELF files passed too.
+The unsigned AppImage launched as an unrelated user under Xvfb on glibc 2.35,
+reported `frontend.webview ready` with VideoDecoder, VideoEncoder, AudioDecoder
+and WebGPU present, and loaded slopfab ABI 1.48.0. This checks startup and loader
+compatibility, not hardware codecs or GPU generation. Local packages are in
+`artifacts/glibc235-validation/`; they have not been published.
+
 `release.cmd` passes `TAURI_SIGNING_PRIVATE_KEY` (and its password) into WSL
 through `WSLENV`; a Windows key path is translated with `wslpath`. Without a key,
 `package.cmd` builds the same packages unsigned.
