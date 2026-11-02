@@ -9,6 +9,10 @@ fixture=$(mktemp -d /tmp/slopus-appimage-permissions.XXXXXXXX)
 trap 'rm -rf -- "$fixture"' EXIT
 appdir="$fixture/Test AppDir"
 mkdir -p "$appdir/usr/bin" "$appdir/usr/share" "$fixture/bin" "$fixture/plugins" "$fixture/helpers"
+mkdir -p "$appdir/usr/lib"
+# Container builds resolve libcuda through a toolkit stub. Neither the stub
+# nor cuBLAS may escape into the shipped AppImage.
+touch "$appdir/usr/lib/libcuda.so.1" "$appdir/usr/lib/libcublas.so.13" "$appdir/usr/lib/libcublasLt.so.13"
 chmod 0755 "$fixture"
 printf 'readable resource\n' > "$appdir/usr/share/message"
 cat > "$appdir/usr/bin/slopus" <<'EOF'
@@ -50,6 +54,7 @@ chmod 0755 "$fixture/bin/"*
 PATH="$fixture/bin:$PATH" LINUXDEPLOY="$fixture/bin/linuxdeploy" \
   GSTREAMER_PLUGINS_DIR="$fixture/plugins" GSTREAMER_HELPERS_DIR="$fixture/helpers" \
   bash "$root/scripts/linux/linuxdeploy-plugin-gstreamer.sh" --appdir "$appdir" > "$fixture/plugin.log"
+[[ ! -e $appdir/usr/lib/libcuda.so.1 && ! -e $appdir/usr/lib/libcublas.so.13 && ! -e $appdir/usr/lib/libcublasLt.so.13 ]]
 bad=$(find "$appdir" \( \( -type d ! -perm -0005 \) -o \( -type f \( ! -perm -0004 -o \( -perm /0111 ! -perm -0001 \) \) \) \) -print)
 [[ -z $bad ]] || { printf 'Inaccessible files: %s\n' "$bad" >&2; exit 1; }
 for launcher in AppRun AppRun.wrapped usr/bin/slopus; do

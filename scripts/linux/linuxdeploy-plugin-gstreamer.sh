@@ -36,7 +36,7 @@ ALLOWED_PLUGINS=(
 )
 
 # linuxdeploy finds these through libslopfab.so; the user's CUDA provides them.
-EXCLUDED_LIBRARIES=(libcublas.so* libcublasLt.so*)
+EXCLUDED_LIBRARIES=(libcuda.so* libcublas.so* libcublasLt.so*)
 
 appdir=""
 while (($#)); do

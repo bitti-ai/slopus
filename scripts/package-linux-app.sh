@@ -129,7 +129,7 @@ python3 "$root/scripts/linux/check_glibc.py" "$appimage" "$extract/squashfs-root
 forbidden=$(find "$extract/squashfs-root" -type f \( -name 'libavcodec.so*' -o -name 'libavformat.so*' \
   -o -name 'libavutil.so*' -o -name 'libavfilter.so*' -o -name 'libavdevice.so*' -o -name 'libswscale.so*' \
   -o -name 'libswresample.so*' -o -name 'libpostproc.so*' -o -name 'libx264*.so*' -o -name 'libx265*.so*' -o -name 'libgstlibav.so' \
-  -o -name 'libcublas*.so*' \) -printf '%f\n')
+  -o -name 'libcuda.so*' -o -name 'libcublas*.so*' \) -printf '%f\n')
 [[ -z $forbidden ]] || fail "the AppImage bundles libraries it must not ship: $(echo $forbidden)"
 [[ -f $extract/squashfs-root/usr/lib/Slopus/libslopfab.so ]] || fail 'the AppImage is missing libslopfab.so.'
 # Check mode bits rather than test -r/-x: packaging may run as the file owner

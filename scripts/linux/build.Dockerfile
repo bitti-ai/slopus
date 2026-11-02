@@ -10,4 +10,9 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh 
     && sh /tmp/rustup.sh -y --profile minimal --default-toolchain 1.99.0 \
     && rm /tmp/rustup.sh
 ENV PATH="/root/.cargo/bin:${PATH}"
+# Let linuxdeploy resolve the generation library without a physical GPU.
+# The deployment plugin removes the driver stub and toolkit libraries.
+RUN mkdir -p /opt/cuda-stubs \
+    && ln -s /usr/local/cuda/lib64/stubs/libcuda.so /opt/cuda-stubs/libcuda.so.1
+ENV LD_LIBRARY_PATH="/opt/cuda-stubs:/usr/local/cuda/lib64:${LD_LIBRARY_PATH}"
 WORKDIR /src
