@@ -3,10 +3,10 @@ import { loadActiveGeneratorId, saveActiveGeneratorId, selectedGeneratorTemplate
 import type { ProjectAsset, ProjectConfig } from "../../lib/project";
 import { isTauri, readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateSupportsMusic, templateUsable, generatorPathFields, type GeneratorTemplate } from "../../lib/settings";
-import { YUE2_DEFAULT_STEPS, musicSettingsForModel, moveSong, newMusicFolder, newSong, newSongVariation, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
+import { YUE2_DEFAULT_STEPS, duplicateSong, musicSettingsForModel, moveSong, newMusicFolder, newSong, newSongVariation, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
 import { isWorkActive, type WorkItem } from "../../lib/workQueue";
 import { ComboBox, CommandBarButton, InfoBar, ProgressBar, ProgressRing, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
-import { Add16, Audio16, Delete16, Edit16, FolderAdd16, FolderOpen16, GridView16, ListView16, Pause16, Play16, References16, Sparkle16, Stop14 } from "../ui/icons";
+import { Add16, Audio16, Copy16, Delete16, Edit16, FolderAdd16, FolderOpen16, GridView16, ListView16, Pause16, Play16, References16, Sparkle16, Stop14 } from "../ui/icons";
 import { MusicPlaybackControls } from "./MusicPlaybackControls";
 import { generatorOptions } from "../generatorOptions";
 import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
@@ -214,6 +214,12 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
   const context = (event: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>, song: MusicSong) => {
     const asset = config.assets.find((item) => item.id === song.assetId);
     menu.open(event, [...newItems(), { separator: true },
+      { label: "Duplicate", icon: <Copy16 />, onSelect: () => {
+        const draft = duplicateSong(song);
+        onChange((current) => ({ ...current, musicSongs: current.musicSongs?.flatMap((item) => item.id === song.id ? [item, draft] : [item]) }));
+        if (templates.some((item) => item.id === draft.generatorId)) saveActiveGeneratorId("music", draft.generatorId);
+        setSelectedId(draft.id); setError(null);
+      } },
       { label: song.coverRelativePath ? "Regenerate album cover" : "Generate album cover", icon: <Sparkle16 />,
         disabled: !isTauri() || !onGenerateCover || workItems.some((item) => item.sceneId === song.id && isWorkActive(item)),
         onSelect: () => { setError(null); try { onGenerateCover?.(song.id); } catch (reason) { setError(String(reason)); } } },

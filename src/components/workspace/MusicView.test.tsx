@@ -83,6 +83,30 @@ it("generates artwork for the context-menu song and displays saved covers in bot
   expect(generateCover).toHaveBeenLastCalledWith(songs[0].id);
 });
 
+it.each(["Grid", "List"])("duplicates the context-menu song as a selected draft in %s view", (mode) => {
+  const folder = newMusicFolder("Jazz", null);
+  const original = { ...newSong("yue2", 24, folder.id), title: "Evening", style: "Soft jazz", seed: 42,
+    status: "completed" as const, assetId: "audio", error: "Old error", coverRelativePath: "media/cover.jpg" };
+  original.settings.lyrics = "[Verse]\nGood evening";
+  original.generation = { generatorId: original.generatorId, style: original.style, settings: { ...original.settings }, steps: original.steps, seed: 42 };
+  const other = { ...newSong("yue2", 6, folder.id), title: "Other" };
+  render(<Harness initial={{ ...createConfig(), musicFolders: [folder], musicSongs: [other, original] }} />);
+  fireEvent.click(screen.getByRole("button", { name: `Open Jazz` }));
+  fireEvent.click(screen.getByRole("button", { name: `${mode} view` }));
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Select Evening" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate" }));
+  expect(latest.musicSongs).toHaveLength(3);
+  expect(latest.musicSongs!.slice(0, 2)).toEqual([other, original]);
+  const draft = latest.musicSongs![2];
+  expect(draft).toEqual({ ...original, id: expect.any(String), createdAt: expect.any(String), status: "draft", assetId: null, error: null, generation: null });
+  expect(draft.id).not.toBe(original.id);
+  expect(draft.settings).not.toBe(original.settings);
+  expect(screen.getAllByRole("button", { name: "Select Evening" })[1]).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByLabelText("Music lyrics")).toHaveValue(original.settings.lyrics);
+  expect(screen.getByRole("button", { name: "Generate" })).toBeEnabled();
+  expect(generate).not.toHaveBeenCalled();
+});
+
 it("reports missing cover generators without changing the song", () => {
   const song = newSong();
   generateCover.mockImplementationOnce(() => { throw new Error("Choose an album cover generator in Settings."); });

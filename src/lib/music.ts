@@ -57,6 +57,11 @@ export function newSong(generatorId = "yue2", steps = generatorId === "minimax_m
     ...(folderId ? { folderId } : {}), createdAt: new Date().toISOString() });
 }
 
+export function duplicateSong(source: MusicSong): MusicSong {
+  return { ...structuredClone(source), id: `song-${crypto.randomUUID()}`,
+    status: "draft", assetId: null, error: null, generation: null, createdAt: new Date().toISOString() };
+}
+
 export function newSongVariation(source: MusicSong, songs: readonly MusicSong[]): MusicSong {
   const base = source.title.replace(/ \(\d+\)$/, "");
   let number = 2, title: string;
@@ -64,8 +69,7 @@ export function newSongVariation(source: MusicSong, songs: readonly MusicSong[])
     const suffix = ` (${number++})`;
     title = base.slice(0, 200 - suffix.length) + suffix;
   } while (songs.some((song) => song.title === title));
-  return { ...structuredClone(source), id: `song-${crypto.randomUUID()}`, title,
-    status: "draft", assetId: null, error: null, generation: null, createdAt: new Date().toISOString() };
+  return { ...duplicateSong(source), title };
 }
 
 export function newMusicFolder(name: string, parentId: string | null): MusicFolder {
