@@ -4,9 +4,9 @@ import type { ProjectAsset, ProjectConfig } from "../../lib/project";
 import { isTauri, readMediaFileUrl } from "../../lib/persistence";
 import { loadGeneratorTemplateSettings, subscribeGeneratorTemplates, templateSupportsMusic, templateUsable, generatorPathFields, type GeneratorTemplate } from "../../lib/settings";
 import { YUE2_DEFAULT_STEPS, duplicateSong, musicSettingsForModel, moveSong, newMusicFolder, newSong, newSongVariation, removeMusicFolder, songReference, updateSong, type MusicSettings, type MusicSong } from "../../lib/music";
-import { isWorkActive, type WorkItem } from "../../lib/workQueue";
-import { ComboBox, CommandBarButton, InfoBar, ProgressBar, ProgressRing, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
-import { Add16, Audio16, Copy16, Delete16, Edit16, FolderAdd16, FolderOpen16, GridView16, ListView16, Pause16, Play16, References16, Sparkle16, Stop14 } from "../ui/icons";
+import { isWorkActive, MAX_MUSIC_BATCH_COUNT, type WorkItem } from "../../lib/workQueue";
+import { ComboBox, CommandBarButton, Flyout, InfoBar, ProgressBar, ProgressRing, PropRow, PropSection, Splitter, useContextMenu, usePaneSize, type MenuEntry } from "../ui";
+import { Add16, Audio16, ChevronDown14, Copy16, Delete16, Edit16, FolderAdd16, FolderOpen16, GridView16, ListView16, Pause16, Play16, References16, Sparkle16, Stop14 } from "../ui/icons";
 import { MusicPlaybackControls } from "./MusicPlaybackControls";
 import { generatorOptions } from "../generatorOptions";
 import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
@@ -23,7 +23,7 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
   active?: boolean; onPlayingChange?: (playing: boolean) => void;
   openSong?: { id: string }; onSongOpened?: () => void;
   config: ProjectConfig; folderPath: string; onChange: (update: ConfigUpdate, key?: string) => void;
-  onGenerate: (songId: string, template: GeneratorTemplate) => string | void; onCancel: (id: string) => void;
+  onGenerate: (songId: string, template: GeneratorTemplate, count: number) => string | void; onCancel: (id: string) => void;
   onGenerateCover?: (songId: string) => void;
   workItems: readonly WorkItem[];
 }) {
@@ -59,10 +59,20 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
   const menu = useContextMenu();
   useEffect(() => { if (!active) menu.close(); }, [active, menu.close]);
   const [error, setError] = useState<string | null>(null);
+  const [generationCount, setGenerationCount] = useState("1");
+  const [generationOptionsOpen, setGenerationOptionsOpen] = useState(false);
+  const [generationOptionsWidth, setGenerationOptionsWidth] = useState<number>();
+  const generationControls = useRef<HTMLDivElement>(null);
+  const generationOptionsButton = useRef<HTMLButtonElement>(null);
+  const generationCountInput = useRef<HTMLInputElement>(null);
+  const count = Number(generationCount);
+  const validCount = Number.isInteger(count) && count >= 1 && count <= MAX_MUSIC_BATCH_COUNT;
   const activeWork = selected && workItems.find((item) => item.sceneId === selected.id && isWorkActive(item));
   const busy = Boolean(activeWork);
+  useEffect(() => { setGenerationOptionsOpen(false); }, [active, selected?.id, busy]);
   const templateReady = (candidate: GeneratorTemplate) => templateUsable(candidate) && generatorPathFields(candidate).every((field) => !field.required || candidate.paths[field.id].trim() || candidate.sources?.[field.id]?.length);
   const ready = template && templateReady(template);
+  const generateDisabled = !ready || !isTauri() || !selected?.style.trim();
   const generatorStatus = !isTauri()
     ? { state: "demo", label: "Music generator unavailable", detail: "Generate music in the desktop app." }
     : !ready ? { state: "modelsMissing", label: "Model weights missing", detail: "Download or select music model weights in Settings → Generators." }
@@ -130,9 +140,13 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
     if (next && selected) edit({ generatorId: id, steps: Math.min(100, next.defaultSteps), settings: musicSettingsForModel(selected.settings, next.modelType) });
   };
   const generate = () => {
-    if (!selected || !template) return;
+    if (!selected || !template || !validCount) return;
     setError(null);
-    try { const id = onGenerate(selected.id, template); if (id) setSelectedId(id); } catch (reason) { setError(String(reason)); }
+    try {
+      const id = onGenerate(selected.id, template, count);
+      setGenerationCount("1"); setGenerationOptionsOpen(false);
+      if (id) setSelectedId(id);
+    } catch (reason) { setError(String(reason)); }
   };
 
   const audio = useRef<HTMLAudioElement>(null);
@@ -339,7 +353,24 @@ export function MusicView({ config, folderPath, onChange, onGenerate, onGenerate
           </div>
           <div className="inspector-actions">
             {activeWork ? <button type="button" className="primary-button" disabled={activeWork.cancelling || activeWork.status === "encoding"} onClick={() => onCancel(activeWork.id)}><Stop14 aria-hidden="true" />{activeWork.cancelling ? "Cancelling…" : "Cancel"}</button> :
-              <button type="button" className="primary-button" data-tooltip={generatorStatus.state !== "ready" ? generatorStatus.detail : undefined} disabled={!ready || !isTauri() || !selected.style.trim()} onClick={generate}><Sparkle16 aria-hidden="true" />Generate</button>}
+              <div ref={generationControls} className="image-generation-controls image-generation-controls--split">
+                <button type="button" className="primary-button image-generate-button" data-tooltip={generatorStatus.state !== "ready" ? generatorStatus.detail : undefined}
+                  disabled={generateDisabled || !validCount} onClick={generate}><Sparkle16 aria-hidden="true" />{count > 1 && validCount ? `Generate (${count})` : "Generate"}</button>
+                <button ref={generationOptionsButton} type="button" className="primary-button image-generation-options" aria-label="Generation options"
+                  aria-haspopup="dialog" aria-expanded={generationOptionsOpen} data-tooltip="Generation options" disabled={generateDisabled}
+                  onClick={() => {
+                    setGenerationOptionsWidth(generationControls.current?.getBoundingClientRect().width);
+                    setGenerationOptionsOpen(!generationOptionsOpen);
+                  }}><ChevronDown14 aria-hidden="true" /></button>
+                <Flyout open={generationOptionsOpen && active} anchor={generationOptionsButton} initialFocus={generationCountInput} onClose={() => setGenerationOptionsOpen(false)}
+                  placement="top-end" width={generationOptionsWidth} aria-label="Generation options" className="image-generation-options-panel">
+                  <PropRow label="Count" tooltip="Different seeds for each song. Resets after generating." htmlFor="music-generation-count">
+                    <input ref={generationCountInput} id="music-generation-count" className="text-field" type="number" min={1} max={MAX_MUSIC_BATCH_COUNT} step={1}
+                      value={generationCount} aria-invalid={!validCount} aria-describedby={!validCount ? "music-generation-count-help" : undefined} onChange={(event) => setGenerationCount(event.target.value)} />
+                  </PropRow>
+                  <p hidden={validCount} id="music-generation-count-help">{`Enter a whole number from 1 to ${MAX_MUSIC_BATCH_COUNT}.`}</p>
+                </Flyout>
+              </div>}
           </div>
         </> : <p className="music-inspector__empty">{visibleSongs.length ? "Select a song to edit its lyrics, style and generation settings." : "Add a song to edit its lyrics, style and generation settings."}</p>}
       </aside>

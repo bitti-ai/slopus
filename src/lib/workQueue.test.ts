@@ -463,6 +463,52 @@ it("queues an immutable music request and saves its audio into timeline media", 
   expect(saveGeneratedScene).not.toHaveBeenCalled();
 });
 
+it.each(["draft", "completed"] as const)("queues distinct music variations from a %s and saves each result", async (status) => {
+  const { queue, first } = setup();
+  const source = { ...newSong("yue2", 24, "jazz"), title: "Evening", style: "Soft jazz", seed: Number.MAX_SAFE_INTEGER,
+    status, assetId: status === "completed" ? "original" : null };
+  source.settings.lyrics = "[Verse]\nGood evening";
+  const existing = { ...newSong(), title: "Evening (2)" };
+  first.update((config) => ({ ...config, musicSongs: [source, existing] }));
+  const template = musicTemplates()[0];
+  template.paths.transformer = "C:/weights/yue2.safetensors"; template.sources = {};
+  vi.mocked(invoke).mockImplementation(async (_command, args) => ({ relativePath: `media/generated/${(args as { jobId: string }).jobId}.wav`, durationMs: 30000 }));
+  const selectedId = queue.enqueueMusic(first, source.id, template, 3);
+  const items = [...queue.getSnapshot()];
+  expect(items).toHaveLength(3);
+  expect(selectedId).toBe(items[0].sceneId);
+  expect(new Set(items.map((item) => item.sceneId)).size).toBe(3);
+  expect(items.map((item) => item.settings!.seed)).toEqual([Number.MAX_SAFE_INTEGER, 0, 1]);
+  const songs = first.getSnapshot().config.musicSongs!;
+  expect(songs).toHaveLength(status === "draft" ? 4 : 5);
+  expect(items.map((item) => item.title)).toEqual(status === "draft" ? ["Evening", "Evening (3)", "Evening (4)"] : ["Evening (3)", "Evening (4)", "Evening (5)"]);
+  for (const item of items) {
+    expect(songs.find((song) => song.id === item.sceneId)).toMatchObject({ folderId: "jazz", style: source.style, settings: source.settings, steps: 24, assetId: null });
+  }
+  // Re-submitting a queued variation must not create a second batch.
+  queue.enqueueMusic(first, selectedId, template, 3);
+  expect(queue.getSnapshot()).toHaveLength(3);
+  first.update((config) => ({ ...config, musicSongs: config.musicSongs!.map((song) => song.id === selectedId ? { ...song, style: "Edited later" } : song) }));
+  for (let index = 0; index < items.length; index++) {
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledTimes(index + 1));
+    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[index][0]).toMatchObject({ prompt: "Soft jazz", steps: 24, seed: items[index].settings!.seed, music: source.settings });
+    await finish(queue, items[index].id);
+    expect(first.getSnapshot().config.musicSongs!.find((song) => song.id === items[index].sceneId)).toMatchObject({ status: "completed", assetId: items[index].id,
+      generation: { seed: items[index].settings!.seed, style: "Soft jazz", settings: source.settings } });
+  }
+  expect(first.getSnapshot().config.assets).toHaveLength(3);
+  if (status === "completed") expect(first.getSnapshot().config.musicSongs![0]).toEqual(source);
+});
+
+it.each([0, -1, 1.5, 101, NaN, Infinity])("rejects invalid music batch count %s without creating drafts or work", (count) => {
+  const { queue, first } = setup();
+  const song = { ...newSong(), style: "Jazz" };
+  first.update((config) => ({ ...config, musicSongs: [song] }));
+  expect(() => queue.enqueueMusic(first, song.id, musicTemplates()[0], count)).toThrow("Count must be a whole number");
+  expect(first.getSnapshot().config.musicSongs).toEqual([song]);
+  expect(queue.getSnapshot()).toHaveLength(0);
+});
+
 it.each(["yue2", "minimax_music3"])("records the actual flow sampler sent for %s", async modelType => {
   const { queue, first } = setup();
   const song = { ...newSong(), style: "Jazz", steps: 32 };

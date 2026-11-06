@@ -107,6 +107,39 @@ it.each(["Grid", "List"])("duplicates the context-menu song as a selected draft 
   expect(generate).not.toHaveBeenCalled();
 });
 
+it("selects a song variation count, validates it and resets after generating", () => {
+  const song = { ...newSong(), style: "Jazz" };
+  render(<Harness initial={{ ...createConfig(), musicSongs: [song] }} />);
+  const options = screen.getByRole("button", { name: "Generation options" });
+  fireEvent.click(options);
+  const input = screen.getByRole("spinbutton", { name: "Count" });
+  expect(input).toHaveFocus();
+  for (const value of ["", "0", "1.5", "101"]) {
+    fireEvent.change(input, { target: { value } });
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
+    expect(options).toBeEnabled();
+  }
+  fireEvent.change(input, { target: { value: "3" } });
+  fireEvent.click(options);
+  fireEvent.click(screen.getByRole("button", { name: "Generate (3)" }));
+  expect(generate).toHaveBeenCalledWith(song.id, expect.objectContaining({ id: "yue2" }), 3);
+  expect(screen.queryByRole("dialog", { name: "Generation options" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Generate" })).toBeEnabled();
+  fireEvent.click(options);
+  expect(screen.getByRole("spinbutton", { name: "Count" })).toHaveValue(1);
+});
+
+it("keeps the variation count when generation cannot be queued", () => {
+  generate.mockImplementationOnce(() => { throw new Error("Cannot queue music"); });
+  render(<Harness initial={{ ...createConfig(), musicSongs: [{ ...newSong(), style: "Jazz" }] }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Generation options" }));
+  fireEvent.change(screen.getByRole("spinbutton", { name: "Count" }), { target: { value: "4" } });
+  fireEvent.click(screen.getByRole("button", { name: "Generate (4)" }));
+  expect(screen.getByText("Error: Cannot queue music")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Generate (4)" })).toBeEnabled();
+});
+
 it("reports missing cover generators without changing the song", () => {
   const song = newSong();
   generateCover.mockImplementationOnce(() => { throw new Error("Choose an album cover generator in Settings."); });
@@ -284,7 +317,7 @@ it("adds songs, edits lyrics and style, switches layout and queues the selected 
   fireEvent.click(screen.getByRole("button", { name: "List view" }));
   expect(screen.getByRole("list", { name: "Music contents" })).toHaveClass("music-songs--list");
   fireEvent.click(screen.getByRole("button", { name: "Generate" }));
-  expect(generate).toHaveBeenCalledWith(latest.musicSongs![0].id, expect.objectContaining({ modelType: "yue2" }));
+  expect(generate).toHaveBeenCalledWith(latest.musicSongs![0].id, expect.objectContaining({ modelType: "yue2" }), 1);
 });
 
 it("shows missing downloads in the shared selector and status bar, outside the inspector", () => {
@@ -348,7 +381,7 @@ it.each([
   expect(latest.musicSongs![1]).toMatchObject({ id: draft.id, style: "Acoustic folk with strings", settings: { lyrics: "Keep writing" } });
   expect(latest.assets).toEqual([asset]);
   fireEvent.click(screen.getByRole("button", { name: "Generate" }));
-  expect(generate).toHaveBeenCalledWith(draft.id, expect.objectContaining({ id: "yue2" }));
+  expect(generate).toHaveBeenCalledWith(draft.id, expect.objectContaining({ id: "yue2" }), 1);
 });
 
 it("copies generated music to a draft when changing its generator", () => {
@@ -364,7 +397,7 @@ it("copies generated music to a draft when changing its generator", () => {
   fireEvent.click(screen.getByRole("button", { name: "Select Evening" }));
   expect(screen.getByRole("combobox", { name: "Generator" })).toHaveAttribute("data-value", "other-music");
   fireEvent.click(screen.getByRole("button", { name: "Generate" }));
-  expect(generate).toHaveBeenCalledWith(original.id, expect.objectContaining({ id: "other-music" }));
+  expect(generate).toHaveBeenCalledWith(original.id, expect.objectContaining({ id: "other-music" }), 1);
   const saved = latest;
   cleanup(); render(<Harness initial={saved} />);
   expect(screen.getByRole("combobox", { name: "Generator" })).toHaveAttribute("data-value", "other-music");

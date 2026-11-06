@@ -4,6 +4,7 @@ Changes since 0.3.2.
 
 ## What's new
 
+- **Song variations:** Duplicate a song into a draft with the same title, lyrics, style and settings. Use Generate's dropdown to queue up to 100 variations with different seeds.
 - **Image generators:** MOSS Image, Fibo 2.0 Base/Edit Turbo, and Krea 2 Turbo/Raw, with model-specific guidance, negative prompts and editing controls.
 - **Music:** YuE2 and MiniMax Music3 generation, folders, drafts, continuous playback and timeline audio. Export WAV, MP3, FLAC, AAC/M4A or Opus/WebM/Ogg.
 - **Album covers:** Generate artwork from a song’s context menu or the AI agent using a dedicated generator selected under Settings → Generators → Icons. The playback bar shows the current song’s cover, with a music-note placeholder when absent.

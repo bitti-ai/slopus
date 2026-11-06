@@ -42,6 +42,7 @@ import { exportReferenceRefmod, refmodExportBlocker, refmodExportRequest, type R
 export type WorkStatus = "queued" | "preparing" | "generating" | "encoding" | "completed" | "failed" | "cancelled";
 export interface GenerationSubmission { job: GenerationJob; request: SlopfabGenerationRequest; snapshot: string; template?: GeneratorTemplate; upscaleSource?: import("./project").SceneGenerationVersion }
 export const MAX_IMAGE_BATCH_COUNT = 100;
+export const MAX_MUSIC_BATCH_COUNT = 100;
 
 function imageGenerationSeed(seed: number): number {
   if (seed !== -1) return seed;
@@ -322,7 +323,8 @@ export class WorkQueue {
     });
   }
 
-  enqueueMusic(session: ProjectSession, songId: string, template: GeneratorTemplate) {
+  enqueueMusic(session: ProjectSession, songId: string, template: GeneratorTemplate, count = 1) {
+    if (!Number.isInteger(count) || count < 1 || count > MAX_MUSIC_BATCH_COUNT) throw new Error(`Count must be a whole number from 1 to ${MAX_MUSIC_BATCH_COUNT}.`);
     if (!isTauri()) throw new Error("Music generation requires the desktop app and model weights.");
     if (!templateSupportsMusic(template)) throw new Error("Choose a music generator.");
     const current = session.getSnapshot().config;
@@ -330,25 +332,38 @@ export class WorkQueue {
     if (!source.style.trim()) throw new Error("Describe the song's style before generating.");
     const projectKey = projectQueueKey(session.record);
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "music" && item.sceneId === songId && isWorkActive(item))) return songId;
-    const song = source.assetId || source.status === "completed" ? newSongVariation(source, current.musicSongs ?? []) : source;
-    songId = song.id;
-    const id = `music-${crypto.randomUUID()}`;
-    const captured = { ...structuredClone(song), generatorId: template.id, seed: imageGenerationSeed(song.seed), settings: musicSettingsForModel(song.settings, template.modelType) };
-    const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
-      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, "flash2", [], "prompt", [], false, template.sources, { modelType: template.modelType }) } });
-    const request: SlopfabGenerationRequest = { jobId: id, prompt: song.style, steps: song.steps, seed: captured.seed,
-      music: captured.settings, frames: 0, canvasWidth: 0, canvasHeight: 0, referencePaths: [] };
-    let finish!: () => void;
-    const done = new Promise<void>((resolve) => { finish = resolve; });
-    this.work.set(id, { id, music: captured, session, sceneId: songId, request, config, snapshot: JSON.stringify(captured), cancelled: false, submitted: false, done, finish });
-    session.update((value) => updateSong(value.musicSongs?.some((item) => item.id === songId) ? value
-      : { ...value, musicSongs: [...(value.musicSongs ?? []), song] }, songId, { status: "queued", error: null, generatorId: template.id }));
-    this.items = [...this.items, { id, kind: "music", projectKey, folderPath: session.record.folderPath, projectName: current.name,
-      sceneId: songId, title: song.title, submittedAt: new Date().toISOString(), status: "queued", progress: 0,
-      detail: "Waiting to generate music", error: null, completionAt: null, cancelling: false, needsSave: false,
-      settings: { frames: 0, steps: song.steps, seed: captured.seed, canvasWidth: 0, canvasHeight: 0 } }];
+    const songs = [...(current.musicSongs ?? [])];
+    const entries: MusicSong[] = [];
+    for (let index = 0; index < count; index++) {
+      const song = index > 0 || source.assetId || source.generation || source.status === "completed" ? newSongVariation(source, songs) : source;
+      entries.push(song);
+      if (song.id !== source.id) songs.push(song);
+    }
+    let seed = imageGenerationSeed(source.seed);
+    const items: WorkItem[] = [];
+    for (const song of entries) {
+      const songId = song.id;
+      const id = `music-${crypto.randomUUID()}`;
+      const captured = { ...structuredClone(song), generatorId: template.id, seed, settings: musicSettingsForModel(song.settings, template.modelType) };
+      const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
+        slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, "flash2", [], "prompt", [], false, template.sources, { modelType: template.modelType }) } });
+      const request: SlopfabGenerationRequest = { jobId: id, prompt: song.style, steps: song.steps, seed: captured.seed,
+        music: captured.settings, frames: 0, canvasWidth: 0, canvasHeight: 0, referencePaths: [] };
+      let finish!: () => void;
+      const done = new Promise<void>((resolve) => { finish = resolve; });
+      this.work.set(id, { id, music: captured, session, sceneId: songId, request, config, snapshot: JSON.stringify(captured), cancelled: false, submitted: false, done, finish });
+      items.push({ id, kind: "music", projectKey, folderPath: session.record.folderPath, projectName: current.name,
+        sceneId: songId, title: song.title, submittedAt: new Date().toISOString(), status: "queued", progress: 0,
+        detail: "Waiting to generate music", error: null, completionAt: null, cancelling: false, needsSave: false,
+        settings: { frames: 0, steps: song.steps, seed: captured.seed, canvasWidth: 0, canvasHeight: 0 } });
+      seed = seed === Number.MAX_SAFE_INTEGER ? 0 : seed + 1;
+    }
+    const queuedIds = new Set(entries.map((song) => song.id));
+    session.update((value) => ({ ...value, musicSongs: [...(value.musicSongs ?? []), ...entries.filter((song) => song.id !== source.id)]
+      .map((song) => queuedIds.has(song.id) ? { ...song, status: "queued", error: null, generatorId: template.id } : song) }));
+    this.items = [...this.items, ...items];
     this.publish(); void this.pump();
-    return songId;
+    return entries[0].id;
   }
   enqueueAlbumCover(session: ProjectSession, songId: string) {
     if (!isTauri()) throw new Error("Album cover generation requires the desktop app and model weights.");
