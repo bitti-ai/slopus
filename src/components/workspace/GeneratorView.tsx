@@ -33,6 +33,7 @@ import { refreshDownloadedWeights } from "../../lib/weightDownloads";
 import { DebugPromptDialog } from "./DebugPromptDialog";
 import { sceneVideoSettings, videoGuidedScene } from "../../lib/videoLibrary";
 import { generationDimensions } from "../../lib/export";
+import { sceneVideoReference } from "../../lib/sceneReference";
 
 interface GeneratorViewProps {
   toolbarStart?: ReactNode;
@@ -582,6 +583,12 @@ export function GeneratorView({ config, sceneIds, toolbarStart, folderPath, runt
             onMoveScene={moveScene}
             onMoveShot={moveShot}
             onRename={rename}
+            onCreateReference={(job, shotId) => {
+              const current = configRef.current;
+              const source = current.generationJobs.find(candidate => candidate.id === job.id);
+              const reference = source && sceneVideoReference(current, source, shotId);
+              if (reference) onChange({ ...current, references: [...current.references, reference] });
+            }}
             onHistorySelect={(job, versionId) => {
               onChange(selectSceneGeneration(configRef.current, job.id, versionId));
               setSelection({ jobId: job.id, shotId: null });

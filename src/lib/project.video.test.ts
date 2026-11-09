@@ -21,7 +21,10 @@ it("keeps image and video numbering independent and stable in a mixed prompt", (
 it("round trips clip options and rejects invalid persisted ranges", () => {
   const video = { ...reference("motion", "video"), video: { startSeconds: 3, durationSeconds: 5, includeAudio: false } };
   expect(projectReferenceSchema.parse(JSON.parse(JSON.stringify(video))).video).toEqual(video.video);
-  expect(projectReferenceSchema.safeParse({ ...video, video: { ...video.video, durationSeconds: 16 } }).success).toBe(false);
+  for (const durationSeconds of [0.5, 16, 120]) {
+    expect(projectReferenceSchema.parse({ ...video, video: { ...video.video, durationSeconds } }).video?.durationSeconds).toBe(durationSeconds);
+  }
+  expect(projectReferenceSchema.safeParse({ ...video, video: { ...video.video, durationSeconds: 0 } }).success).toBe(false);
   expect(projectReferenceSchema.safeParse({ ...video, video: { ...video.video, startSeconds: -1 } }).success).toBe(false);
 });
 

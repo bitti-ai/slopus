@@ -4,6 +4,7 @@ Changes since 0.3.2.
 
 ## What's new
 
+- **Video references:** Create a reference from a generated Scene or Shot using its context menu. Scenes select the whole video; Shots retain the full source with their exact time range selected. Video references now support clips shorter than two seconds.
 - **Song variations:** Duplicate a song into a draft with the same title, lyrics, style and settings. Use Generate's dropdown to queue up to 100 variations with different seeds.
 - **Image generators:** MOSS Image, Fibo 2.0 Base/Edit Turbo, and Krea 2 Turbo/Raw, with model-specific guidance, negative prompts and editing controls.
 - **Music:** YuE2 and MiniMax Music3 generation, folders, drafts, continuous playback and timeline audio. Export WAV, MP3, FLAC, AAC/M4A or Opus/WebM/Ogg.

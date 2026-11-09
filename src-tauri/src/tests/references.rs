@@ -259,12 +259,20 @@ fn video_reference_clip_settings_survive_save_and_reopen() {
     assert_eq!(value["references"][0]["video"]["startSeconds"], 3.5);
     let reopened: ProjectConfig = serde_json::from_value(value).unwrap();
     assert_eq!(reopened.references[0].video, config.references[0].video);
+    for duration in [0.5, 16.0, 120.0] {
+        let mut video = reopened.clone();
+        video.references[0].video.as_mut().unwrap().duration_seconds = duration;
+        let validated = validate_and_normalize_config(video).unwrap();
+        let saved = serde_json::to_value(&validated).unwrap();
+        let restored: ProjectConfig = serde_json::from_value(saved).unwrap();
+        assert_eq!(restored.references[0].video.as_ref().unwrap().duration_seconds, duration);
+    }
     let mut invalid = reopened;
     invalid.references[0]
         .video
         .as_mut()
         .unwrap()
-        .duration_seconds = 16.0;
+        .duration_seconds = 0.0;
     assert!(validate_and_normalize_config(invalid).is_err());
 }
 

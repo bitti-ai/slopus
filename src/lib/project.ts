@@ -391,7 +391,7 @@ export const projectReferenceSchema = z.object({
       timeSeconds: z.number().finite().min(0),
     })).max(9).optional(),
     startSeconds: z.number().finite().min(0),
-    durationSeconds: z.number().finite().min(2).max(15),
+    durationSeconds: z.number().finite().positive(),
     includeAudio: z.boolean(),
   }).optional(),
   audio: z.object({

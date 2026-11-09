@@ -1549,3 +1549,40 @@ it("keeps the active video generator while browsing takes and restores the used 
   setup(config);
   expect(screen.getByRole("combobox", { name: /Video generator template/ })).toHaveTextContent(first.name);
 });
+it.each(["scene", "shot"])("offers Create Reference only after the %s has generated video", (target) => {
+  const state = setup();
+  const openMenu = () => fireEvent.contextMenu(target === "scene"
+    ? screen.getByRole("region", { name: "First scene" }).querySelector(".scene-rule")!
+    : screen.getByRole("button", { name: "Shot 2 of First scene" }));
+  openMenu();
+  expect(screen.queryByRole("menuitem", { name: "Create Reference" })).not.toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  const config = state.latest(), job = config.generationJobs[0];
+  state.replace(completeSceneGeneration(config, job.id, { id: "take", scene: sceneInput(job), createdAt: config.createdAt,
+    media: { id: `asset-${job.id}`, kind: "generated", name: job.title, mimeType: "video/mp4", relativePath: "media/take.mp4", durationMs: 6000, hasAudio: true, createdAt: config.createdAt } }));
+  openMenu();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Create Reference" }));
+  const saved = parseProjectConfig(state.latest());
+  expect(saved.references.at(-1)).toMatchObject({ kind: "video", relativePath: "media/take.mp4",
+    name: target === "scene" ? "First scene" : "First scene — Shot 2",
+    video: { mode: "video", startSeconds: target === "scene" ? 0 : 3, durationSeconds: target === "scene" ? 6 : 3, includeAudio: true } });
+  expect(saved.generationJobs[0].outputRelativePath).toBe("media/take.mp4");
+});
+
+it("creates an exact short shot reference from the selected older take through the keyboard menu", () => {
+  let config = project();
+  config.generationJobs[0].shots![1].startSeconds = 5.5;
+  const id = config.generationJobs[0].id;
+  for (const takeId of ["one", "two"]) {
+    const job = config.generationJobs[0];
+    config = completeSceneGeneration(config, id, { id: takeId, scene: sceneInput(job), createdAt: config.createdAt,
+      media: { id: `asset-${id}`, kind: "generated", name: job.title, mimeType: "video/mp4", relativePath: `media/${takeId}.mp4`, durationMs: 6000, hasAudio: false, createdAt: config.createdAt } });
+  }
+  const state = setup(config);
+  fireEvent.click(screen.getByRole("button", { name: "Generation 1 of First scene" }));
+  fireEvent.keyDown(screen.getByRole("button", { name: "Shot 2 of First scene" }), { key: "F10", shiftKey: true });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Create Reference" }));
+  expect(parseProjectConfig(state.latest()).references.at(-1)).toMatchObject({ relativePath: "media/one.mp4",
+    video: { startSeconds: 5.5, durationSeconds: 0.5, includeAudio: false } });
+  expect(state.latest().generationJobs[0].outputRelativePath).toBe("media/two.mp4");
+});

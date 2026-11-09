@@ -2,7 +2,7 @@ import type { GenerationPreview } from "../../lib/generationPreview";
 import { GenerationPreviewSource } from "./GenerationPreviewSource";
 import { SceneHistoryBar } from "./SceneHistoryBar";
 import { scenePreviewJob, scenePreviewAsset } from "../../lib/sceneHistory";
-import { Copy16, Add16, ArrowDown16, ArrowUp16, ChevronDown12, ChevronRight12, Delete16, Grip16, MoveTo16, OpenExternal16, Rename16, Stop14, Stop16, Wand16 } from "../ui/icons";
+import { Copy16, Add16, ArrowDown16, ArrowUp16, ChevronDown12, ChevronRight12, Delete16, Grip16, MoveTo16, OpenExternal16, References16, Rename16, Stop14, Stop16, Wand16 } from "../ui/icons";
 import { useState, type CSSProperties, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
   SCENE_MAX_SECONDS,
@@ -88,7 +88,7 @@ export function SceneBoard({
   onMoveShot,
   onRename,
   onRemoveScene,
-  onRemoveShot, onHistorySelect, onMakePrimary, onRemoveGeneration, onRemoveDraft, onDuplicate,
+  onRemoveShot, onHistorySelect, onMakePrimary, onRemoveGeneration, onRemoveDraft, onDuplicate, onCreateReference,
 }: {
   jobs: GenerationJob[];
   frameAspectRatio: (job: GenerationJob) => string;
@@ -117,6 +117,7 @@ export function SceneBoard({
   onRemoveGeneration?: (job: GenerationJob, id: string) => void;
   onRemoveDraft?: (job: GenerationJob) => void;
   onDuplicate?: (job: GenerationJob) => void;
+  onCreateReference?: (job: GenerationJob, shotId?: string) => void;
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [dragging, setDragging] = useState<Dragging | null>(null);
@@ -146,6 +147,11 @@ export function SceneBoard({
     return !source || sceneShots(source).length > 1;
   };
 
+  const referenceMenu = (job: GenerationJob, shotId?: string): MenuEntry[] =>
+    onCreateReference && scenePreviewJob(job, assets).outputRelativePath
+      ? [{ id: "create-reference", label: "Create Reference", icon: <References16 />, onSelect: () => onCreateReference(job, shotId) }]
+      : [];
+
   const sceneMenu = (job: GenerationJob, jobIndex: number): MenuEntry[] => {
     const cancellable = job.status === "queued" || job.status === "generating";
     const blocker = generationBlocker(job);
@@ -155,6 +161,7 @@ export function SceneBoard({
         : { id: "generate", label: "Generate", icon: <Wand16 />, disabled: Boolean(blocker), onSelect: () => onGenerate(job) },
       { id: "rename", label: "Rename", icon: <Rename16 />, shortcut: "F2", disabled: !onRename, onSelect: () => onRename?.({ jobId: job.id, shotId: null }) },
       { id: "duplicate", label: "Duplicate", icon: <Copy16 />, disabled: !onDuplicate, onSelect: () => onDuplicate?.(job) },
+      ...referenceMenu(job),
       { id: "add-shot", label: "Add shot", icon: <Add16 />, disabled: job.sceneType === "single-shot", onSelect: () => onAddShot(job) },
       { separator: true },
       { id: "up", label: "Move up", icon: <ArrowUp16 />, disabled: jobIndex === 0, onSelect: () => onMoveScene(job.id, jobs[jobIndex - 1]?.id ?? null) },
@@ -169,6 +176,7 @@ export function SceneBoard({
     const others = jobs.filter((candidate) => candidate.id !== job.id);
     return [
       { id: "open", label: "Open", icon: <OpenExternal16 />, onSelect: () => onSelect({ jobId: job.id, shotId: shot.id }) },
+      ...referenceMenu(job, shot.id),
       { id: "rename", label: "Rename", icon: <Rename16 />, shortcut: "F2", disabled: !onRename, onSelect: () => onRename?.({ jobId: job.id, shotId: shot.id }) },
       ...(others.length ? [{ separator: true } as const, {
         id: "move-to",

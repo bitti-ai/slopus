@@ -51,6 +51,16 @@ function decoderMocks() {
   return { frames, close, configure };
 }
 
+it("imports and prepares a half-second video reference without expanding its range", async () => {
+  decoderMocks();
+  vi.mocked(demux).mockResolvedValue({ ...source, durationSeconds: 0.5, samples: [source.samples[0]] });
+  await expect(inspectReferenceVideo("C:/project", "C:/short.mp4")).resolves.toEqual({ durationSeconds: 0.5, includeAudio: false });
+  await uploadReferenceVideoFrames({ ...source, samples: [source.samples[0]] }, "short", 0, 0.5, () => false);
+  const calls = vi.mocked(invoke).mock.calls.filter(([command]) => command === "append_reference_video");
+  expect(calls).toHaveLength(1);
+  expect(calls[0][2]?.headers).toMatchObject({ "x-reference-time": "0" });
+});
+
 it.each(["unsupported", "rejected"])("falls back when AV1 hardware decoding is %s", async (failure) => {
   const { configure, frames } = decoderMocks();
   const av1 = { ...source, config: { codec: "av01.0.08M.08", codedWidth: 544, codedHeight: 960,
@@ -92,7 +102,9 @@ it("reports unavailable codecs only after both probes and releases the native re
 it("validates trim bounds and uses at most 15 seconds for an unspecified clip", () => {
   expect(referenceVideoRange(input, 4)).toEqual({ start: 1, duration: 2 });
   expect(referenceVideoRange({ ...input, durationSeconds: undefined }, 30).duration).toBe(15);
-  expect(() => referenceVideoRange({ ...input, durationSeconds: 1 }, 4)).toThrow("2 to 15");
+  expect(referenceVideoRange({ ...input, durationSeconds: 0.5 }, 4)).toEqual({ start: 1, duration: 0.5 });
+  expect(() => referenceVideoRange({ ...input, durationSeconds: 0 }, 4)).toThrow();
+  expect(() => referenceVideoRange({ ...input, durationSeconds: 16 }, 30)).toThrow("at most 15");
   expect(() => referenceVideoRange(input, 2)).toThrow("beyond");
   expect(() => referenceVideoRange({ ...input, startSeconds: NaN }, 4)).toThrow();
 });

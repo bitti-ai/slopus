@@ -127,9 +127,10 @@ it("keeps the selection in bounds at the end of a long video", async () => {
   fireEvent.keyDown(screen.getByRole("slider", { name: "Selection end" }), { key: "End" });
   expect(saved().durationSeconds).toBe(15);
   fireEvent.keyDown(screen.getByRole("slider", { name: "Selection start" }), { key: "End" });
-  expect(saved()).toMatchObject({ startSeconds: 3598, durationSeconds: 2 });
+  expect(saved().startSeconds).toBeCloseTo(3599.999);
+  expect(saved().durationSeconds).toBeCloseTo(0.001);
   fireEvent.keyDown(screen.getByRole("slider", { name: "Selection end" }), { key: "ArrowRight" });
-  expect(saved().durationSeconds).toBe(2);
+  expect(saved().durationSeconds).toBeCloseTo(0.001);
 });
 
 it("drags the selected interval and its edges", async () => {
@@ -208,4 +209,21 @@ it("uses the whole shorter source and restores a saved selection on reopen", asy
   const video = await ready();
   expect(video.currentTime).toBe(25);
   expect(screen.getByText("0:25.0 – 0:33.0")).toBeInTheDocument();
+});
+
+
+it.each([0.5, 60])("preserves a %s-second saved video selection when opening and reopening its settings", async (durationSeconds) => {
+  render(<Harness initial={{ ...original, video: { startSeconds: 3, durationSeconds, includeAudio: false } }} />);
+  await ready();
+  expect(saved()).toMatchObject({ startSeconds: 3, durationSeconds });
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  await ready();
+  expect(saved()).toMatchObject({ startSeconds: 3, durationSeconds });
+});
+
+it("allows trimming a source shorter than two seconds", async () => {
+  render(<Harness initial={{ ...original, video: { startSeconds: 0, durationSeconds: 0.5, includeAudio: false } }} />);
+  await ready(0.5);
+  fireEvent.keyDown(screen.getByRole("slider", { name: "Selection start" }), { key: "ArrowRight" });
+  expect(saved()).toMatchObject({ startSeconds: 0.1, durationSeconds: 0.4 });
 });

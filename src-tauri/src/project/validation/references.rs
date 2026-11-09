@@ -67,9 +67,9 @@ pub(super) fn validate_references(references: &mut [ReusableReference]) -> Resul
                 || !video.start_seconds.is_finite()
                 || video.start_seconds < 0.0
                 || !video.duration_seconds.is_finite()
-                || !(2.0..=15.0).contains(&video.duration_seconds)
+                || video.duration_seconds <= 0.0
             {
-                return Err(format!("Reference '{}' needs a nonnegative clip start and a duration of 2 to 15 seconds.", reference.id));
+                return Err(format!("Reference '{}' needs a nonnegative clip start and a positive duration.", reference.id));
             }
             if video.frames.len() > 9 {
                 return Err("Select at most nine reference frames.".into());

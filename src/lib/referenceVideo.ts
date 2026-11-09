@@ -3,7 +3,7 @@ import { demux, type DemuxedSource } from "./exportPipeline";
 import { readMediaFileBytes } from "./persistence";
 import type { ProjectConfig } from "./project";
 import type { SlopfabGenerationRequest } from "./runtime";
-import { initialReferenceVideoTrim } from "./referenceVideoTrim";
+import { initialReferenceVideoTrim, VIDEO_TRIM_LIMITS } from "./referenceVideoTrim";
 
 type VideoInput = NonNullable<SlopfabGenerationRequest["referenceVideos"]>[number];
 const cancelledError = () => new Error("Video reference preparation cancelled.");
@@ -11,8 +11,8 @@ const cancelledError = () => new Error("Video reference preparation cancelled.")
 export function referenceVideoRange(input: VideoInput, sourceDuration: number) {
   const start = input.startSeconds;
   const duration = input.durationSeconds ?? Math.min(15, sourceDuration - start);
-  if (!Number.isFinite(start) || start < 0 || !Number.isFinite(duration) || duration < 2 || duration > 15) {
-    throw new Error(`${input.name}: choose a clip lasting 2 to 15 seconds with a nonnegative start.`);
+  if (!Number.isFinite(start) || start < 0 || !Number.isFinite(duration) || duration <= 0 || duration > 15) {
+    throw new Error(`${input.name}: choose a clip lasting more than 0 and at most 15 seconds with a nonnegative start.`);
   }
   if (!Number.isFinite(sourceDuration) || start + duration > sourceDuration + 0.001) {
     throw new Error(`${input.name}: the selected clip extends beyond the source video.`);
@@ -33,7 +33,7 @@ export function sourceVideoDuration(source: DemuxedSource): number {
 export async function inspectReferenceVideo(folderPath: string, sourcePath: string) {
   const source = await demux(await readMediaFileBytes(folderPath, { sourcePath }), "Video reference");
   const duration = sourceVideoDuration(source);
-  const { durationSeconds } = initialReferenceVideoTrim(duration);
+  const { durationSeconds } = initialReferenceVideoTrim(duration, VIDEO_TRIM_LIMITS);
   return { durationSeconds, includeAudio: Boolean(source.hasAudio) };
 }
 

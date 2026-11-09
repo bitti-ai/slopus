@@ -5,7 +5,7 @@ import { ReferenceImage } from "./ReferenceImage";
 import { captureReferenceVideoFrame } from "../../lib/referenceVideoFrame";
 import { readMediaFileUrl } from "../../lib/persistence";
 import type { ProjectReference } from "../../lib/project";
-import { editReferenceVideoTrim, initialReferenceVideoTrim, normalizeReferenceVideoTrim, referenceTime, type ReferenceVideoTrim, type TrimAction } from "../../lib/referenceVideoTrim";
+import { editReferenceVideoTrim, initialReferenceVideoTrim, normalizeReferenceVideoTrim, referenceTime, VIDEO_TRIM_LIMITS, type ReferenceVideoTrim, type TrimAction } from "../../lib/referenceVideoTrim";
 
 type VideoOptions = NonNullable<ProjectReference["video"]>;
 
@@ -68,7 +68,7 @@ function ReferenceVideoEditor({ folderPath, reference, onChange, onSavingChange 
     return () => { disposed = true; if (owned) URL.revokeObjectURL(owned); };
   }, [folderPath, reference.id, reference.sourcePath, reference.relativePath]);
 
-  const trim = sourceDuration === null ? null : normalizeReferenceVideoTrim(reference.video ?? initialReferenceVideoTrim(sourceDuration), sourceDuration);
+  const trim = sourceDuration === null ? null : normalizeReferenceVideoTrim(reference.video ?? initialReferenceVideoTrim(sourceDuration, VIDEO_TRIM_LIMITS), sourceDuration, VIDEO_TRIM_LIMITS);
   const start = trim?.startSeconds ?? 0;
   const length = trim?.durationSeconds ?? 15;
   const end = start + length;
@@ -107,7 +107,7 @@ function ReferenceVideoEditor({ folderPath, reference, onChange, onSavingChange 
   };
   const change = (action: TrimAction, value: number, original = trim) => {
     if (!original || sourceDuration === null) return;
-    const next = editReferenceVideoTrim(original, sourceDuration, action, value);
+    const next = editReferenceVideoTrim(original, sourceDuration, action, value, VIDEO_TRIM_LIMITS);
     previewTrim(action, next);
     onChange({ ...reference.video, ...next, includeAudio: reference.video?.includeAudio ?? true });
   };
@@ -185,7 +185,7 @@ function ReferenceVideoEditor({ folderPath, reference, onChange, onSavingChange 
         const duration = event.currentTarget.duration;
         try {
           const settings = latest.current.reference.video;
-          const normalized = normalizeReferenceVideoTrim(settings ?? initialReferenceVideoTrim(duration), duration);
+          const normalized = normalizeReferenceVideoTrim(settings ?? initialReferenceVideoTrim(duration, VIDEO_TRIM_LIMITS), duration, VIDEO_TRIM_LIMITS);
           setSourceDuration(duration);
           event.currentTarget.currentTime = normalized.startSeconds;
           setPosition(normalized.startSeconds);
@@ -229,7 +229,7 @@ function ReferenceVideoEditor({ folderPath, reference, onChange, onSavingChange 
       </ul>}
     </section>}
     {mode === "video" && trim && sourceDuration !== null && <div className="reference-trim" aria-label="Reference segment editor">
-      <div className="reference-trim__summary"><strong>{referenceTime(start)} – {referenceTime(end)}</strong><span>{Number(length.toFixed(2))} s selected · 15 s max</span></div>
+      <div className="reference-trim__summary"><strong>{referenceTime(start)} – {referenceTime(end)}</strong><span>{Number(length.toFixed(2))} s selected</span></div>
       <div ref={scroller} className="reference-trim__scroll" role="region" aria-label="Video trim timeline">
         <div className="reference-trim__track" style={{ minWidth: `${sourceDuration * 24}px` }}>
           <div ref={bar} className="reference-trim__bar" aria-label="Drag the selection or its edges"
@@ -257,12 +257,12 @@ function ReferenceVideoEditor({ folderPath, reference, onChange, onSavingChange 
             onPointerCancel={() => { gesture.current = null; }}
             onLostPointerCapture={() => { gesture.current = null; }}>
             <div className="reference-trim__selection" style={{ left: `${start / sourceDuration * 100}%`, width: `${length / sourceDuration * 100}%` }}>
-              <button type="button" className="reference-trim__handle" role="slider" aria-label="Selection start" aria-valuemin={Math.max(0, end - 15)} aria-valuemax={end - 2} aria-valuenow={start} aria-valuetext={referenceTime(start)}
-                onPointerDown={(event) => beginDrag(event, "start")} onKeyDown={(event) => keyboard(event, "start", start, Math.max(0, end - 15), end - 2)} />
+              <button type="button" className="reference-trim__handle" role="slider" aria-label="Selection start" aria-valuemin={0} aria-valuemax={end - VIDEO_TRIM_LIMITS.min} aria-valuenow={start} aria-valuetext={referenceTime(start)}
+                onPointerDown={(event) => beginDrag(event, "start")} onKeyDown={(event) => keyboard(event, "start", start, 0, end - VIDEO_TRIM_LIMITS.min)} />
               <button type="button" className="reference-trim__move" role="slider" aria-label="Move selection" aria-valuemin={0} aria-valuemax={sourceDuration - length} aria-valuenow={start} aria-valuetext={referenceTime(start)}
                 onPointerDown={(event) => beginDrag(event, "move")} onKeyDown={(event) => keyboard(event, "move", start, 0, sourceDuration - length)}>Drag</button>
-              <button type="button" className="reference-trim__handle" role="slider" aria-label="Selection end" aria-valuemin={start + 2} aria-valuemax={Math.min(sourceDuration, start + 15)} aria-valuenow={end} aria-valuetext={referenceTime(end)}
-                onPointerDown={(event) => beginDrag(event, "end")} onKeyDown={(event) => keyboard(event, "end", end, start + 2, Math.min(sourceDuration, start + 15))} />
+              <button type="button" className="reference-trim__handle" role="slider" aria-label="Selection end" aria-valuemin={start + VIDEO_TRIM_LIMITS.min} aria-valuemax={sourceDuration} aria-valuenow={end} aria-valuetext={referenceTime(end)}
+                onPointerDown={(event) => beginDrag(event, "end")} onKeyDown={(event) => keyboard(event, "end", end, start + VIDEO_TRIM_LIMITS.min, sourceDuration)} />
             </div>
           </div>
           <div className="reference-trim__ticks"><span>0:00</span><span>{referenceTime(sourceDuration)}</span></div>
