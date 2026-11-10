@@ -7,6 +7,7 @@ import { ComboBox, InfoBar, ItemHeader, PropRow } from "../ui";
 import { Dismiss16, Sparkle16 } from "../ui/icons";
 import { PromptTextField, type PromptReference } from "./PromptTextField";
 import { TemplateDebugPrompt } from "./TemplateDebugPrompt";
+import { generationStepsForTemplate, selectedImageGeneratorTemplate } from "../../lib/settings";
 
 export function ExtendSettings({ config, source, options, onChange, onResolutionChange, references, missingLabel, busy, disabledReason, onExecute, onClose }: {
   config: ProjectConfig; source: ProjectAsset; options: ExtendOptions; onChange: (options: ExtendOptions) => void;
@@ -14,13 +15,14 @@ export function ExtendSettings({ config, source, options, onChange, onResolution
   onExecute: () => void; onClose: () => void;
   onResolutionChange?: (resolution: ProjectConfig["settings"]["resolution"]) => void;
 }) {
+  const template = selectedImageGeneratorTemplate();
   const validation = useMemo(() => {
     try {
-      const compiled = compileExtendImage(config, source, "cache/extend-preview.png", options);
+      const compiled = compileExtendImage(config, source, "cache/extend-preview.png", options, template.modelType);
       return { mode: compiled.layout.mode, output: compiled.layout.output, prompt: compiled.prompt, message: null };
     }
     catch (reason) { return { output: null, prompt: null, message: reason instanceof Error ? reason.message : String(reason) }; }
-  }, [config, source, options]);
+  }, [config, source, options, template.modelType]);
   return <aside className="image-inspector image-template-settings" aria-label="Zoom settings">
     <ItemHeader name="Zoom" meta="Template" actions={<button type="button" className="icon-button" aria-label="Close template settings" data-tooltip="Back to image settings" onClick={onClose}><Dismiss16 aria-hidden="true" /></button>} />
     <form className="image-template-settings__form" onSubmit={(event) => { event.preventDefault(); if (!busy && !disabledReason && !validation.message) onExecute(); }}>
@@ -41,8 +43,8 @@ export function ExtendSettings({ config, source, options, onChange, onResolution
             }} />
         </PropRow>)}
         <button type="button" className="secondary-button inspector-action" disabled={busy} onClick={() => onChange({ ...options, bounds: initialExtendBounds(source.width!, source.height!) })}>Reset box</button>
-        <PropRow label="Steps" htmlFor="extend-steps"><SliderNumberInput id="extend-steps" aria-label="Steps" {...GENERATION_STEPS_RANGE} required disabled={busy}
-          value={options.steps} onCommit={(steps) => onChange({ ...options, steps })} /></PropRow>
+        <PropRow label="Steps" htmlFor="extend-steps"><SliderNumberInput id="extend-steps" aria-label="Steps" {...GENERATION_STEPS_RANGE} required disabled={busy || template.modelType === "h3_image"}
+          value={generationStepsForTemplate(options.steps, template)} onCommit={(steps) => onChange({ ...options, steps })} /></PropRow>
         <PropRow label="Seed" htmlFor="extend-seed" tooltip="Use -1 for a random seed."><input id="extend-seed" className="text-field" type="number" min="-1" max={Number.MAX_SAFE_INTEGER} step="1" required disabled={busy}
           value={Number.isNaN(options.seed) ? "" : options.seed} onChange={(event) => onChange({ ...options, seed: event.target.valueAsNumber })} /></PropRow>
         <div className="image-inspector__area"><span>Prompt (optional)</span><PromptTextField aria-label="Zoom prompt" value={options.prompt} onChange={(prompt) => onChange({ ...options, prompt })}

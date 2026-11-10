@@ -602,7 +602,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
         <ComboBox aria-label="Generator model" value={selectedTemplate.modelType} options={[
           ...GENERATOR_MODELS,
           ...(!GENERATOR_MODELS.some(({ value }) => value === selectedTemplate.modelType) ? [{ value: selectedTemplate.modelType, label: selectedTemplate.modelType }] : []),
-        ]} onChange={(modelType) => updateTemplate({ modelType, editingModel: generatorModel(modelType).imageEditing, kreaVariant: undefined, sampler: undefined, scheduler: undefined, ...(modelType === MOSS_MODEL_TYPE || modelType === FIBO_MODEL_TYPE || modelType === KREA_MODEL_TYPE || generatorModel(modelType).musicGeneration ? { mode: "prompt", attention: "flash2", defaultSteps: modelType === KREA_MODEL_TYPE ? 8 : modelType === "yue2" ? 6 : modelType === "minimax_music3" ? 30 : modelType === FIBO_MODEL_TYPE ? 4 : 50, motionCache: false, loras: [], audioSigmaShift: undefined, ...(modelType === FIBO_MODEL_TYPE || generatorModel(modelType).musicGeneration ? { videoSigmaShift: undefined } : {}) } : {}) })} />
+        ]} onChange={(modelType) => updateTemplate({ modelType, editingModel: generatorModel(modelType).imageEditing, kreaVariant: undefined, sampler: undefined, scheduler: undefined, ...(modelType === "h3_image" || modelType === MOSS_MODEL_TYPE || modelType === FIBO_MODEL_TYPE || modelType === KREA_MODEL_TYPE || generatorModel(modelType).musicGeneration ? { mode: "prompt", attention: "flash2", defaultSteps: modelType === "h3_image" ? 6 : modelType === KREA_MODEL_TYPE ? 8 : modelType === "yue2" ? 6 : modelType === "minimax_music3" ? 30 : modelType === FIBO_MODEL_TYPE ? 4 : 50, motionCache: false, loras: [], audioSigmaShift: undefined, ...(modelType === "h3_image" || modelType === FIBO_MODEL_TYPE || generatorModel(modelType).musicGeneration ? { videoSigmaShift: undefined } : {}) } : {}) })} />
       </SettingsCard>
       {selectedTemplate.modelType === KREA_MODEL_TYPE && <SettingsCard icon={<Steps20 />} header="Sampling defaults" description="Match the recipe to your transformer weights. Raw uses CFG 3.5 and a resolution-dependent sigma shift; Turbo uses CFG 0.">
         <ComboBox aria-label="Krea sampling defaults" value={selectedTemplate.kreaVariant ?? "turbo"}
@@ -619,7 +619,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
           onChange={(editingModel) => updateTemplate({ editingModel })} />
       </SettingsCard>
       <SettingsCard icon={<Steps20 />} header="Default steps">
-        <input className="text-field settings-field settings-field--number" aria-label="Generator default steps" type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={selectedTemplate.defaultSteps} onChange={(event) => {
+        <input className="text-field settings-field settings-field--number" aria-label="Generator default steps" disabled={selectedTemplate.modelType === "h3_image"} type="number" min={2} max={MAX_GENERATION_STEPS} step={1} value={selectedTemplate.defaultSteps} onChange={(event) => {
           const value = Number(event.target.value);
           if (Number.isInteger(value) && value >= 2 && value <= MAX_GENERATION_STEPS) updateTemplate({ defaultSteps: value });
         }} />
@@ -653,7 +653,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     <SettingsGroup heading="Performance">
       <SettingsCard icon={<Gauge20 />} header="Attention" description={selectedTemplate.attention === "sol" ? "Sol attention requires a CUDA GPU on the machine running generation." : undefined}>
         <ComboBox aria-label="Generator attention" value={selectedTemplate.attention} onChange={(value) => updateTemplate({ attention: value as AttentionMode })}
-          options={selectedTemplate.modelType === KREA_MODEL_TYPE || generatorModel(selectedTemplate.modelType).cudaOnly || generatorModel(selectedTemplate.modelType).musicGeneration ? [{ value: "flash2", label: "Flash attention" }] : [{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }, { value: "sol", label: "Sol attention" }]} />
+          options={selectedTemplate.modelType === "h3_image" || selectedTemplate.modelType === KREA_MODEL_TYPE || generatorModel(selectedTemplate.modelType).cudaOnly || generatorModel(selectedTemplate.modelType).musicGeneration ? [{ value: "flash2", label: "Flash attention" }] : [{ value: "exact", label: "Exact attention" }, { value: "flash2", label: "Flash attention" }, { value: "sage2", label: "Sage attention" }, { value: "sol", label: "Sol attention" }]} />
       </SettingsCard>
       {generatorModel(selectedTemplate.modelType).motionCache && <SettingsCard icon={<Flash20 />} header="Enable MotionCache" description={<span id="motion-cache-help">{selectedTemplate.mode === "animate" ? "Unavailable in Animate mode" : nonEuler ? "Requires Euler sampling" : "Reuses similar denoising results to reduce computation. May affect detail and motion."}</span>}>
         <ToggleSwitch aria-label="Enable MotionCache" aria-describedby="motion-cache-help"

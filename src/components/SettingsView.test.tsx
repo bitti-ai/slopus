@@ -91,7 +91,7 @@ describe("the settings screen", () => {
     saveLoras([{ id: "future-adapter", name: "MOSS adapter", modelType: "moss", path: "D:/moss-adapter.safetensors" }]);
     open(null);
     const models = screen.getByRole("list", { name: "Generator models" });
-    expect(within(models).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["MiniMax H3", "Fibo 2.0", "Krea 2", "MOSS", "MiniMax Music3", "YuE2", "Other"]);
+    expect(within(models).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["MiniMax H3", "Fibo 2.0", "Krea 2", "MiniMax H3 Image", "MOSS", "MiniMax Music3", "YuE2", "Other"]);
     expect(screen.queryByRole("button", { name: "Edit Default generator" })).toBeNull();
     fireEvent.click(within(models).getByRole("button", { name: "MiniMax H3" }));
     expect(screen.getByRole("button", { name: "Edit Default generator" })).toBeTruthy();
@@ -129,7 +129,7 @@ describe("the settings screen", () => {
     expect(loadGeneratorTemplateSettings().templates.find((template) => template.name === name)).toMatchObject({ modelType: "moss", attention: "flash2", defaultSteps: 50 });
     expect(loadGeneratorTemplateSettings().defaultTemplateId).toBe(defaultId);
     fireEvent.click(combo("Generator model"));
-    fireEvent.click(screen.getByRole("option", { name: /^MiniMax H3/ }));
+    fireEvent.click(screen.getByRole("option", { name: /^MiniMax H3 Image and video generation$/ }));
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByRole("heading", { level: 1, name: "MiniMax H3" })).toBeTruthy();
     expect(screen.getByRole("button", { name: `Edit ${name} generator` })).toBeTruthy();
@@ -184,7 +184,7 @@ describe("the settings screen", () => {
     expect(screen.queryByRole("switch", { name: "Enable MotionCache" })).toBeNull();
     expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "moss-image")).toEqual(mossImageTemplate());
     fireEvent.click(combo("Generator model"));
-    fireEvent.click(screen.getByRole("option", { name: /^MiniMax H3/ }));
+    fireEvent.click(screen.getByRole("option", { name: /^MiniMax H3 Image and video generation$/ }));
     expect(screen.getByRole("combobox", { name: "Generator mode" })).toBeTruthy();
     expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "moss-image")?.modelType).toBe("minimax-h3");
   });

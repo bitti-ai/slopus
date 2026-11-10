@@ -4,7 +4,7 @@ import { cancelWeightDownload, downloadLora, prepareLora, removeLora, refreshDow
 import { HYPERFLOW_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, DMAD_LORA, LIGHTX2V_TURBO_LORA, loadLoras, saveLoras, TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA } from "./loras";
 import { beforeEach, expect, it, vi } from "vitest";
 import { chooseWeightSource, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights, updateWeightPath, weightDownloadProgress, type DownloadState } from "./weightDownloads";
-import { ANIMATE_CONDITIONING_URL, mossImageTemplate, fiboImageTemplate, engineProviderSetting, createGeneratorTemplate, defaultGeneratorTemplate, isDownloadUrl, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, templateNeedsDownload, type WeightSource } from "./settings";
+import { ANIMATE_CONDITIONING_URL, minimaxImageTemplate, mossImageTemplate, fiboImageTemplate, engineProviderSetting, createGeneratorTemplate, defaultGeneratorTemplate, isDownloadUrl, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxSingularityTemplate, saveGeneratorTemplateSettings, templateNeedsDownload, type WeightSource } from "./settings";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -13,6 +13,17 @@ vi.mock("./nativeShell", () => ({ askNative: vi.fn(async () => true) }));
 const files = new Set<string>();
 const source = (url: string, gpuModel = "", minVramGb = 0): WeightSource => ({ url, gpuModel, minVramGb });
 const saved = () => loadGeneratorTemplateSettings().templates.find((template) => template.id === "minimax-h3-original")!;
+
+it("downloads the three compatible H3 Image weights and makes the template ready", async () => {
+  const template = minimaxImageTemplate();
+  await downloadTemplateWeights(template.id);
+  const urls = vi.mocked(invoke).mock.calls.filter(([command]) => command === "download_weight").map(([, args]) => (args as { url: string }).url);
+  expect(urls.sort()).toEqual([template.paths.transformer, template.sources!.textEncoder![0].url, template.paths.videoVae].sort());
+  const downloaded = loadGeneratorTemplateSettings().templates.find(({ id }) => id === template.id)!;
+  expect(templateNeedsDownload(downloaded)).toBe(false);
+  expect(downloaded.paths.audioVae).toBe("");
+  expect(downloaded.paths.tokenizer).toBe("");
+});
 
 it("downloads only Fibo's three image weights and marks the generator ready", async () => {
   const fibo = fiboImageTemplate();

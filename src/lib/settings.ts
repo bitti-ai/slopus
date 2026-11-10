@@ -76,6 +76,7 @@ function migratedStorageItem(key: string, legacyKey: string): string | null {
 }
 
 export const MINIMAX_H3_MODEL_TYPE = "minimax-h3";
+export const H3_IMAGE_MODEL_TYPE = "h3_image";
 export const MOSS_MODEL_TYPE = "moss";
 export const FIBO_MODEL_TYPE = "fibo2";
 export const KREA_MODEL_TYPE = "krea2";
@@ -155,7 +156,7 @@ export function generatorPathFields(template: Pick<GeneratorTemplate, "mode"> & 
   if (template.modelType === "yue2" || template.modelType === "minimax_music3") return ENGINE_PATH_FIELDS.filter(({ id }) =>
     id === "transformer" || template.modelType === "minimax_music3" && (id === "textEncoder" || id === "audioVae")).map((field) =>
     field.id === "transformer" ? { ...field, hint: "The main model that generates music from your style and lyrics." } : field);
-  if ([MOSS_MODEL_TYPE, FIBO_MODEL_TYPE, KREA_MODEL_TYPE].includes(template.modelType ?? "")) return ENGINE_PATH_FIELDS.filter(({ id }) => id !== "audioVae").map((field) => {
+  if ([MOSS_MODEL_TYPE, FIBO_MODEL_TYPE, KREA_MODEL_TYPE, H3_IMAGE_MODEL_TYPE].includes(template.modelType ?? "")) return ENGINE_PATH_FIELDS.filter(({ id }) => id !== "audioVae").map((field) => {
     if (field.id === "transformer") return { ...field, hint: "The main model that turns your description into an image." };
     if (field.id === "videoVae") return { ...field, label: "Image VAE weights", hint: "Decodes the model's internal picture into an image." };
     if (field.id === "tokenizer" && template.modelType === MOSS_MODEL_TYPE) return { ...field, required: true, directory: false, extensions: ["json"], hint: "The Qwen3.5 tokenizer JSON used by MOSS." };
@@ -284,8 +285,8 @@ export function createGeneratorTemplate(name = "New template", modelType = MINIM
     name,
     modelType,
     editingModel: generatorModel(modelType).imageEditing,
-    defaultSteps: modelType === KREA_MODEL_TYPE ? 8 : modelType === "yue2" ? YUE2_DEFAULT_STEPS : modelType === "minimax_music3" ? 30 : modelType === MOSS_MODEL_TYPE ? 50 : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS,
-    attention: modelType === KREA_MODEL_TYPE || generatorModel(modelType).cudaOnly || generatorModel(modelType).musicGeneration ? "flash2" : "sage2",
+    defaultSteps: modelType === H3_IMAGE_MODEL_TYPE ? 6 : modelType === KREA_MODEL_TYPE ? 8 : modelType === "yue2" ? YUE2_DEFAULT_STEPS : modelType === "minimax_music3" ? 30 : modelType === MOSS_MODEL_TYPE ? 50 : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS,
+    attention: modelType === H3_IMAGE_MODEL_TYPE || modelType === KREA_MODEL_TYPE || generatorModel(modelType).cudaOnly || generatorModel(modelType).musicGeneration ? "flash2" : "sage2",
     paths: copyPaths(EMPTY_ENGINE_SETTINGS),
   };
 }
@@ -326,6 +327,29 @@ export function kreaImageTemplates(): GeneratorTemplate[] {
         [id, [{ url, gpuModel: "", minVramGb: id === "transformer" ? 14 : id === "textEncoder" ? 5 : 0 }]])),
     };
   });
+}
+
+export function minimaxImageTemplate(): GeneratorTemplate {
+  const root = "https://huggingface.co/Comfy-Org/MiniMax-H3-Image/resolve/main/";
+  const paths = { ...EMPTY_ENGINE_SETTINGS,
+    transformer: `${root}diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors`,
+    textEncoder: `${root}text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`,
+    videoVae: `${root}vae/minimax_h3_image_vae_fp16.safetensors`,
+  };
+  return { ...createGeneratorTemplate("MiniMax H3 Image", H3_IMAGE_MODEL_TYPE), id: "minimax-h3-image", paths,
+    sources: {
+      transformer: [
+        { url: `${root}diffusion_models/minimax_h3_image_pruned_bf16.safetensors`, gpuModel: "", minVramGb: 48 },
+        { url: paths.transformer, gpuModel: "", minVramGb: 24 },
+        { url: `${root}diffusion_models/minimax_h3_image_pruned_w4a8.safetensors`, gpuModel: "", minVramGb: 13 },
+      ],
+      textEncoder: [
+        { url: `${root}text_encoders/qwen3vl_32b_minimax_h3_int8_convrot.safetensors`, gpuModel: "", minVramGb: 32 },
+        { url: paths.textEncoder, gpuModel: "", minVramGb: 18 },
+      ],
+      videoVae: [{ url: paths.videoVae, gpuModel: "", minVramGb: 0 }],
+    },
+  };
 }
 
 export function mossImageTemplate(): GeneratorTemplate {
@@ -449,9 +473,9 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
 }
 
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => normalizeTemplateSettings({
-  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates(), ...kreaImageTemplates(), minimaxSingularityV2Template()],
+  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates(), ...kreaImageTemplates(), minimaxSingularityV2Template(), minimaxImageTemplate()],
   defaultTemplateId: "default",
-  catalogVersion: 22,
+  catalogVersion: 23,
 })!;
 
 const normalizeTemplateSettings = (value: unknown, shareComponents = true): GeneratorTemplateSettings | null => {
@@ -467,13 +491,13 @@ const normalizeTemplateSettings = (value: unknown, shareComponents = true): Gene
     ids.add(id);
     const name = typeof candidate.name === "string" && candidate.name.trim() ? candidate.name.trim() : "Untitled template";
     const modelType = typeof candidate.modelType === "string" && candidate.modelType.trim() ? candidate.modelType.trim() : MINIMAX_H3_MODEL_TYPE;
-    const defaultSteps = typeof candidate.defaultSteps === "number"
+    const defaultSteps = modelType === H3_IMAGE_MODEL_TYPE ? 6 : typeof candidate.defaultSteps === "number"
       && Number.isInteger(candidate.defaultSteps)
       && candidate.defaultSteps >= 2
       && candidate.defaultSteps <= MAX_GENERATION_STEPS
       ? candidate.defaultSteps
       : modelType === KREA_MODEL_TYPE ? candidate.kreaVariant === "raw" ? 52 : 8 : modelType === "yue2" ? YUE2_DEFAULT_STEPS : modelType === "minimax_music3" ? 30 : modelType === FIBO_MODEL_TYPE ? 4 : DEFAULT_GENERATION_STEPS;
-    const attention = candidate.attention === "exact" || candidate.attention === "flash2" || candidate.attention === "sol" ? candidate.attention : "sage2";
+    const attention = modelType === H3_IMAGE_MODEL_TYPE ? "flash2" : candidate.attention === "exact" || candidate.attention === "flash2" || candidate.attention === "sol" ? candidate.attention : "sage2";
     const paths = pathsFrom(candidate.paths);
     const sources: GeneratorTemplate["sources"] = {};
     for (const field of ENGINE_PATH_FIELDS) {
@@ -521,7 +545,7 @@ const normalizeTemplateSettings = (value: unknown, shareComponents = true): Gene
     ...shared,
     defaultTemplateId: !shareComponents ? requestedDefault : shared.templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? shared.templates.find(templateUsable)?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -803,6 +827,12 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 22 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
+        if ((normalized.catalogVersion ?? 0) < 23) {
+          const template = minimaxImageTemplate();
+          if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 23 }, false)!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
         const shared = normalizeTemplateSettings(normalized)!;
         if (!normalized.h3Components) localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(shared));
         return shared;
@@ -983,7 +1013,7 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
     }
     const value = remote ? workerWeight(settings[field.id].trim(), sources?.[field.id]) : settings[field.id].trim();
     if (value && (remote || !isDownloadUrl(value))) options[field.id] = value;
-    else if (isDownloadUrl(value) || [FIBO_MODEL_TYPE, KREA_MODEL_TYPE].includes(shifts.modelType ?? "") && field.id === "tokenizer"
+    else if (isDownloadUrl(value) || [FIBO_MODEL_TYPE, KREA_MODEL_TYPE, H3_IMAGE_MODEL_TYPE].includes(shifts.modelType ?? "") && field.id === "tokenizer"
       || shifts.modelType === MINIMAX_H3_MODEL_TYPE && field.id !== "transformer") delete options[field.id];
   }
   return { enabled: base?.enabled ?? true, model: base?.model ?? null, options };
@@ -991,6 +1021,7 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
 
 /** The effective count shown for the selected generator before submission. */
 export function generationStepsForTemplate(steps: number, template?: Pick<GeneratorTemplate, "loras" | "modelType">, overrides: TemplateLora[] = []): number {
+  if (template?.modelType === H3_IMAGE_MODEL_TYPE) return 6;
   // Display metadata without resolving weight paths: a template awaiting a
   // download can still show its step count without throwing during render.
   const activeIds = new Set(effectiveLoras(template?.loras, overrides, template?.modelType).filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
@@ -1019,6 +1050,7 @@ export function generationSigmaShiftsWithLoras(shifts: SigmaShifts, config: Proj
 }
 
 export function generationStepsWithLoras(steps: number, config: ProjectConfig): number {
+  if (config.providerSettings.slopfab?.options.modelType === H3_IMAGE_MODEL_TYPE) return 6;
   const override = config.providerSettings.slopfab?.options.stepOverride;
   return isLoraStepOverride(override) ? override : steps;
 }

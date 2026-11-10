@@ -1361,6 +1361,24 @@ describe("image generation work", () => {
     expect(session.getSnapshot().config.assets.find((asset) => asset.id === work.id)?.parentAssetId).toBe("chosen");
   });
 
+  it("submits H3 Image edits with six steps and leaves the implicit source out of additional references", async () => {
+    const { queue } = setup();
+    const record = imageProject();
+    record.config.imageScene = createImageEditScene({ name: "Source", relativePath: "source.png", width: 128, height: 128 });
+    record.config.imageScene.steps = 20;
+    record.config.imageScene.nodes[0].description = "Use the glaze from @[ref:glaze]";
+    record.config.references = [{ id: "glaze", name: "Glaze", kind: "image", relativePath: "glaze.png", description: "Blue", intendedUse: [], createdAt: record.config.createdAt }];
+    const session = queue.project(record);
+    queue.enqueueImage(session, { ...template, modelType: "h3_image", attention: "flash2", defaultSteps: 6 });
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    const request = vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0];
+    expect(request.steps).toBe(6);
+    expect(request.referencePaths).toEqual(["C:/Image/glaze.png"]);
+    expect(request.imageEdit!.edits[0].referencePaths).toEqual(request.referencePaths);
+    expect(request.imageEdit!.edits[0].prompt).toContain("Edit <Picture 1>");
+    expect(request.imageEdit!.edits[0].prompt).toContain("Glaze (<Picture 2>)");
+    await finish(queue, request.jobId);
+  });
   it.each([false, true])("submits whole-image and local edits with separate references (compound mask: %s)", async (compound) => {
     const { queue } = setup();
     const record = imageProject();

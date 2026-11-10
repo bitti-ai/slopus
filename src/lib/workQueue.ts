@@ -427,7 +427,7 @@ export class WorkQueue {
       current = session.getSnapshot().config;
     }
     const referencePaths = (selected: typeof references) => [
-      ...(edit && generatorModel(template.modelType).editImageReferences ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
+      ...(edit && template.modelType === "minimax-h3" ? [projectItemPath(session.record.folderPath, edit.source)!] : []),
       ...selected.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!)),
     ];
     let seed = imageGenerationSeed(scene.seed);
@@ -476,7 +476,7 @@ export class WorkQueue {
     // also supplies the prepared crop as its composition reference.
     const referencePaths = compiled.references.flatMap((reference) => referenceImages(reference).map((image) => projectItemPath(session.record.folderPath, image)!));
     const regenerate = compiled.layout.mode === "regenerate";
-    if (regenerate && generatorModel(template.modelType).editImageReferences) referencePaths.unshift(projectItemPath(session.record.folderPath, { relativePath: sourceRelativePath })!);
+    if (regenerate && template.modelType === "minimax-h3") referencePaths.unshift(projectItemPath(session.record.folderPath, { relativePath: sourceRelativePath })!);
     const resultName = `${regenerate ? "Regenerated" : "Extended"} - ${source.name}`;
     const request: SlopfabGenerationRequest = { jobId: id, stillImage: true, frames: 1, prompt: compiled.prompt,
       canvasWidth: compiled.layout.output.width, canvasHeight: compiled.layout.output.height, steps: generationStepsWithLoras(options.steps, config), seed: imageGenerationSeed(options.seed),

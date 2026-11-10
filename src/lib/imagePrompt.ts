@@ -20,6 +20,21 @@ export function compileImagePrompt(config: ProjectConfig, options: { modelType?:
   if (!model.imageReferences && references.some((reference) => referenceImages(reference).length || activeReferenceRefmods(reference).length)) {
     throw new Error(`${model.label} does not support reference images or refmods. Choose a reference generator.`);
   }
+  if (options.modelType === "h3_image") {
+    if (references.some((reference) => activeReferenceRefmods(reference).length)) throw new Error("MiniMax H3 Image does not support refmods.");
+    const editing = scene.rootType === "image" && Boolean(scene.sourceImage);
+    let picture = editing ? 1 : 0;
+    const descriptions = new Map(references.map((reference) => {
+      const labels = referenceImages(reference).map(() => `<Picture ${++picture}>`);
+      return [reference.id, `${reference.name}${labels.length ? ` (${labels.join(", ")})` : ""}${referenceDefinition(reference) ? `: ${referenceDefinition(reference)}` : ""}`];
+    }));
+    if (picture > model.maxImageReferences) throw new Error("MiniMax H3 Image supports at most 16 pictures including the edit source.");
+    const look = SHOT_TAG_GROUPS.find((group) => group.id === "visualStyle")?.options.find((option) => option.id === imageSettings(config).defaultLook)?.label;
+    const parts = imageScenePromptParts(scene, look);
+    const authored = parts ? [parts.style, parts.composition].filter(Boolean).join("\n") : "";
+    const prompt = splitActionText(authored).map((part) => part.kind === "text" ? part.value : descriptions.get(part.value)!).join("");
+    return { prompt: editing && prompt ? `Edit <Picture 1>. ${prompt}` : prompt, references };
+  }
   if (options.modelType === FIBO_MODEL_TYPE) {
     const pictures = references.flatMap(referenceImages);
     if (references.some((reference) => activeReferenceRefmods(reference).length)) throw new Error("Fibo 2.0 does not support refmods.");
