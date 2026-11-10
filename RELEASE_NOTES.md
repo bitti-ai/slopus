@@ -1,6 +1,6 @@
-# Slopus — 0.4.0
+# Slopus — 0.4.1
 
-Changes since 0.3.2.
+Changes since 0.4.0.
 
 ## What's new
 
