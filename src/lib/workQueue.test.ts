@@ -1045,6 +1045,22 @@ describe("agent scene generation", () => {
 describe("image generation work", () => {
   const template: GeneratorTemplate = { id: "image-test", name: "MiniMax H3", modelType: "minimax-h3", defaultSteps: 20, attention: "sage2", paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "C:/h3.safetensors" } };
   const imageProject = (): ProjectRecord => ({ folderPath: "C:/Image", config: createProjectConfig({ name: "Poster", prompt: "An ocean poster", generationType: "image", aspectRatio: "1:1", resolution: "768p", targetDurationSeconds: 60 }) });
+  it("submits H3 Image at four times each dimension and rejects oversized presets before creating a draft", async () => {
+    const { queue } = setup();
+    const session = queue.project(imageProject());
+    const h3 = { ...template, modelType: "h3_image" };
+    const id = queue.enqueueImage(session, h3);
+    await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+    expect(queue.getSnapshot().find(item => item.id === id)?.settings).toMatchObject({ canvasWidth: 3072, canvasHeight: 3072 });
+    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0]).toMatchObject({ canvasWidth: 3072, canvasHeight: 3072 });
+    const oversized = imageProject();
+    oversized.folderPath = "C:/Oversized";
+    oversized.config.imageSettings = { resolution: "1344p", aspectRatio: "1:1" };
+    const other = queue.project(oversized);
+    const before = other.getSnapshot().config;
+    expect(() => queue.enqueueImage(other, h3)).toThrow("20 MP");
+    expect(other.getSnapshot().config).toBe(before);
+  });
   it.each(["minimax-h3", "moss-image"] as const)("accepts single-frame image previews only for MiniMax (%s)", async modelType => {
     const { queue } = setup();
     const session = queue.project(imageProject());

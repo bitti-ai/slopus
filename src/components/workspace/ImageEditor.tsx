@@ -10,8 +10,7 @@ import { Add14, Add16, Boxes16, Boxes16Filled, ChevronDown14, ChevronRight14, Co
 import { invoke } from "@tauri-apps/api/core";
 import { addImageNode, createImageEditScene, createImageScene, duplicateImageNode, imageDescendants, imageScenePrompt, imageLassoPath, imageLassoSchema, simplifyImageLasso, removeImageNode, resizeImageNode, type ImageBox, type ImageNode, type ImageScene, type ImageSource, type ImagePoint } from "../../lib/imageScene";
 import { compileImageEdits, editGeneratedImage, imageEditDebugPrompt, imageEditOutputSize, imageEditSize, imageEditRegionSize, limitImageEditBox, limitImageEditScene } from "../../lib/imageEditing";
-import { imageSettings } from "../../lib/imageSettings";
-import { outputDimensions } from "../../lib/export";
+import { imageSettings, imageGenerationDimensions, imageGenerationSizeError } from "../../lib/imageSettings";
 import { compileImagePrompt } from "../../lib/imagePrompt";
 import { createEmptyImage, imageFamily, imageFamilyRoot, makeImagePrimary, removeImageAsset, restoreGeneratedImage, saveImageDraft } from "../../lib/imageHistory";
 import { isTauri } from "../../lib/persistence";
@@ -100,16 +99,24 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const usedGenerator = imageTemplates.find((candidate) => candidate.id === generatedImage?.imageGeneration?.generatorTemplateId);
   const model = generatorModel(template?.modelType);
   const cfgDefault = template ? imageCfgScale(template.modelType, undefined, template.kreaVariant) ?? 0 : 0;
+  const generationSize = imageGenerationDimensions(settings.resolution, settings.aspectRatio, template?.modelType);
+  const resolutionOptions = [...new Set([...PROJECT_RESOLUTIONS, settings.resolution])].map((resolution) => {
+    const size = imageGenerationDimensions(resolution, settings.aspectRatio, template?.modelType);
+    const error = imageGenerationSizeError(size, template?.modelType);
+    return { value: resolution, label: `${size.width} × ${size.height}`, disabled: Boolean(error), description: error ?? undefined };
+  });
   const editPlan = useMemo(() => {
     if (!imageRoot) return null;
     try { return { ...compileImageEdits(config, { modelType: template?.modelType }), error: null }; }
     catch (reason) { return { edits: [], error: String(reason instanceof Error ? reason.message : reason) }; }
   }, [config, imageRoot, template?.modelType]);
   const inputBlocked = useMemo(() => {
-    if (imageRoot || !model.requiresImageInput) return null;
+    if (imageRoot) return null;
+    const sizeError = imageGenerationSizeError(generationSize, template?.modelType);
+    if (sizeError || !model.requiresImageInput) return sizeError;
     try { compileImagePrompt(config, { modelType: template?.modelType }); return null; }
     catch (reason) { return reason instanceof Error ? reason.message : String(reason); }
-  }, [config, imageRoot, model.requiresImageInput, template?.modelType]);
+  }, [config, imageRoot, model.requiresImageInput, template?.modelType, generationSize.width, generationSize.height]);
   const outpaintingBlocked = !templateSupportsOutpainting(template) ? `${template.name} does not support Zoom.` : null;
   const effectsBlocked = activeGenerationEffects(scene.generationEffects) && !model.generationEffects ? "This model does not support generation effects. Bypass or remove the effects, or choose another generator." : null;
   const editingBlocked = !templateSupportsEditing(template) ? `${template.name} does not support image editing. Choose an editing generator.` : null;
@@ -204,7 +211,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const templateSource = runningTemplate && config.assets.find((asset) => asset.id === runningTemplate.sourceId);
   let extendSize: { width: number; height: number } | null = null;
   if (extendMode && extendOptions && output?.width && output.height) {
-    try { extendSize = extendOutputDimensions(config, extendOptions.bounds); }
+    try { extendSize = extendOutputDimensions(config, extendOptions.bounds, template?.modelType); }
     catch { /* Invalid bounds are explained in Zoom settings. */ }
   }
   const images = config.assets.filter((asset) => asset.kind === "image");
@@ -215,7 +222,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
   const showResult = Boolean(output && !output.imageDraft && output.imageGeneration && (output.relativePath || output.sourcePath));
   const { width, height } = showResult && output?.width && output.height ? { width: output.width, height: output.height } : imageRoot && scene.sourceImage ? scene.sourceImage : output?.width && output?.height
     ? { width: output.width, height: output.height }
-    : outputDimensions(settings.resolution, settings.aspectRatio);
+    : generationSize;
   useEffect(() => subscribeGeneratorTemplates(() => setTemplates(loadGeneratorTemplateSettings())), []);
 
   const commit = (next: ImageScene) => {
@@ -854,7 +861,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
                 onUse={usedGenerator && templateUsable(usedGenerator) ? () => saveActiveGeneratorId("image", usedGenerator.id) : undefined} />
             </>}
             {!imageRoot && <PropRow label="Aspect ratio" htmlFor={rootField("ratio")}><ComboBox id={rootField("ratio")} aria-label="Aspect ratio" value={settings.aspectRatio} options={["16:9", "9:16", "1:1", "4:5"].map((ratio) => ({ value: ratio, label: ratio }))} onChange={(value) => { const aspectRatio = value as ProjectConfig["settings"]["aspectRatio"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), aspectRatio } })); }} /></PropRow>}
-            {imageRoot ? editSize && <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={sizeValue(editSize)} options={editSizes.map((size) => ({ value: sizeValue(size), label: `${size.width} × ${size.height}` }))} onChange={(value) => { const size = editSizes.find((size) => sizeValue(size) === value); if (size) commit({ ...scene, outputSize: size }); }} /></PropRow> : <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={settings.resolution} options={[...new Set([...PROJECT_RESOLUTIONS, settings.resolution])].map((resolution) => { const size = outputDimensions(resolution, settings.aspectRatio); return { value: resolution, label: `${size.width} × ${size.height}` }; })} onChange={(value) => { const resolution = value as ProjectConfig["settings"]["resolution"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), resolution } })); }} /></PropRow>}
+            {imageRoot ? editSize && <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={sizeValue(editSize)} options={editSizes.map((size) => ({ value: sizeValue(size), label: `${size.width} × ${size.height}` }))} onChange={(value) => { const size = editSizes.find((size) => sizeValue(size) === value); if (size) commit({ ...scene, outputSize: size }); }} /></PropRow> : <PropRow label="Resolution" htmlFor={rootField("resolution")}><ComboBox id={rootField("resolution")} aria-label="Resolution" value={settings.resolution} options={resolutionOptions} onChange={(value) => { const resolution = value as ProjectConfig["settings"]["resolution"]; onChange((current) => ({ ...current, imageSettings: { ...imageSettings(current), resolution } })); }} /></PropRow>}
           </PropSection>
           {imageRoot && imageEditRegionSize(scene) && <PropRow label="Saved image" tooltip="Local boxes and lassos are limited to the selected resolution. Their edits are merged into the original image.">
             <span>{scene.sourceImage!.width} × {scene.sourceImage!.height}</span>

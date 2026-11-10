@@ -1,6 +1,6 @@
 import { FIBO_MODEL_TYPE, MINIMAX_H3_MODEL_TYPE } from "./settings";
 import type { ImageEditStep } from "./imageEditing";
-import { imageSettings } from "./imageSettings";
+import { imageSettings, imageGenerationDimensions, imageGenerationSizeError, H3_IMAGE_MAX_PIXELS } from "./imageSettings";
 import { createImageEditScene } from "./imageScene";
 import { compileImagePrompt } from "./imagePrompt";
 import { outputDimensions } from "./export";
@@ -42,22 +42,25 @@ export function initialExtendBounds(width: number, height: number): ExtendBounds
   return { ...box, x: Math.round((source.width - box.width) / 2), y: Math.round((source.height - box.height) / 2) };
 }
 
-export function extendOutputDimensions(config: ProjectConfig, bounds: ExtendBounds) {
-  const selected = outputDimensions(imageSettings(config).resolution, imageSettings(config).aspectRatio);
-  const pixelBudget = Math.min(selected.width * selected.height, EXTEND_MAX_PIXELS);
-  const scale = Math.min(Math.sqrt(pixelBudget / (bounds.width * bounds.height)), EXTEND_MAX_EDGE / bounds.width, EXTEND_MAX_EDGE / bounds.height);
+export function extendOutputDimensions(config: ProjectConfig, bounds: ExtendBounds, modelType?: string) {
+  const selected = imageGenerationDimensions(imageSettings(config).resolution, imageSettings(config).aspectRatio, modelType);
+  const error = imageGenerationSizeError(selected, modelType);
+  if (error) throw new Error(error);
+  const pixelBudget = Math.min(selected.width * selected.height, modelType === "h3_image" ? H3_IMAGE_MAX_PIXELS : EXTEND_MAX_PIXELS);
+  const maxEdge = modelType === "h3_image" ? 8192 : EXTEND_MAX_EDGE;
+  const scale = Math.min(Math.sqrt(pixelBudget / (bounds.width * bounds.height)), maxEdge / bounds.width, maxEdge / bounds.height);
   const width = Math.floor(bounds.width * scale / EXTEND_GRID) * EXTEND_GRID;
   const height = Math.floor(bounds.height * scale / EXTEND_GRID) * EXTEND_GRID;
   if (width < EXTEND_GRID || height < EXTEND_GRID) throw new Error("The Zoom box is too narrow for a 32-pixel generation grid at this resolution.");
   return { width, height };
 }
 
-export function extendLayout(config: ProjectConfig, source: { width: number; height: number }, bounds: ExtendBounds) {
+export function extendLayout(config: ProjectConfig, source: { width: number; height: number }, bounds: ExtendBounds, modelType?: string) {
   const workspace = extendSourceDimensions(source.width, source.height);
   const selection = extendRegions(workspace, bounds);
   if (bounds.width % EXTEND_GRID || bounds.height % EXTEND_GRID || bounds.width > EXTEND_MAX_EDGE || bounds.height > EXTEND_MAX_EDGE
     || bounds.width * bounds.height > EXTEND_MAX_PIXELS) throw new Error("Use box dimensions in multiples of 32 within the maximum generation resolution.");
-  const output = extendOutputDimensions(config, bounds);
+  const output = extendOutputDimensions(config, bounds, modelType);
   if (!selection.regions.length) {
     const frame = { x: 0, y: 0, ...output };
     return { mode: "regenerate" as const, output, source: output, bounds: frame, preserved: frame, regions: [] };
@@ -116,7 +119,7 @@ function extendBlendOverlap(context: ExtendBounds, output: { width: number; heig
 
 export function compileExtendImage(config: ProjectConfig, source: ProjectAsset, sourceRelativePath: string, options: ExtendOptions, modelType = MINIMAX_H3_MODEL_TYPE) {
   if (!source.width || !source.height) throw new Error("Wait for the source image dimensions to load.");
-  const layout = extendLayout(config, { width: source.width, height: source.height }, options.bounds);
+  const layout = extendLayout(config, { width: source.width, height: source.height }, options.bounds, modelType);
   const { preserved, output } = layout;
   const regenerate = layout.mode === "regenerate";
   const fibo = modelType === FIBO_MODEL_TYPE;
