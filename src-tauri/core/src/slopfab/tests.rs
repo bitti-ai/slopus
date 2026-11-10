@@ -2011,3 +2011,26 @@ fn h3_image_rejects_incompatible_controls_and_counts_the_edit_source() {
     request.image_edit.as_mut().unwrap().edits[0].outpaint_langevin_steps = Some(5);
     assert!(configuration.validate_inputs(&request).unwrap_err().contains("zero Langevin"));
 }
+
+#[test]
+fn h3_image_supports_twenty_mipixel_canvases() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.model_type = "h3_image".into();
+    configuration.attention = "flash2";
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
+    let api = ffi::Api::load(&path).unwrap();
+    for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+        for (width, height, valid) in [(5120, 4096, true), (4096, 5120, true), (4480, 4480, true), (5120, 4128, false)] {
+            let request = GenerationRequest { still_image: true, frames: 1, steps: 6, prompt: "A landscape".into(),
+                canvas_width: width, canvas_height: height, ..Default::default() };
+            let handle = RequestHandle::new(&api).unwrap();
+            configure_request(&api, &handle, &request, &configuration, platform, RequestPurpose::Plan, &ReferenceVideos::default()).unwrap();
+            if valid {
+                let plan = api.resolve(&handle).unwrap();
+                assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames, plan.num_model_evaluations), (width, height, 1, 6));
+            } else {
+                assert!(api.resolve(&handle).err().unwrap().contains("20 Mi-pixels"));
+            }
+        }
+    }
+}

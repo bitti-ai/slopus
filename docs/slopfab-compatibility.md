@@ -1,9 +1,9 @@
 # Slopfab compatibility
 
-## MiniMax H3 Image (API 1.52.0)
+## MiniMax H3 Image (SlopFab 0.2.0, API 1.52.0)
 
 The bundled Windows and Linux runtimes use SlopFab commit
-`9ba04d8` with CUDA and Vulkan enabled and FFmpeg disabled.
+`c84f285` with CUDA and Vulkan enabled and FFmpeg disabled.
 The **MiniMax H3 Image** template selects `h3_image`, Flash attention and the
 fixed six-update Euler grid. Vulkan uses portable arithmetic. Its download
 catalog uses [Comfy-Org/MiniMax-H3-Image](https://huggingface.co/Comfy-Org/MiniMax-H3-Image):
@@ -24,6 +24,12 @@ Langevin refinement and uses a nine-pixel blend overlap. Video/audio, LoRAs,
 refmods, generation effects, CFG, negative prompts, H3 previews and saved latent
 features are disabled for this family. Existing installations receive the
 template once; removing it is respected.
+
+The updated runtime raises the image canvas ceiling to 20,971,520 pixels
+(20 Mi-pixels), accepting 5120×4096, 4096×5120 and 4480×4480. Dimensions must
+remain multiples of 32. Native integration tests check the new boundary on
+CUDA and Vulkan and reject 5120×4128. This update preserves API 1.52.0 and the
+existing worker protocol.
 
 The new runtime counts H3 video steps as updates rather than grid points.
 Slopus translates its existing H3 video and audio counts before submission,
