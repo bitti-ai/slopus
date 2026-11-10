@@ -24,6 +24,14 @@ preserving saved schedules, LoRA recipes and Single Shot anchoring. Image-only
 families retain their update counts. LAN protocol 33 requires updated workers
 for the image family and the runtime compatibility adjustment.
 
+Validation: 378 focused frontend tests, the production frontend build, workspace
+Rust compilation and the full native core suites pass on Windows and Linux.
+Both runtime builds pass C API and embedded-tokenizer tests. The Linux library
+is built in Ubuntu 22.04 with GCC 11 and CUDA 13.3; its ELF requirements pass
+the glibc 2.35 ceiling check. The broader frontend suite has 17 unrelated failures
+also reproduced at the previous commit. Full model-weight rendering was not
+run as part of this integration.
+
 ## Bundled runtime (API 1.48.0)
 
 Windows and Linux runtimes use SlopFab commit `54362786a76e7530f7216dfeca130835a8f298f3`
