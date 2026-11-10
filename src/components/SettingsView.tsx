@@ -1,3 +1,4 @@
+import { isSharedH3Field } from "../lib/h3Components";
 import { generatorOptions } from "./generatorOptions";
 import { DEFAULT_VIDEO_SIGMA_SHIFT, DEFAULT_AUDIO_SIGMA_SHIFT, MIN_SIGMA_SHIFT, MAX_SIGMA_SHIFT, isSigmaShift, SAMPLER_LABELS, SCHEDULER_LABELS, type Sampler, type Scheduler } from "../lib/sampling";
 import { AdditionalSafetensorsEditor } from "./AdditionalSafetensorsEditor";
@@ -86,7 +87,7 @@ function templateSummary(template: GeneratorTemplate): string {
 }
 
 const hasDownloadedWeights = (template: GeneratorTemplate) =>
-  Object.entries(template.sources ?? {}).some(([id, sources]) => (template.modelType !== "minimax-h3" || id === "transformer") && sources.length > 0) || Boolean(template.additionalSafetensors?.length);
+  Object.entries(template.sources ?? {}).some(([id, sources]) => !isSharedH3Field(template.modelType, id) && sources.length > 0) || Boolean(template.additionalSafetensors?.length);
 
 /* --- Shared pieces ---------------------------------------------------------- */
 
@@ -663,7 +664,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
     </SettingsGroup>
 
     <SettingsGroup heading="Model files">
-      {generatorPathFields(selectedTemplate).filter(({ id }) => selectedTemplate.modelType !== "minimax-h3" || id === "transformer").map(pathCard)}
+      {generatorPathFields(selectedTemplate).filter(({ id }) => !isSharedH3Field(selectedTemplate.modelType, id)).map(pathCard)}
+      {isSharedH3Field(selectedTemplate.modelType, "textEncoder") && selectedTemplate.mode !== "animate" && <SettingsCard icon={<TextFile20 />} header="Text encoder" description="Shared by MiniMax H3 video and MiniMax H3 Image. Manage files under MiniMax H3 > Text Encoders.">
+        <ComboBox aria-label="Shared H3 text encoder" value={templateSettings.h3Components!.defaultTextEncoderId}
+          options={templateSettings.h3Components!.templates.filter((entry) => entry.type === "textEncoder").map((entry) => ({ value: entry.id, label: entry.name }))}
+          onChange={(defaultTextEncoderId) => saveGeneratorTemplateSettings({ ...templateSettings, h3Components: { ...templateSettings.h3Components!, defaultTextEncoderId } })} />
+      </SettingsCard>}
       {selectedTemplate.modelType === "minimax-h3" && (["video", "audio"] as const).map((type) => {
         const key = type === "video" ? "videoVaeId" : "audioVaeId";
         const label = type === "video" ? "Video VAE" : "Audio VAE";

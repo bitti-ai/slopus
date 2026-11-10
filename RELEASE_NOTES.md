@@ -6,7 +6,7 @@ Changes since 0.4.0.
 
 - **Video references:** Create a reference from a generated Scene or Shot using its context menu. Scenes select the whole video; Shots retain the full source with their exact time range selected. Video references now support clips shorter than two seconds.
 - **Song variations:** Duplicate a song into a draft with the same title, lyrics, style and settings. Use Generate's dropdown to queue up to 100 variations with different seeds.
-- **MiniMax H3 Image:** Six-step image generation, image references, masked edits and Zoom on CUDA or Vulkan, with downloadable transformer variants, text encoders and its dedicated image VAE.
+- **MiniMax H3 Image:** Six-step image generation, image references, masked edits and Zoom on CUDA or Vulkan, with downloadable transformer variants and its dedicated image VAE. Shares the selected text encoder and tokenizer with MiniMax H3 video, reusing existing downloads.
 
 ## Fixes and improvements
 

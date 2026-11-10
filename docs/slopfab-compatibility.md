@@ -11,6 +11,13 @@ BF16, INT8 ConvRot and W4A8 transformers, Qwen3-VL-32B INT8 or NVFP4 text
 encoders, and the FP16 image VAE. The repository's optional Qwen3.5 prompt
 enhancer is not an inference text encoder and is not offered by this template.
 
+MiniMax H3 Image and H3 video use the same shared text encoder and tokenizer
+selection. Existing encoder downloads are reused, and changing the selection
+updates both model families, including LAN submissions. Removing image model
+weights retains the shared encoder. Previously separate image encoder files
+and variants migrate once into the shared Text Encoders library without
+changing its selected default. The image VAE remains specific to the image model.
+
 Plain image prompts support up to 16 ordered pictures, including the implicit
 source for edits and Zoom. Masked editing uses strength 1; outpainting disables
 Langevin refinement and uses a nine-pixel blend overlap. Video/audio, LoRAs,

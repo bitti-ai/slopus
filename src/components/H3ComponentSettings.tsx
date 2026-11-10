@@ -27,7 +27,7 @@ export function H3ComponentSettings({ settings, desktop }: { settings: Generator
   return <>
     {([false, true] as const).map((encoders) => <SettingsGroup key={String(encoders)} heading={encoders ? "Text Encoders" : "VAEs"}>
       <SettingsCard icon={<Add20 />} header={encoders ? "Add a text encoder" : "Add a VAE"}
-        description={encoders ? "The default text encoder is used whenever MiniMax H3 needs one. Missing files download with generators." : "Name video and audio VAEs, then select them in your generators."}>
+        description={encoders ? "The default text encoder is shared by MiniMax H3 video and MiniMax H3 Image. Missing files download with generators." : "Name video and audio VAEs, then select them in your generators."}>
         <button type="button" className="secondary-button" onClick={() => add(encoders ? "textEncoder" : "video")}>{encoders ? "New text encoder" : "New VAE"}</button>
       </SettingsCard>
       <div className="settings-card-list" role="list" aria-label={encoders ? "Text Encoders" : "VAEs"}>

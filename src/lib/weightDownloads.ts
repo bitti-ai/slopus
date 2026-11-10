@@ -8,7 +8,7 @@ import { chooseWeightSource, ENGINE_PATH_FIELDS, generatorPathFields, isDownload
   type EnginePathId, type GeneratorTemplate, type WeightGpu, type WeightSource } from "./settings";
 
 export type { WeightGpu } from "./settings";
-import { h3ComponentForField, type H3ComponentTemplate } from "./h3Components";
+import { isSharedH3Field, h3ComponentForField, type H3ComponentTemplate } from "./h3Components";
 export { chooseWeightSource };
 
 const gpuSources = (sources: WeightSource[], devices: WeightGpu[]) => sources.filter((source) =>
@@ -288,7 +288,7 @@ async function runTemplateDownload(templateId: string): Promise<void> {
     const downloads = generatorPathFields(template).flatMap(({ id, label, required }) => {
       if (template.paths[id].trim() && !isDownloadUrl(template.paths[id])) return [];
       const sources = template.sources?.[id] ?? [];
-      if (!sources.length && required && template.modelType === "minimax-h3" && id !== "transformer") throw new Error(`Choose a ${label} template with a local file or download URL.`);
+      if (!sources.length && required && isSharedH3Field(template.modelType, id)) throw new Error(`Choose a ${label} template with a local file or download URL.`);
       if (!sources.length) return [];
       const source = chooseDownloadSource(sources, devices ?? []);
       if (!source) throw new Error(`No ${ENGINE_PATH_FIELDS.find((field) => field.id === id)?.label} download matches this GPU and its memory.`);
@@ -519,7 +519,7 @@ export async function removeTemplateWeights(templateId: string): Promise<void> {
   const template = loadGeneratorTemplateSettings().templates.find((template) => template.id === templateId);
   if (!template) return;
   const paths = [...new Set([
-    ...generatorPathFields(template).filter(({ id }) => template.modelType !== "minimax-h3" || id === "transformer").flatMap(({ id }) => (template.sources?.[id] ?? []).flatMap((source) => source.downloadedPath ? [source.downloadedPath] : [])),
+    ...generatorPathFields(template).filter(({ id }) => !isSharedH3Field(template.modelType, id)).flatMap(({ id }) => (template.sources?.[id] ?? []).flatMap((source) => source.downloadedPath ? [source.downloadedPath] : [])),
     ...(template.additionalSafetensors ?? []).flatMap((file) => file.downloadedPath ? [file.downloadedPath] : []),
   ])];
   try {
@@ -530,7 +530,7 @@ export async function removeTemplateWeights(templateId: string): Promise<void> {
       const restored = { ...template, paths: { ...template.paths }, sources: { ...template.sources } };
       restored.additionalSafetensors = template.additionalSafetensors?.map((file) => paths.includes(file.downloadedPath ?? "") ? { ...file, downloadedPath: undefined } : file);
       for (const { id } of generatorPathFields(template)) {
-        if (template.modelType === "minimax-h3" && id !== "transformer") continue;
+        if (isSharedH3Field(template.modelType, id)) continue;
         const sources = template.sources?.[id];
         if (!sources?.length) continue;
         restored.paths[id] = (sources.find((source) => source.downloadedPath === template.paths[id]) ?? sources[0]).url;

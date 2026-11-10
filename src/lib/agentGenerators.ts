@@ -1,3 +1,4 @@
+import { isSharedH3Field } from "./h3Components";
 import { invoke } from "@tauri-apps/api/core";
 import { loadLoras, saveLoras, type Lora } from "./loras";
 import { loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, type GeneratorTemplate, type GeneratorTemplateSettings } from "./settings";
@@ -24,7 +25,7 @@ export async function executeGeneratorCommands(commands: GeneratorCommand[]): Pr
       if (command.op !== "generator.add" && command.op !== "generator.set") continue;
       const template = next.settings.templates.find((entry) => entry.id === command.id);
       const paths = command.settings.paths;
-      if (template?.modelType !== "minimax-h3" || !paths) continue;
+      if (!template || !isSharedH3Field(template.modelType, "textEncoder") || !paths) continue;
       if (paths.videoVae !== undefined) delete template.videoVaeId;
       if (paths.audioVae !== undefined) delete template.audioVaeId;
       const library = next.settings.h3Components;

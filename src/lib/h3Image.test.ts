@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it } from "vitest";
 import { minimaxImageTemplate, loadGeneratorTemplateSettings, saveGeneratorTemplateSettings, generationStepsForTemplate, generationStepsWithLoras, generatorPathFields, engineProviderSetting, templateSupportsVideo, templateSupportsEditing, templateSamplingOptions } from "./settings";
+import { resolveH3Components } from "./h3Components";
 import { compileImagePrompt } from "./imagePrompt";
 import { compileExtendImage } from "./extendImage";
 import { createImageEditScene } from "./imageScene";
@@ -13,10 +14,10 @@ it("adds MiniMax H3 Image once without changing selected or custom generators, a
   const custom = { ...minimaxImageTemplate(), id: "custom", name: "My images", paths: { ...minimaxImageTemplate().paths, transformer: "D:/model.safetensors" } };
   saveGeneratorTemplateSettings({ templates: [custom], defaultTemplateId: custom.id, catalogVersion: 22 });
   const migrated = loadGeneratorTemplateSettings();
-  expect(migrated.templates).toEqual([custom, minimaxImageTemplate()]);
+  expect(migrated.templates).toEqual([custom, minimaxImageTemplate()].map(template => ({ ...resolveH3Components(template, migrated.h3Components!), sharedTextEncoder: true })));
   expect(loadGeneratorTemplateSettings()).toEqual(migrated);
   saveGeneratorTemplateSettings({ ...migrated, templates: [custom] });
-  expect(loadGeneratorTemplateSettings().templates).toEqual([custom]);
+  expect(loadGeneratorTemplateSettings().templates).toEqual([{ ...resolveH3Components(custom, migrated.h3Components!), sharedTextEncoder: true }]);
 });
 
 it("offers image-only weights, all supported download variants and the fixed recipe", () => {

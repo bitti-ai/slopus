@@ -2,7 +2,7 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { H3_VIDEO_VAE_ID, H3_AUDIO_VAE_ID, H3_TEXT_ENCODER_ID, SOL_H3_VAE_URL } from "./h3Components";
-import { engineProviderSetting, loadGeneratorTemplateSettings, minimaxOriginalTemplate, minimaxFastTemplate, mossImageTemplate, saveGeneratorTemplateSettings, templateNeedsDownload } from "./settings";
+import { engineProviderSetting, loadGeneratorTemplateSettings, minimaxImageTemplate, minimaxOriginalTemplate, minimaxFastTemplate, mossImageTemplate, saveGeneratorTemplateSettings, templateNeedsDownload } from "./settings";
 import { downloadH3Component, downloadTemplateWeights, getWeightDownloadState, refreshDownloadedWeights, removeTemplateWeights } from "./weightDownloads";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -132,4 +132,79 @@ it("does not treat a broken VAE link as ready or reuse project-carried dependenc
   expect(provider.options.videoVae).toBeUndefined();
   await downloadTemplateWeights(template.id);
   expect(getWeightDownloadState()?.error).toContain("Video VAE");
+});
+
+it("shares the selected encoder and tokenizer with H3 Image while retaining its dedicated VAE", () => {
+  const settings = loadGeneratorTemplateSettings();
+  const image = settings.templates.find(({ id }) => id === "minimax-h3-image")!;
+  settings.h3Components!.templates.push({ id: "shared-text", name: "Shared text", type: "textEncoder", path: "D:/shared-text", tokenizer: "D:/tokenizer", sources: [] });
+  settings.h3Components!.defaultTextEncoderId = "shared-text";
+  saveGeneratorTemplateSettings(settings);
+  for (const id of ["minimax-h3-image", "minimax-h3-original"]) {
+    const template = loadGeneratorTemplateSettings().templates.find((entry) => entry.id === id)!;
+    expect(template.paths).toMatchObject({ textEncoder: "D:/shared-text", tokenizer: "D:/tokenizer" });
+  }
+  const provider = engineProviderSetting(image.paths, undefined, image.attention, [], "prompt", [], false, image.sources, image);
+  expect(provider.options).toMatchObject({ modelType: "h3_image", textEncoder: "D:/shared-text", tokenizer: "D:/tokenizer" });
+  const resolved = loadGeneratorTemplateSettings().templates.find(({ id }) => id === image.id)!;
+  expect(resolved.paths.videoVae).toBe(minimaxImageTemplate().paths.videoVae);
+  expect(resolved.videoVaeId).toBeUndefined();
+  expect(resolved.paths.audioVae).toBe("");
+});
+
+it("reuses the video encoder download for images and retains it when removing image weights", async () => {
+  await downloadTemplateWeights("minimax-h3-original");
+  const encoder = loadGeneratorTemplateSettings().templates.find(({ id }) => id === "minimax-h3-original")!.paths.textEncoder;
+  vi.clearAllMocks();
+  await downloadTemplateWeights("minimax-h3-image");
+  expect(getWeightDownloadState()?.error).toBeNull();
+  expect(downloads().sort()).toEqual([minimaxImageTemplate().sources!.transformer![2].url, minimaxImageTemplate().paths.videoVae].sort());
+  expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "minimax-h3-image")!.paths.textEncoder).toBe(encoder);
+  await removeTemplateWeights("minimax-h3-image");
+  expect([...files.values()]).toContain(encoder);
+  expect(loadGeneratorTemplateSettings().templates.find(({ id }) => id === "minimax-h3-original")!.paths.textEncoder).toBe(encoder);
+});
+
+it("preserves previously separate image encoders once without changing the shared selection", () => {
+  const settings = loadGeneratorTemplateSettings();
+  const image = minimaxImageTemplate();
+  image.paths.textEncoder = "D:/previous-image-text";
+  image.paths.tokenizer = "D:/previous-image-tokenizer";
+  image.sources!.textEncoder![1].downloadedPath = image.paths.textEncoder;
+  settings.templates = [image];
+  const selected = settings.h3Components!.defaultTextEncoderId;
+  localStorage.setItem("slopus.generator-templates.v1", JSON.stringify(settings));
+  const migrated = loadGeneratorTemplateSettings();
+  expect(migrated.h3Components!.defaultTextEncoderId).toBe(selected);
+  expect(migrated.h3Components!.templates).toContainEqual(expect.objectContaining({ type: "textEncoder", path: image.paths.textEncoder, tokenizer: image.paths.tokenizer, sources: image.sources!.textEncoder }));
+  expect(loadGeneratorTemplateSettings()).toEqual(migrated);
+  expect(JSON.parse(localStorage.getItem("slopus.generator-templates.v1")!).h3Components).toEqual(migrated.h3Components);
+});
+
+it("requires a shared image encoder and never falls back to stale project paths", async () => {
+  const settings = loadGeneratorTemplateSettings();
+  settings.h3Components!.templates = [];
+  settings.h3Components!.defaultTextEncoderId = "";
+  settings.templates = settings.templates.filter(({ id }) => id === "minimax-h3-image").map((template) => ({ ...template,
+    paths: { ...template.paths, textEncoder: "", tokenizer: "" }, sources: { ...template.sources, textEncoder: [], tokenizer: [] } }));
+  saveGeneratorTemplateSettings(settings);
+  const template = loadGeneratorTemplateSettings().templates[0];
+  expect(templateNeedsDownload(template)).toBe(true);
+  const provider = engineProviderSetting(template.paths, { enabled: true, model: null, options: { textEncoder: "D:/stale", tokenizer: "D:/stale-tokenizer" } }, template.attention, [], "prompt", [], false, template.sources, template);
+  expect(provider.options.textEncoder).toBeUndefined();
+  expect(provider.options.tokenizer).toBeUndefined();
+  await downloadTemplateWeights(template.id);
+  expect(getWeightDownloadState()?.error).toContain("Text encoder");
+});
+
+it("submits shared encoder download sources to LAN workers instead of the old image sources", () => {
+  const image = minimaxImageTemplate();
+  const settings = loadGeneratorTemplateSettings();
+  const encoder = settings.h3Components!.templates.find(({ id }) => id === settings.h3Components!.defaultTextEncoderId)!;
+  encoder.tokenizer = "https://example.com/shared-tokenizer.json";
+  saveGeneratorTemplateSettings(settings);
+  localStorage.setItem("slopus.generation-worker.v1", JSON.stringify({ id: "worker", name: "Worker", gpus: [] }));
+  const provider = engineProviderSetting(image.paths, undefined, image.attention, [], "prompt", [], false, image.sources, image);
+  expect(provider.options).toMatchObject({ textEncoder: encoder.path, tokenizer: encoder.tokenizer, videoVae: image.paths.videoVae });
+  expect(JSON.parse(provider.options.workerWeightSources as string).textEncoder).toEqual(encoder.sources);
 });

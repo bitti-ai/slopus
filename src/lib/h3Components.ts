@@ -57,8 +57,13 @@ function normalizeComponents(value: unknown): H3Components {
     ?? templates.find((entry) => entry.type === "textEncoder")?.id ?? "" };
 }
 
+export function isSharedH3Field(modelType: string | undefined, field: string): boolean {
+  return (modelType === "minimax-h3" && ["videoVae", "audioVae", "textEncoder", "tokenizer"].includes(field))
+    || (modelType === "h3_image" && ["textEncoder", "tokenizer"].includes(field));
+}
+
 export function h3ComponentForField(template: GeneratorTemplate, field: EnginePathId, library: H3Components): H3ComponentTemplate | undefined {
-  if (template.modelType !== "minimax-h3") return undefined;
+  if (!isSharedH3Field(template.modelType, field)) return undefined;
   const type = field === "videoVae" ? "video" : field === "audioVae" ? "audio" : field === "textEncoder" || field === "tokenizer" ? "textEncoder" : undefined;
   const id = field === "videoVae" ? template.videoVaeId : field === "audioVae" ? template.audioVaeId : library.defaultTextEncoderId;
   return library.templates.find((entry) => entry.id === id && entry.type === type);
@@ -66,9 +71,10 @@ export function h3ComponentForField(template: GeneratorTemplate, field: EnginePa
 
 /** Keep resolved paths for native/worker consumers, but shared templates own them. */
 export function resolveH3Components(template: GeneratorTemplate, library: H3Components): GeneratorTemplate {
-  if (template.modelType !== "minimax-h3") return template;
+  if (!isSharedH3Field(template.modelType, "textEncoder")) return template;
   const paths = { ...template.paths }, sources = { ...template.sources };
   for (const field of ["videoVae", "audioVae", "textEncoder", "tokenizer"] as const) {
+    if (!isSharedH3Field(template.modelType, field)) continue;
     const component = h3ComponentForField(template, field, library);
     paths[field] = field === "tokenizer" ? component?.tokenizer ?? "" : component?.path ?? "";
     const tokenizerUrl = component?.tokenizerUrl ?? (isUrl(paths[field]) ? paths[field] : undefined);
@@ -117,6 +123,12 @@ export function normalizeH3Library(templates: GeneratorTemplate[], value: unknow
   };
   const migratedEncoders: string[] = [];
   const linked = templates.map((template) => {
+    if (template.modelType === "h3_image") {
+      // Preserve former image-only encoder files and variants in the shared
+      // library, without replacing the encoder already selected for H3 video.
+      if (!template.sharedTextEncoder && (template.paths.textEncoder || template.sources?.textEncoder?.length)) migrate(template, "textEncoder");
+      return { ...template, sharedTextEncoder: true };
+    }
     if (template.modelType !== "minimax-h3") return template;
     const next = { ...template };
     for (const field of ["videoVae", "audioVae"] as const) {

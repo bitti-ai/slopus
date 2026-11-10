@@ -13,7 +13,7 @@
  * silently drops that path.
  */
 import { isSigmaShift, isSampler, isScheduler, type SigmaShifts, type SamplingChoices, type Sampler, type Scheduler } from "./sampling";
-import { initialH3Components, normalizeH3Library, resolveH3Components, type H3Components } from "./h3Components";
+import { initialH3Components, isSharedH3Field, normalizeH3Library, resolveH3Components, type H3Components } from "./h3Components";
 import { generatorModel } from "./generatorModels";
 import { YUE2_DEFAULT_STEPS } from "./music";
 export { generatorModel, GENERATOR_MODELS } from "./generatorModels";
@@ -105,6 +105,8 @@ export interface GeneratorTemplate extends SigmaShifts, SamplingChoices {
   paths: EngineSettings;
   videoVaeId?: string;
   audioVaeId?: string;
+  /** Marks migration of the former image-only encoder into the H3 library. */
+  sharedTextEncoder?: boolean;
   sources?: Partial<Record<EnginePathId, WeightSource[]>>;
   loras?: TemplateLora[];
   additionalSafetensors?: AdditionalSafetensor[];
@@ -217,6 +219,7 @@ function workerWeight(value: string, sources: WeightSource[] | undefined): strin
 
 export function templateNeedsDownload(template: GeneratorTemplate): boolean {
   return generatorPathFields(template).some(({ id }) => isDownloadUrl(template.paths[id])
+    || (template.modelType === H3_IMAGE_MODEL_TYPE && id === "textEncoder" && !template.paths[id].trim())
     || (template.modelType === MINIMAX_H3_MODEL_TYPE && (id === "videoVae" && template.videoVaeId !== undefined || id === "audioVae" && template.audioVaeId !== undefined || id === "textEncoder" && template.videoVaeId !== undefined) && !template.paths[id].trim())
     || (!template.paths[id].trim() && (template.sources?.[id]?.length ?? 0) > 0))
     || downloadableTemplateLoras(effectiveLoras(template.loras, [], template.modelType)).length > 0
@@ -524,6 +527,7 @@ const normalizeTemplateSettings = (value: unknown, shareComponents = true): Gene
           ...(typeof file.downloadedPath === "string" && file.downloadedPath.trim() && !isDownloadUrl(file.downloadedPath) ? { downloadedPath: file.downloadedPath } : {}) }];
       }) : [];
     return [{ id, name, modelType, defaultSteps, attention, paths, sources,
+      ...(candidate.sharedTextEncoder === true ? { sharedTextEncoder: true } : {}),
       ...(typeof candidate.videoVaeId === "string" ? { videoVaeId: candidate.videoVaeId } : {}),
       ...(typeof candidate.audioVaeId === "string" ? { audioVaeId: candidate.audioVaeId } : {}),
       ...(typeof candidate.editingModel === "boolean" ? { editingModel: candidate.editingModel } : {}),
@@ -834,7 +838,8 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
         const shared = normalizeTemplateSettings(normalized)!;
-        if (!normalized.h3Components) localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(shared));
+        if (normalized.templates.some((template) => template.modelType === H3_IMAGE_MODEL_TYPE && !template.sharedTextEncoder)
+          || JSON.stringify(normalized.h3Components) !== JSON.stringify(shared.h3Components)) localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(shared));
         return shared;
       }
     }
@@ -934,10 +939,10 @@ export function saveEngineSettings(settings: EngineSettings): void {
  *  already had rather than overwriting it with "". */
 export function engineProviderSetting(settings: EngineSettings, base?: ProviderSetting, attention = defaultGeneratorTemplate().attention, selection = defaultGeneratorTemplate().loras, mode = defaultGeneratorTemplate().mode, additionalSafetensors = defaultGeneratorTemplate().additionalSafetensors, motionCache = defaultGeneratorTemplate().motionCache ?? false, sources = defaultGeneratorTemplate().sources, shifts: SigmaShifts & SamplingChoices & { modelType?: string; editingModel?: boolean; kreaVariant?: "raw" | "turbo" } = defaultGeneratorTemplate(), sceneLoras: TemplateLora[] = []): ProviderSetting {
   // Resolve again at submission: a queued generator may predate a default encoder change.
-  if (shifts.modelType === MINIMAX_H3_MODEL_TYPE) {
+  if (isSharedH3Field(shifts.modelType, "textEncoder")) {
     const library = loadGeneratorTemplateSettings().h3Components!;
     const resolved = resolveH3Components({ id: "", name: "", defaultSteps: 20, attention, ...shifts,
-      modelType: MINIMAX_H3_MODEL_TYPE, mode, paths: settings, sources } as GeneratorTemplate, library);
+      modelType: shifts.modelType!, mode, paths: settings, sources } as GeneratorTemplate, library);
     // Legacy callers may supply only paths; named VAE links are resolved by the settings loader.
     settings = { ...settings, textEncoder: resolved.paths.textEncoder, tokenizer: resolved.paths.tokenizer,
       ...("videoVaeId" in shifts ? { videoVae: resolved.paths.videoVae } : {}),
@@ -1014,7 +1019,7 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
     const value = remote ? workerWeight(settings[field.id].trim(), sources?.[field.id]) : settings[field.id].trim();
     if (value && (remote || !isDownloadUrl(value))) options[field.id] = value;
     else if (isDownloadUrl(value) || [FIBO_MODEL_TYPE, KREA_MODEL_TYPE, H3_IMAGE_MODEL_TYPE].includes(shifts.modelType ?? "") && field.id === "tokenizer"
-      || shifts.modelType === MINIMAX_H3_MODEL_TYPE && field.id !== "transformer") delete options[field.id];
+      || isSharedH3Field(shifts.modelType, field.id)) delete options[field.id];
   }
   return { enabled: base?.enabled ?? true, model: base?.model ?? null, options };
 }

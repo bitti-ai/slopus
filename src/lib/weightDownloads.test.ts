@@ -18,7 +18,7 @@ it("downloads the three compatible H3 Image weights and makes the template ready
   const template = minimaxImageTemplate();
   await downloadTemplateWeights(template.id);
   const urls = vi.mocked(invoke).mock.calls.filter(([command]) => command === "download_weight").map(([, args]) => (args as { url: string }).url);
-  expect(urls.sort()).toEqual([template.paths.transformer, template.sources!.textEncoder![0].url, template.paths.videoVae].sort());
+  expect(urls.sort()).toEqual([template.paths.transformer, minimaxOriginalTemplate().paths.textEncoder, template.paths.videoVae].sort());
   const downloaded = loadGeneratorTemplateSettings().templates.find(({ id }) => id === template.id)!;
   expect(templateNeedsDownload(downloaded)).toBe(false);
   expect(downloaded.paths.audioVae).toBe("");

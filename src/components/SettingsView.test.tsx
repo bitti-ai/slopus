@@ -121,6 +121,25 @@ describe("the settings screen", () => {
     expect(screen.queryByRole("list", { name: "LoRAs" })).toBeNull();
   });
 
+  it("selects the same text encoder for H3 Image and video while keeping the image VAE", () => {
+    const settings = loadGeneratorTemplateSettings();
+    settings.h3Components!.templates.push({ id: "shared-test", name: "Shared test encoder", type: "textEncoder", path: "D:/shared-text", tokenizer: "D:/tokenizer", sources: [] });
+    saveGeneratorTemplateSettings(settings);
+    const imageVae = settings.templates.find(({ id }) => id === "minimax-h3-image")!.paths.videoVae;
+    open("MiniMax H3 Image");
+    fireEvent.click(screen.getByRole("button", { name: "Edit MiniMax H3 Image generator" }));
+    expect(screen.getByText("Image VAE weights")).toBeTruthy();
+    expect(screen.queryByText("Text encoder weights")).toBeNull();
+    fireEvent.click(combo("Shared H3 text encoder"));
+    fireEvent.click(screen.getByRole("option", { name: "Shared test encoder" }));
+    const updated = loadGeneratorTemplateSettings();
+    expect(updated.h3Components!.defaultTextEncoderId).toBe("shared-test");
+    for (const id of ["minimax-h3-image", "minimax-h3-original"]) {
+      expect(updated.templates.find((template) => template.id === id)!.paths).toMatchObject({ textEncoder: "D:/shared-text", tokenizer: "D:/tokenizer" });
+    }
+    expect(updated.templates.find(({ id }) => id === "minimax-h3-image")!.paths.videoVae).toBe(imageVae);
+  });
+
   it("creates a generator for the selected model and follows model changes when returning", () => {
     open("MOSS");
     const defaultId = loadGeneratorTemplateSettings().defaultTemplateId;

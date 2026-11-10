@@ -29,6 +29,12 @@ import {
 
 function generatorOwned(value: any): any {
   if (Array.isArray(value)) return value.map(generatorOwned);
+  if (value?.modelType === "h3_image") {
+    const { sharedTextEncoder: _shared, ...template } = value;
+    const { textEncoder: _text, tokenizer: _tokenizer, ...paths } = template.paths;
+    const { textEncoder: _sources, tokenizer: _tokenizerSources, ...sources } = template.sources ?? {};
+    return { ...template, paths, sources };
+  }
   if (!value || value.modelType !== "minimax-h3") return value;
   const { videoVaeId: _video, audioVaeId: _audio, ...template } = value;
   const { textEncoder: _text, tokenizer: _tokenizer, videoVae: _videoPath, audioVae: _audioPath, ...paths } = template.paths;

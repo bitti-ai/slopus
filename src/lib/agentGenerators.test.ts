@@ -81,7 +81,7 @@ it("rejects mixed project and generator batches before any mutation", async () =
   expect(invoke).not.toHaveBeenCalled();
 });
 
-it("keeps legacy agent dependency edits connected to the shared H3 library", async () => {
+it.each(["minimax-h3-original", "minimax-h3-image"])("keeps %s agent dependency edits connected to the shared H3 library", async (id) => {
   const before = loadGeneratorTemplateSettings();
   saveGeneratorTemplateSettings(before);
   vi.mocked(invoke).mockImplementation(async (_command, args) => {
@@ -92,11 +92,11 @@ it("keeps legacy agent dependency edits connected to the shared H3 library", asy
     }
     return next;
   });
-  await executeGeneratorCommands([{ op: "generator.set", id: "minimax-h3-original", settings: { paths: {
+  await executeGeneratorCommands([{ op: "generator.set", id, settings: { paths: {
     videoVae: "D:/custom-video.safetensors", textEncoder: "D:/shared-text.safetensors", tokenizer: "D:/tokenizer",
   } } }]);
   const saved = loadGeneratorTemplateSettings();
-  expect(saved.templates.find((entry) => entry.id === "minimax-h3-original")!.paths.videoVae).toBe("D:/custom-video.safetensors");
+  expect(saved.templates.find((entry) => entry.id === id)!.paths.videoVae).toBe("D:/custom-video.safetensors");
   expect(saved.templates.find((entry) => entry.id === "minimax-h3-references")!.paths.videoVae).toBe(before.templates.find((entry) => entry.id === "minimax-h3-references")!.paths.videoVae);
-  expect(saved.templates.filter((entry) => entry.modelType === "minimax-h3").every((entry) => entry.paths.textEncoder === "D:/shared-text.safetensors" && entry.paths.tokenizer === "D:/tokenizer")).toBe(true);
+  expect(saved.templates.filter((entry) => ["minimax-h3", "h3_image"].includes(entry.modelType)).every((entry) => entry.paths.textEncoder === "D:/shared-text.safetensors" && entry.paths.tokenizer === "D:/tokenizer")).toBe(true);
 });
