@@ -31,8 +31,8 @@ pub(super) fn configure_request(
         }
         api.set_model_family(handle, &configuration.model_type)?;
     }
-    if configuration.model_type == "krea2" {
-        api.set_model_family(handle, "krea2")?;
+    if matches!(configuration.model_type.as_str(), "krea2" | "h3_image") {
+        api.set_model_family(handle, &configuration.model_type)?;
         if platform == ComputePlatform::Vulkan { api.set_vulkan_portable(handle)?; }
     }
     if configuration.attention == "sol" && platform == ComputePlatform::Vulkan {
@@ -71,11 +71,14 @@ pub(super) fn configure_request(
     // Ending-anchor APIs count new lead-in/gap frames, while Slopus scene
     // duration includes the short ending. Planning uses equivalent full geometry.
     api.set_frames(handle, if request.single_shot.as_ref().is_some_and(|single| single.ending_path.is_some()) { frames - 22 } else { frames })?;
-    if request.still_image && !matches!(configuration.model_type.as_str(), "moss" | "fibo2" | "krea2") {
+    if request.still_image && !matches!(configuration.model_type.as_str(), "moss" | "fibo2" | "krea2" | "h3_image") {
         api.set_still_image(handle)?;
     }
     let video_steps = configuration.generation_steps(request.steps)?;
-    api.set_steps(handle, video_steps)?;
+    // Saved H3 settings count grid points, including terminal zero. The updated
+    // runtime counts denoising updates. Image-only families already use updates.
+    let legacy_h3 = configuration.model_type == "minimax-h3";
+    api.set_steps(handle, if legacy_h3 { video_steps - 1 } else { video_steps })?;
     let preset = configuration.sampling_preset.as_ref().map_err(Clone::clone)?;
     if let Some(preset) = preset {
         match preset {
@@ -95,7 +98,7 @@ pub(super) fn configure_request(
             shifts.audio_override.or(request.audio_sigma_shift).or(shifts.audio), sampling.sampler.as_deref(), sampling.scheduler.as_deref())?;
     }
     // Sampling presets replace overrides, so apply the audio setting afterward.
-    api.set_audio_steps(handle, request.audio_steps.unwrap_or(0))?;
+    api.set_audio_steps(handle, request.audio_steps.map(|steps| if legacy_h3 { steps - 1 } else { steps }).unwrap_or(0))?;
     if let Some(cfg) = &crate::models::generator_features(&configuration.model_type).cfg {
         let negative = request.negative_prompt.as_deref().unwrap_or("");
         if configuration.model_type == "krea2" {
@@ -136,7 +139,7 @@ pub(super) fn configure_request(
             if let Some(overlap) = step.outpaint_blend_overlap {
                 api.set_outpaint_blend_overlap(handle, overlap)?;
             }
-            if let Some(steps) = step.outpaint_langevin_steps {
+            if let Some(steps) = step.outpaint_langevin_steps.or((configuration.model_type == "h3_image").then_some(0)) {
                 api.set_outpaint_langevin_steps(handle, steps)?;
             }
         }

@@ -1,5 +1,29 @@
 # Slopfab compatibility
 
+## MiniMax H3 Image (API 1.52.0)
+
+The bundled Windows and Linux runtimes use SlopFab commit
+`9ba04d8` with CUDA and Vulkan enabled and FFmpeg disabled.
+The **MiniMax H3 Image** template selects `h3_image`, Flash attention and the
+fixed six-update Euler grid. Vulkan uses portable arithmetic. Its download
+catalog uses [Comfy-Org/MiniMax-H3-Image](https://huggingface.co/Comfy-Org/MiniMax-H3-Image):
+BF16, INT8 ConvRot and W4A8 transformers, Qwen3-VL-32B INT8 or NVFP4 text
+encoders, and the FP16 image VAE. The repository's optional Qwen3.5 prompt
+enhancer is not an inference text encoder and is not offered by this template.
+
+Plain image prompts support up to 16 ordered pictures, including the implicit
+source for edits and Zoom. Masked editing uses strength 1; outpainting disables
+Langevin refinement and uses a nine-pixel blend overlap. Video/audio, LoRAs,
+refmods, generation effects, CFG, negative prompts, H3 previews and saved latent
+features are disabled for this family. Existing installations receive the
+template once; removing it is respected.
+
+The new runtime counts H3 video steps as updates rather than grid points.
+Slopus translates its existing H3 video and audio counts before submission,
+preserving saved schedules, LoRA recipes and Single Shot anchoring. Image-only
+families retain their update counts. LAN protocol 33 requires updated workers
+for the image family and the runtime compatibility adjustment.
+
 ## Bundled runtime (API 1.48.0)
 
 Windows and Linux runtimes use SlopFab commit `54362786a76e7530f7216dfeca130835a8f298f3`

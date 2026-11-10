@@ -253,6 +253,30 @@ impl Configuration {
                 return Err("Krea 2 requires Flash attention and text-to-image generation without audio or H3 conditioning.".into());
             }
         }
+        if self.model_type == "h3_image" {
+            if self.generation_steps(request.steps)? != 6 {
+                return Err("MiniMax H3 Image requires its fixed six-step sampling schedule.".into());
+            }
+            if self.animate || request.latent_upscale || request.latent_bridge.is_some()
+                || request.continuation_path.is_some() || request.continuation_relative_path.is_some()
+                || request.save_latents_path.is_some() || request.keystone_path.is_some()
+                || request.video_transition.is_some() || !request.reference_video_ids.is_empty()
+                || !request.reference_audio_ids.is_empty() || self.preview_vae.is_some()
+                || self.prompt_embedding.is_some() || self.attention != "flash2" {
+                return Err("MiniMax H3 Image requires Flash attention without video, audio, previews or H3 latent features.".into());
+            }
+            if let Some(edit) = &request.image_edit {
+                for step in &edit.edits {
+                    if step.strength.is_some_and(|strength| strength != 1.0)
+                        || step.outpaint_langevin_steps.is_some_and(|steps| steps != 0) {
+                        return Err("MiniMax H3 Image edits require strength 1 and zero Langevin steps.".into());
+                    }
+                    if step.reference_paths.as_ref().unwrap_or(&request.reference_paths).len() + 1 > 16 {
+                        return Err("MiniMax H3 Image supports at most 16 pictures including the edit source.".into());
+                    }
+                }
+            }
+        }
         if let Some(mode) = request.video_transition.as_deref() {
             let expected = match mode {
                 "extend" => 1,

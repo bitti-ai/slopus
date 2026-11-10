@@ -347,7 +347,8 @@ pub(super) mod tests {
                 let experiment = RequestHandle::new(&api).unwrap();
                 api.set_prompt(&experiment, &request.prompt).unwrap();
                 api.set_frames(&experiment, 68).unwrap();
-                api.set_steps(&experiment, 25).unwrap();
+                // The current C API counts updates; the original used 25 grid points.
+                api.set_steps(&experiment, 24).unwrap();
                 api.set_seed(&experiment, request.seed as u64).unwrap();
                 api.set_resolution(&experiment, 64, 32).unwrap();
                 api.set_attention(&experiment, "flash2").unwrap();

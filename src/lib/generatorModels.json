@@ -180,5 +180,33 @@
     "schedulers": [
       "beta"
     ]
+  },
+  "h3_image": {
+    "label": "MiniMax H3 Image",
+    "description": "Image generation and editing on CUDA or Vulkan",
+    "imageGeneration": true,
+    "videoGeneration": false,
+    "imageEditing": true,
+    "imageReferences": true,
+    "loras": false,
+    "motionCache": false,
+    "generationEffects": false,
+    "cfg": null,
+    "imageOutpainting": true,
+    "characterSheets": false,
+    "requiresImageInput": false,
+    "editImageReferences": true,
+    "maxImageReferences": 16,
+    "refmods": false,
+    "sigmaShifts": false,
+    "cudaOnly": false,
+    "imageCompositionCreation": true,
+    "negativePrompt": false,
+    "negativePromptDisabledReason": null,
+    "musicGeneration": false,
+    "samplers": [
+      "euler"
+    ],
+    "schedulers": []
   }
 }

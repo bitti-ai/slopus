@@ -1948,3 +1948,66 @@ fn template_editing_flag_is_enforced_without_blocking_text_generation() {
     settings.get_mut("slopfab").unwrap().options.remove("editingModel");
     Configuration::from_settings(&settings).validate_inputs(&request).unwrap();
 }
+
+#[test]
+fn h3_image_plans_six_steps_on_cuda_and_vulkan_with_masked_edits_and_outpainting() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.model_type = "h3_image".into();
+    configuration.attention = "flash2";
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
+    let api = ffi::Api::load(&path).unwrap();
+    let request = GenerationRequest { still_image: true, frames: 1, steps: 6, prompt: "A blue teapot".into(),
+        canvas_width: 128, canvas_height: 128, ..Default::default() };
+    for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+        for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+            for mode in ["generate", "mask", "outpaint"] {
+                let mut request = request.clone();
+                if mode != "generate" {
+                    request.image_edit = Some(serde_json::from_value(serde_json::json!({"sourceRelativePath":"source.png", "edits":[{
+                        "prompt":"Edit <Picture 1>. Make it blue", "x":32, "y":32, "width":64, "height":64,
+                        "invertMask": mode == "outpaint", "feather": 0
+                    }]})).unwrap());
+                    request.image_edit_pixels = Some(vec![128; 128 * 128 * 3].into());
+                }
+                let handle = RequestHandle::new(&api).unwrap();
+                configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+                let plan = api.resolve(&handle).unwrap();
+                assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames, plan.num_model_evaluations), (128, 128, 1, 6));
+            }
+        }
+    }
+}
+
+#[test]
+fn h3_image_rejects_incompatible_controls_and_counts_the_edit_source() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.model_type = "h3_image".into();
+    configuration.attention = "flash2";
+    let request = GenerationRequest { still_image: true, frames: 1, steps: 6, prompt: "A blue teapot".into(),
+        canvas_width: 128, canvas_height: 128, reference_paths: vec!["picture.png".into(); 16], ..Default::default() };
+    configuration.validate_inputs(&request).unwrap();
+    for (name, value, message) in [
+        ("steps", serde_json::json!(20), "six-step"),
+        ("guidanceScale", serde_json::json!(3), "CFG"),
+        ("negativePrompt", serde_json::json!("blurry"), "negative prompts"),
+        ("stillImage", serde_json::json!(false), "video generation"),
+        ("videoSigmaShift", serde_json::json!(3), "sampling schedule"),
+        ("latentUpscale", serde_json::json!(true), "latent features"),
+    ] {
+        let mut json = serde_json::to_value(&request).unwrap();
+        json[name] = value;
+        assert!(configuration.validate_inputs(&serde_json::from_value(json).unwrap()).unwrap_err().contains(message), "{name}");
+    }
+    let mut request = request;
+    request.image_edit = Some(serde_json::from_value(serde_json::json!({"sourceRelativePath":"source.png", "edits":[{
+        "prompt":"Edit <Picture 1>", "x":0, "y":0, "width":128, "height":128
+    }]})).unwrap());
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("including the edit source"));
+    request.reference_paths.pop();
+    configuration.validate_inputs(&request).unwrap();
+    request.image_edit.as_mut().unwrap().edits[0].strength = Some(0.65);
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("strength 1"));
+    request.image_edit.as_mut().unwrap().edits[0].strength = None;
+    request.image_edit.as_mut().unwrap().edits[0].outpaint_langevin_steps = Some(5);
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("zero Langevin"));
+}
