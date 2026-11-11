@@ -808,7 +808,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       disabledReason={outpaintingBlocked ?? (!isTauri() ? "Template execution is available in the desktop app." : !onGenerateExtend || !template || !templateUsable(template) ? "Choose a downloaded generator to execute this template." : null)}
       onExecute={() => attempt(() => onGenerateExtend?.(template!, output.id, extendOptions))} onClose={() => setExtendSourceId(null)}
     /> : output && templateSourceId === output.id ? <CharacterSheetSettings
-      config={config} source={output} references={promptReferences} missingLabel={missingReference} defaultSteps={template?.defaultSteps ?? 20} busy={Boolean(active)}
+      config={config} source={output} references={promptReferences} missingLabel={missingReference} defaultSteps={template?.defaultSteps ?? 20} modelType={template?.modelType} busy={Boolean(active)}
       disabledReason={referencesBlocked ?? (!isTauri() ? "Template execution is available in the desktop app." : !onGenerateCharacterSheet || !template || !templateUsable(template) ? "Choose a downloaded generator to execute this template." : null)}
       onExecute={(options) => onGenerateCharacterSheet?.(template!, output.id, options)} onClose={() => setTemplateSourceId(null)}
     /> : runningTemplate && templateSource ? runningTemplate.kind === "extend" ? <ExtendSettings
@@ -816,7 +816,7 @@ export function ImageEditor({ config, folderPath, onChange: changeConfig, onGene
       references={promptReferences} missingLabel={missingReference} busy disabledReason={null}
       onExecute={() => {}} onClose={() => selectImage(templateSource.id)}
     /> : <CharacterSheetSettings key={output!.id}
-      config={config} source={templateSource} initialOptions={runningTemplate} defaultSteps={runningTemplate.steps}
+      config={config} source={templateSource} initialOptions={runningTemplate} defaultSteps={runningTemplate.steps} modelType={usedGenerator?.modelType}
       references={promptReferences} missingLabel={missingReference} busy disabledReason={null}
       onExecute={() => {}} onClose={() => selectImage(templateSource.id)}
     /> : <aside className="image-inspector" aria-label="Image node inspector">

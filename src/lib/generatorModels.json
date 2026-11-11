@@ -193,7 +193,7 @@
     "generationEffects": false,
     "cfg": null,
     "imageOutpainting": true,
-    "characterSheets": false,
+    "characterSheets": true,
     "requiresImageInput": false,
     "editImageReferences": true,
     "maxImageReferences": 16,

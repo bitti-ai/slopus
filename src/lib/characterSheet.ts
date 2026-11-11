@@ -28,7 +28,7 @@ export function characterSheetDimensions(resolution: ProjectConfig["settings"]["
   return CHARACTER_SHEET_VIEWS.map((_, index) => ({ width: index === 0 ? height : height * 9 / 16, height }));
 }
 
-export function compileCharacterSheet(config: ProjectConfig, source: ProjectAsset, frontRelativePath: string, options: CharacterSheetOptions = emptyCharacterSheetOptions()) {
+export function compileCharacterSheet(config: ProjectConfig, source: ProjectAsset, frontRelativePath: string, options: CharacterSheetOptions = emptyCharacterSheetOptions(), modelType?: string) {
   const indices = characterSheetViewIndices(options);
   if (!indices.length) throw new Error("Enable at least one character sheet view.");
   if (options.steps !== undefined && (!Number.isInteger(options.steps) || options.steps < 2 || options.steps > 1000)) throw new Error("Steps must be a whole number from 2 to 1000.");
@@ -56,6 +56,6 @@ export function compileCharacterSheet(config: ProjectConfig, source: ProjectAsse
     return [index, compileImagePrompt({
       ...config, settings: { ...config.settings, defaultLook: null }, references: [selectedReference, ...config.references],
       imageScene: scene,
-    }, { referenceTransformations: { [reference.id]: "Keep the character's identity; use the requested outfit and view." } })] as const;
+    }, { modelType, referenceTransformations: { [reference.id]: "Keep the character's identity; use the requested outfit and view." } })] as const;
   }));
 }

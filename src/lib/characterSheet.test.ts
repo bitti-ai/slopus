@@ -46,11 +46,12 @@ async function requestAt(index: number) {
   return vi.mocked(enqueueSlopfabGeneration).mock.calls[index][0];
 }
 
-it.each([false, true])("uses a shared front-view outfit with square portrait and tall body views (source changed: %s)", async (changed) => {
+it.each(["minimax-h3", "h3_image"].flatMap((modelType) => [false, true].map((changed) => ({ modelType, changed }))))("uses a shared front-view outfit with square portrait and tall body views ($modelType, source changed: $changed)", async ({ modelType, changed }) => {
   const { queue, session } = setup();
   const original = structuredClone(session.getSnapshot().config);
-  queue.enqueueCharacterSheet(session, template, "source");
-  queue.enqueueCharacterSheet(session, template, "source");
+  const selected = { ...template, modelType };
+  queue.enqueueCharacterSheet(session, selected, "source");
+  queue.enqueueCharacterSheet(session, selected, "source");
   expect(queue.getSnapshot()).toHaveLength(1);
   const id = queue.getSnapshot()[0].id;
   const pending = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
@@ -70,6 +71,8 @@ it.each([false, true])("uses a shared front-view outfit with square portrait and
     const viewIndex = order[index];
     const referencePaths = ["C:/Character/media/hero.png", ...(index > 0 ? [`C:/Character/cache/character-sheets/${id}/1.png`] : [])];
     expect(request).toMatchObject({ stillImage: true, frames: 1, referencePaths, seed });
+    expect(request.steps).toBe(modelType === "h3_image" ? 6 : original.imageScene!.steps);
+    expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[index][1].providerSettings.slopfab?.options.modelType).toBe(modelType);
     expect(request.canvasWidth / request.canvasHeight).toBe(viewIndex === 0 ? 1 : 9 / 16);
     expect(request.canvasHeight).toBe(1024);
     if (index > 0) {
@@ -80,7 +83,10 @@ it.each([false, true])("uses a shared front-view outfit with square portrait and
     expect(request.prompt).toContain(["Waist-up front view", "Full body front view", "Full body side view", "Full body back view"][viewIndex]);
     expect(request.prompt).toContain("Keep the same character and visual style");
     expect(request.prompt).toContain("<Picture 1>");
-    expect(request.prompt).toContain("<Subject 1> (appears in [Shot 1]): partially_preserved");
+    if (modelType === "h3_image") {
+      expect(request.prompt).not.toMatch(/\[Shot 1\]|retention_analysis|overall_soundscape/);
+      expect(request.prompt).toContain("the character (<Picture 1>");
+    } else expect(request.prompt).toContain("<Subject 1> (appears in [Shot 1]): partially_preserved");
     if (viewIndex === 3) {
       expect(request.prompt).toContain("head and body facing away, face hidden");
     }
@@ -297,6 +303,22 @@ it("rejects missing or excessive prompt references before starting a template", 
   session.update((current) => ({ ...current, references: Array.from({ length: 8 }, (_, index) => ({ id: `ref-${index}`, name: `Outfit ${index}`, kind: "image" as const, description: "", relativePath: `references/${index}.png`, intendedUse: [], createdAt: current.createdAt })) }));
   expect(() => queue.enqueueCharacterSheet(session, template, "source", { prompt: session.getSnapshot().config.references.map((reference) => `@[ref:${reference.id}]`).join(" ") })).toThrow("at most nine");
   expect(queue.getSnapshot()).toHaveLength(0);
+  expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
+});
+
+it("validates H3 Image's reference limit including the source and generated front view, and rejects refmods", () => {
+  const { queue, session } = setup();
+  const h3 = { ...template, modelType: "h3_image" };
+  session.update((current) => ({ ...current, references: Array.from({ length: 15 }, (_, index) => ({ id: `ref-${index}`, name: `Outfit ${index}`, kind: "image" as const, description: "", relativePath: `references/${index}.png`, intendedUse: [], createdAt: current.createdAt })) }));
+  const config = session.getSnapshot().config;
+  const prompt = config.references.map((reference) => `@[ref:${reference.id}]`).join(" ");
+  const valid = compileCharacterSheet(config, config.assets[0], "cache/front.png", { prompt: config.references.slice(0, 14).map((reference) => `@[ref:${reference.id}]`).join(" ") }, h3.modelType);
+  expect(valid[3].prompt).toContain("Outfit 13 (<Picture 16>)");
+  expect(() => queue.enqueueCharacterSheet(session, h3, "source", { prompt })).toThrow("at most 16 pictures");
+  session.update((current) => ({ ...current, references: [{ ...current.references[0], refmods: [{ id: "style", name: "Style", relativePath: "references/style.safetensors", strength: 1, copies: 1 }] }] }));
+  expect(() => queue.enqueueCharacterSheet(session, h3, "source", { prompt: "@[ref:ref-0]" })).toThrow("does not support refmods");
+  expect(queue.getSnapshot()).toHaveLength(0);
+  expect(session.getSnapshot().config.assets).toHaveLength(1);
   expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
 });
 

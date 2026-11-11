@@ -513,7 +513,7 @@ export class WorkQueue {
       slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
     const id = `character-sheet-${crypto.randomUUID()}`;
     const frontRelativePath = `cache/character-sheets/${id}/1.png`;
-    const views = compileCharacterSheet(config, source, frontRelativePath, options);
+    const views = compileCharacterSheet(config, source, frontRelativePath, options, template.modelType);
     config.imageScene = { ...(config.imageScene ?? createImageScene()),
       steps: generationStepsWithLoras(options?.steps ?? current.imageScene?.steps ?? template.defaultSteps, config),
       seed: options?.seed ?? current.imageScene?.seed ?? -1 };

@@ -10,6 +10,7 @@ Changes since 0.4.0.
 
 ## Fixes and improvements
 
+- MiniMax H3 Image now supports character sheets, using its image prompts, reference limits and six-step generation recipe.
 - Updated the bundled Slopfab runtime to 0.2.0, including a higher MiniMax H3 Image canvas limit of 20 MP.
 - MiniMax H3 Image resolution presets scale width and height by 1.675, rounded down to the 32-pixel grid. The largest preset is 6080 × 3424, within the 20 MP limit. Switching image models keeps the same preset position.
 - Fixed Extend rejecting editing drafts that already have a saved source image.

@@ -25,11 +25,13 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefi
 afterEach(() => { cleanup(); resetExportJobForTests(); localStorage.clear(); installH3TestDependencies(); vi.restoreAllMocks(); });
 const record = (): ProjectRecord => ({ folderPath: "D:/Images", config: parseProjectConfig(fixture) });
 
-it("opens template settings and executes only after configuring prompts and clothing references", () => {
+it.each(["minimax-h3", "h3_image"])("opens %s template settings and executes only after configuring prompts and clothing references", (modelType) => {
+  installH3TestDependencies();
   vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
-  const template = { id: "test", name: "Test", modelType: "minimax-h3" as const, defaultSteps: 20, attention: "sage2" as const, paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "D:/h3.safetensors" } };
+  const template = { id: "test", name: "Test", modelType, defaultSteps: modelType === "h3_image" ? 6 : 20, attention: "sage2" as const, paths: { ...EMPTY_ENGINE_SETTINGS, transformer: "D:/h3.safetensors" } };
   saveGeneratorTemplateSettings({ defaultTemplateId: "test", templates: [template] });
+  saveDebugOptionsEnabled(true);
   const project = record();
   project.config.assets = ["First", "Selected"].map((id) => ({ id, name: id, kind: "image", relativePath: `media/${id}.png`, mimeType: "image/png", createdAt: project.config.createdAt }));
   project.config.references = [{ id: "outfit", name: "Red coat", kind: "image", description: "A red wool coat", relativePath: "references/coat.png", intendedUse: [], createdAt: project.config.createdAt }];
@@ -57,9 +59,16 @@ it("opens template settings and executes only after configuring prompts and clot
   expect(panel.getByRole("button", { name: "Execute" })).toBeDisabled();
   fireEvent.click(panel.getByRole("switch", { name: "Back view" }));
   expect(panel.getByText(/Sheet size:/)).toHaveTextContent("1152 × 2048 px");
-  fireEvent.change(panel.getByRole("spinbutton", { name: "Steps" }), { target: { value: "" } });
-  expect(panel.getByRole("button", { name: "Execute" })).toBeDisabled();
-  fireEvent.change(panel.getByRole("spinbutton", { name: "Steps" }), { target: { value: "37" } });
+  if (modelType === "h3_image") {
+    expect(panel.getByRole("spinbutton", { name: "Steps" })).toBeDisabled();
+    expect(panel.getByRole("spinbutton", { name: "Steps" })).toHaveValue(6);
+  } else {
+    fireEvent.change(panel.getByRole("spinbutton", { name: "Steps" }), { target: { value: "" } });
+    expect(panel.getByRole("spinbutton", { name: "Steps" })).toBeInvalid();
+    fireEvent.click(panel.getByRole("button", { name: "Execute" }));
+    expect(generate).not.toHaveBeenCalled();
+    fireEvent.change(panel.getByRole("spinbutton", { name: "Steps" }), { target: { value: "37" } });
+  }
   fireEvent.change(panel.getByRole("spinbutton", { name: "Seed" }), { target: { value: "0" } });
   expect(panel.queryByRole("textbox", { name: "Clothing and accessories" })).not.toBeInTheDocument();
   const prompt = panel.getByRole("textbox", { name: "Character sheet prompt" });
@@ -69,8 +78,17 @@ it("opens template settings and executes only after configuring prompts and clot
   fireEvent.click(screen.getByRole("button", { name: /Red coat/ }));
   expect(prompt.querySelector(".prompt-chip")).toHaveTextContent("Red coat");
   expect(queue.project(project).getSnapshot().config).toEqual(before);
+  fireEvent.click(panel.getByRole("button", { name: "Debug prompt" }));
+  const debug = within(screen.getByRole("dialog", { name: "Debug prompt" }));
+  expect(debug.getByLabelText("The compiled MiniMax H3 prompt")).toHaveTextContent("Full body back view");
+  if (modelType === "h3_image") {
+    expect(debug.getByLabelText("The compiled MiniMax H3 prompt")).toHaveTextContent("Red coat (<Picture 2>)");
+    expect(debug.getByLabelText("The compiled MiniMax H3 prompt")).not.toHaveTextContent("[Shot 1]");
+  }
+  fireEvent.click(debug.getByRole("button", { name: "Close" }));
+  expect(panel.getByRole("button", { name: "Execute" })).toBeEnabled();
   fireEvent.click(panel.getByRole("button", { name: "Execute" }));
-  expect(generate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "test" }), "Selected", { prompt: "Soft studio lighting. Wear @[ref:outfit]", height: 2048, steps: 37, seed: 0,
+  expect(generate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "test" }), "Selected", { prompt: "Soft studio lighting. Wear @[ref:outfit]", height: 2048, steps: modelType === "h3_image" ? 6 : 37, seed: 0,
     views: { closeUp: false, front: false, side: false, back: true } });
   fireEvent.click(panel.getByRole("button", { name: "Close template settings" }));
   expect(screen.getByRole("complementary", { name: "Image node inspector" })).toBeInTheDocument();
