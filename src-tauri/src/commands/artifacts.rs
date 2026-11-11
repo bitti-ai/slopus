@@ -226,7 +226,10 @@ pub(crate) fn save_generated_image(
 
 pub(crate) fn write_generated_png_frame(folder: &str, id: &str, width: u32, height: u32, rgba: &[u8]) -> Result<GeneratedImageFile, String> {
     use image::ImageEncoder;
-    if width == 0 || height == 0 || width > 8192 || height > 8192 || rgba.len() != width as usize * height as usize * 4 {
+    // A character sheet combines up to four individually limited 20 MP views.
+    if width == 0 || height == 0 || width > 16_384 || height > 16_384
+        || u64::from(width) * u64::from(height) > 80 * 1024 * 1024
+        || rgba.len() != width as usize * height as usize * 4 {
         return Err("Invalid PNG image dimensions or pixels.".into());
     }
     let root = ProjectRoot::open(folder)?;

@@ -50,7 +50,7 @@ impl ImageTemplateSnapshot {
         let valid_options = match self.kind.as_str() {
             "extend" => self.views.is_none() && self.height.is_none() && self.bounds.as_ref().is_some_and(|b|
                 [b.x, b.y, b.width, b.height].iter().all(|v| v.is_finite()) && b.width > 0.0 && b.height > 0.0),
-            "character-sheet" => self.bounds.is_none() && matches!(self.height, Some(512 | 1024 | 1536 | 2048))
+            "character-sheet" => self.bounds.is_none() && self.height.is_some_and(|height| (512..=3424).contains(&height) && height % 32 == 0)
                 && self.views.as_ref().is_none_or(|views| views.close_up || views.front || views.side || views.back),
             _ => false,
         };
@@ -167,8 +167,8 @@ impl ImageScene {
         }
         if let Some(source) = &self.source_image {
             crate::project::paths::normalize_project_path(&source.relative_path)?;
-            if source.name.is_empty() || !(1..=8192).contains(&source.width) || !(1..=8192).contains(&source.height) {
-                return Err("Source image dimensions must be between 1 and 8192 pixels.".into());
+            if source.name.is_empty() || !(1..=16_384).contains(&source.width) || !(1..=16_384).contains(&source.height) {
+                return Err("Source image dimensions must be between 1 and 16384 pixels.".into());
             }
         }
         if self.nodes.is_empty()

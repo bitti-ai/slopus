@@ -1,6 +1,7 @@
 import { createImageScene } from "./imageScene";
 import { compileImagePrompt } from "./imagePrompt";
 import { outputDimensions } from "./export";
+import { imageGenerationSizeError, imageResolutionScale } from "./imageSettings";
 import type { ProjectAsset, ProjectConfig, ProjectReference } from "./project";
 
 export const CHARACTER_SHEET_VIEWS = [
@@ -20,12 +21,19 @@ export const characterSheetViews = (options?: CharacterSheetOptions): CharacterS
 export const characterSheetViewIndices = (options?: CharacterSheetOptions) => CHARACTER_SHEET_VIEWS.flatMap((view, index) => characterSheetViews(options)[view.id] ? [index] : []);
 export const emptyCharacterSheetOptions = (): CharacterSheetOptions => ({ prompt: "", views: characterSheetViews() });
 
-export function characterSheetDimensions(resolution: ProjectConfig["settings"]["resolution"], requestedHeight?: number) {
-  // A shared height divisible by 512 makes both 1:1 and 9:16 exact on H3's
-  // 32px grid, and keeps the combined image below the editor's 8192px limit.
+/** Dimensions from a saved output height; never apply the model scale twice. */
+export function characterSheetViewDimensions(height: number) {
+  return CHARACTER_SHEET_VIEWS.map((_, index) => ({ width: index === 0 ? height : Math.round(height * 9 / 16 / 32) * 32, height }));
+}
+
+export function characterSheetDimensions(resolution: ProjectConfig["settings"]["resolution"], requestedHeight?: number, modelType?: string) {
   if (requestedHeight !== undefined && !CHARACTER_SHEET_HEIGHTS.some((height) => height === requestedHeight)) throw new Error("Choose a supported character sheet height.");
-  const height = requestedHeight ?? Math.max(512, Math.min(2048, Math.round(outputDimensions(resolution, "1:1").height / 512) * 512));
-  return CHARACTER_SHEET_VIEWS.map((_, index) => ({ width: index === 0 ? height : height * 9 / 16, height }));
+  const preset = requestedHeight ?? Math.max(512, Math.min(2048, Math.round(outputDimensions(resolution, "1:1").height / 512) * 512));
+  const height = Math.floor(preset * imageResolutionScale(modelType) / 32) * 32;
+  const dimensions = characterSheetViewDimensions(height);
+  const error = dimensions.map((size) => imageGenerationSizeError(size, modelType)).find(Boolean);
+  if (error) throw new Error(error);
+  return dimensions;
 }
 
 export function compileCharacterSheet(config: ProjectConfig, source: ProjectAsset, frontRelativePath: string, options: CharacterSheetOptions = emptyCharacterSheetOptions(), modelType?: string) {

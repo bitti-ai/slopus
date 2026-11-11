@@ -10,6 +10,7 @@ Changes since 0.4.0.
 
 ## Fixes and improvements
 
+- MiniMax H3 Image character sheet presets scale by 1.675 with 32-pixel alignment, up to 3424 pixels high. Each view stays below 20 MP; all four views combine into a 9184 × 3424 sheet that can be saved and reopened.
 - MiniMax H3 Image Zoom width and height fields now snap typed sizes to multiples of 32, keeping the displayed values in sync with the box.
 - Fixed Zoom rejecting MiniMax H3 Image outputs above the older canvas limit; aligned outputs up to 20 MP are now supported.
 - MiniMax H3 Image now supports character sheets, using its image prompts, reference limits and six-step generation recipe.

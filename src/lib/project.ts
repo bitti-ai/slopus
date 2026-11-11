@@ -153,7 +153,7 @@ const imageTemplateSnapshotSchema = z.discriminatedUnion("kind", [
   z.object({ ...imageTemplateFields, kind: z.literal("extend"), bounds: z.object({
     x: z.number().finite(), y: z.number().finite(), width: z.number().positive().finite(), height: z.number().positive().finite(),
   }) }),
-  z.object({ ...imageTemplateFields, kind: z.literal("character-sheet"), height: z.number().int().refine((height) => [512, 1024, 1536, 2048].includes(height), "Unsupported character sheet height."),
+  z.object({ ...imageTemplateFields, kind: z.literal("character-sheet"), height: z.number().int().min(512).max(3424).multipleOf(32),
     views: z.object({ closeUp: z.boolean(), front: z.boolean(), side: z.boolean(), back: z.boolean() })
       .refine((views) => Object.values(views).some(Boolean), "Enable at least one character sheet view.").optional() }),
 ]);

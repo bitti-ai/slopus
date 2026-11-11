@@ -49,16 +49,16 @@ it.each(["minimax-h3", "h3_image"])("opens %s template settings and executes onl
   expect(screen.queryByRole("complementary", { name: "Image node inspector" })).not.toBeInTheDocument();
   const panel = within(screen.getByRole("complementary", { name: "Character sheet settings" }));
   const before = structuredClone(queue.project(project).getSnapshot().config);
-  choose("Character sheet resolution", "2048 px high");
+  choose("Character sheet resolution", modelType === "h3_image" ? "3424 px high" : "2048 px high");
   expect(panel.getByRole("switch", { name: "Side view" })).not.toBeChecked();
   for (const name of ["Close up", "Front view", "Back view"]) expect(panel.getByRole("switch", { name })).toBeChecked();
-  expect(panel.getByText(/Sheet size:/)).toHaveTextContent("4352 × 2048 px");
+  expect(panel.getByText(/Sheet size:/)).toHaveTextContent(modelType === "h3_image" ? "7264 × 3424 px" : "4352 × 2048 px");
   fireEvent.click(panel.getByRole("switch", { name: "Side view" }));
-  expect(panel.getByText(/Sheet size:/)).toHaveTextContent("5504 × 2048 px");
+  expect(panel.getByText(/Sheet size:/)).toHaveTextContent(modelType === "h3_image" ? "9184 × 3424 px" : "5504 × 2048 px");
   for (const name of ["Close up", "Front view", "Side view", "Back view"]) fireEvent.click(panel.getByRole("switch", { name }));
   expect(panel.getByRole("button", { name: "Execute" })).toBeDisabled();
   fireEvent.click(panel.getByRole("switch", { name: "Back view" }));
-  expect(panel.getByText(/Sheet size:/)).toHaveTextContent("1152 × 2048 px");
+  expect(panel.getByText(/Sheet size:/)).toHaveTextContent(modelType === "h3_image" ? "1920 × 3424 px" : "1152 × 2048 px");
   if (modelType === "h3_image") {
     expect(panel.getByRole("spinbutton", { name: "Steps" })).toBeDisabled();
     expect(panel.getByRole("spinbutton", { name: "Steps" })).toHaveValue(6);

@@ -50,14 +50,18 @@ it.each(["minimax-h3", "h3_image"].flatMap((modelType) => [false, true].map((cha
   const { queue, session } = setup();
   const original = structuredClone(session.getSnapshot().config);
   const selected = { ...template, modelType };
+  const height = modelType === "h3_image" ? 1696 : 1024;
+  const bodyWidth = modelType === "h3_image" ? 960 : 576;
+  const saved = { ...result, width: height + 2 * bodyWidth, height };
+  vi.mocked(invoke).mockImplementation(async (command) => command === "combine_character_sheet" ? saved : undefined);
   queue.enqueueCharacterSheet(session, selected, "source");
   queue.enqueueCharacterSheet(session, selected, "source");
   expect(queue.getSnapshot()).toHaveLength(1);
   const id = queue.getSnapshot()[0].id;
   const pending = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
   expect(pending.assets).toHaveLength(2);
-  expect(pending.assets[1]).toMatchObject({ id, imageDraft: true, parentAssetId: "source", width: 2176, height: 1024,
-    imageGeneration: { template: { kind: "character-sheet", sourceId: "source", sourceName: "Hero", generatorName: template.name, prompt: "", height: 1024 } } });
+  expect(pending.assets[1]).toMatchObject({ id, imageDraft: true, parentAssetId: "source", width: saved.width, height,
+    imageGeneration: { template: { kind: "character-sheet", sourceId: "source", sourceName: "Hero", generatorName: template.name, prompt: "", height } } });
   expect(pending.assets[1].relativePath).toBeUndefined();
   expect(pending.imageScene!.outputAssetId).toBe(id);
   expect(queue.getSnapshot()[0].imageDraftId).toBe(id);
@@ -73,8 +77,8 @@ it.each(["minimax-h3", "h3_image"].flatMap((modelType) => [false, true].map((cha
     expect(request).toMatchObject({ stillImage: true, frames: 1, referencePaths, seed });
     expect(request.steps).toBe(modelType === "h3_image" ? 6 : original.imageScene!.steps);
     expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[index][1].providerSettings.slopfab?.options.modelType).toBe(modelType);
-    expect(request.canvasWidth / request.canvasHeight).toBe(viewIndex === 0 ? 1 : 9 / 16);
-    expect(request.canvasHeight).toBe(1024);
+    expect(request.canvasWidth).toBe(viewIndex === 0 ? height : bodyWidth);
+    expect(request.canvasHeight).toBe(height);
     if (index > 0) {
       expect(invoke).toHaveBeenCalledWith("save_character_sheet_view", { folderPath: "C:/Character", sheetId: id, jobId: `${id}-view-2`, index: 1 });
       expect(request.prompt).toContain("match the outfit in <Picture 2> from the requested angle");
@@ -106,7 +110,7 @@ it.each(["minimax-h3", "h3_image"].flatMap((modelType) => [false, true].map((cha
   const reopened = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
   expect(reopened.assets).toHaveLength(2);
   expect(reopened.assets[0]).toEqual(original.assets[0]);
-  expect(reopened.assets[1]).toMatchObject({ id, name: "Character sheet - Hero", mimeType: "image/png", ...result, imageGeneration: { usedSeed: seed } });
+  expect(reopened.assets[1]).toMatchObject({ id, name: "Character sheet - Hero", mimeType: "image/png", ...saved, imageGeneration: { usedSeed: seed } });
   expect(reopened.assets[1].parentAssetId).toBe("source");
   expect(reopened.assets[1].imageDraft).toBe(false);
   expect(reopened.assets[1].imageGeneration!.template).toEqual(pending.assets[1].imageGeneration!.template);
@@ -155,23 +159,30 @@ it("rejects a sheet with every view disabled before queueing", () => {
   expect(queue.getSnapshot()).toHaveLength(0);
 });
 
-it.each(CHARACTER_SHEET_HEIGHTS)("generates all four views at the selected %s px height", async (height) => {
+it.each(CHARACTER_SHEET_HEIGHTS.flatMap((height, index) => [
+  { modelType: "minimax-h3", height, outputHeight: height, bodyWidth: height * 9 / 16 },
+  { modelType: "h3_image", height, outputHeight: [832, 1696, 2560, 3424][index], bodyWidth: [480, 960, 1440, 1920][index] },
+]))("generates and reopens all four $modelType views at preset $height", async ({ modelType, height, outputHeight, bodyWidth }) => {
   const { queue, session } = setup();
-  const saved = { ...result, width: height * 43 / 16, height };
+  const saved = { ...result, width: outputHeight + 3 * bodyWidth, height: outputHeight };
   vi.mocked(invoke).mockImplementation(async (command) => command === "combine_character_sheet" ? saved : undefined);
   const options = { prompt: "", height, views: { closeUp: true, front: true, side: true, back: true } };
-  queue.enqueueCharacterSheet(session, template, "source", options);
-  expect(queue.getSnapshot()[0].settings.canvasHeight).toBe(height);
+  queue.enqueueCharacterSheet(session, { ...template, modelType }, "source", options);
+  expect(queue.getSnapshot()[0].settings.canvasHeight).toBe(outputHeight);
   options.height = 512; // Queued dimensions must not follow later settings edits.
   for (let index = 0; index < 4; index++) {
     const request = await requestAt(index);
-    expect(request.canvasHeight).toBe(height);
-    expect(request.canvasWidth).toBe(index === 1 ? height : height * 9 / 16);
+    expect(request.canvasHeight).toBe(outputHeight);
+    expect(request.canvasWidth).toBe(index === 1 ? outputHeight : bodyWidth);
     expect(request.canvasWidth % 32).toBe(0);
+    expect(request.canvasHeight % 32).toBe(0);
+    expect(request.canvasWidth * request.canvasHeight).toBeLessThanOrEqual(20 * 1024 * 1024);
     emit("framesReady", request.jobId);
   }
   await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));
-  expect(session.getSnapshot().config.assets.at(-1)).toMatchObject(saved);
+  const reopened = parseProjectConfig(JSON.parse(JSON.stringify(session.getSnapshot().config)));
+  expect(reopened.assets.at(-1)).toMatchObject({ ...saved, imageGeneration: { template: { height: outputHeight }, scene: { sourceImage: saved } } });
+  expect(reopened.imageScene?.sourceImage).toMatchObject(saved);
   expect(session.getSnapshot().config.settings.resolution).toBe("768p");
 });
 

@@ -21,7 +21,7 @@ export const imageNodeSchema = z.object({
 });
 export const imageSourceSchema = z.object({
   relativePath: z.string().min(1).refine((path) => !path.startsWith("/") && !path.includes("\\") && !path.includes(":") && !path.split("/").includes(".."), "Image source must be a project-relative path."),
-  name: z.string().min(1), width: z.number().int().min(1).max(8192), height: z.number().int().min(1).max(8192),
+  name: z.string().min(1), width: z.number().int().min(1).max(16384), height: z.number().int().min(1).max(16384),
 });
 export type ImageSource = z.infer<typeof imageSourceSchema>;
 export const imageSceneSchema = z.object({

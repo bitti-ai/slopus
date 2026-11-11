@@ -1,7 +1,7 @@
 import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
 import { imageSettings } from "../../lib/imageSettings";
 import { useMemo, useState } from "react";
-import { CHARACTER_SHEET_HEIGHTS, CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, characterSheetViewIndices, characterSheetViews, compileCharacterSheet, emptyCharacterSheetOptions, type CharacterSheetOptions } from "../../lib/characterSheet";
+import { CHARACTER_SHEET_HEIGHTS, CHARACTER_SHEET_ORDER, CHARACTER_SHEET_VIEWS, characterSheetDimensions, characterSheetViewDimensions, characterSheetViewIndices, characterSheetViews, compileCharacterSheet, emptyCharacterSheetOptions, type CharacterSheetOptions } from "../../lib/characterSheet";
 import type { ProjectAsset, ProjectConfig } from "../../lib/project";
 import { ComboBox, InfoBar, ItemHeader, PropRow, ToggleSwitch } from "../ui";
 import { Dismiss16, Sparkle16 } from "../ui/icons";
@@ -20,7 +20,11 @@ export function CharacterSheetSettings({ config, source, references, missingLabe
     steps: config.imageScene?.steps ?? defaultSteps, seed: config.imageScene?.seed ?? -1, ...initialOptions,
     // Older submitted sheets always generated all four views.
     ...(initialOptions && !initialOptions.views ? { views: { closeUp: true, front: true, side: true, back: true } } : {}) }));
-  const dimensions = characterSheetDimensions(imageSettings(config).resolution, options.height);
+  // Submitted snapshots store actual pixels; editable settings store preset heights.
+  const dimensions = initialOptions?.height !== undefined ? characterSheetViewDimensions(initialOptions.height)
+    : characterSheetDimensions(imageSettings(config).resolution, options.height, modelType);
+  const resolutionOptions = initialOptions?.height !== undefined ? [{ value: initialOptions.height, label: `${initialOptions.height} px high` }]
+    : CHARACTER_SHEET_HEIGHTS.map((height) => ({ value: height, label: `${characterSheetDimensions(imageSettings(config).resolution, height, modelType)[0].height} px high` }));
   const selectedViews = characterSheetViews(options);
   const indices = characterSheetViewIndices(options);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +53,7 @@ export function CharacterSheetSettings({ config, source, references, missingLabe
             onChange={(checked) => update("views", { ...selectedViews, [view.id]: checked })} />
         </PropRow>)}
         <PropRow label="Resolution" htmlFor="character-sheet-resolution" tooltip="Width follows the selected view proportions."><ComboBox id="character-sheet-resolution" aria-label="Character sheet resolution" value={options.height} disabled={busy}
-          options={CHARACTER_SHEET_HEIGHTS.map((height) => ({ value: height, label: `${height} px high` }))} onChange={(height) => update("height", height)} /></PropRow>
+          options={resolutionOptions} onChange={(height) => update("height", height)} /></PropRow>
         <p className="image-inspector__caption">Sheet size: {indices.reduce((width, index) => width + dimensions[index].width, 0)} × {dimensions[0].height} px.</p>
         <PropRow label="Steps" htmlFor="character-sheet-steps" tooltip="All selected views use the same step count."><SliderNumberInput id="character-sheet-steps" aria-label="Steps" {...GENERATION_STEPS_RANGE} required disabled={busy || modelType === "h3_image"}
           value={steps} onCommit={(steps) => update("steps", steps)} /></PropRow>

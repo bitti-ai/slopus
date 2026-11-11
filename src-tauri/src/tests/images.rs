@@ -243,12 +243,17 @@ fn image_template_settings_survive_save_and_reopen() {
         serde_json::json!({"kind":"extend", "sourceId":"source", "sourceName":"Original", "generatorName":"Default generator", "prompt":"Continue the forest", "steps":28, "seed":-1, "bounds":{"x":-64,"y":-32,"width":768,"height":640}}),
         serde_json::json!({"kind":"character-sheet", "sourceId":"source", "sourceName":"Original", "generatorName":"Default generator", "prompt":"Red coat", "steps":28, "seed":0, "height":1024}),
         serde_json::json!({"kind":"character-sheet", "sourceId":"source", "sourceName":"Original", "generatorName":"Default generator", "prompt":"Red coat", "steps":28, "seed":0, "height":1024, "views":{"closeUp":false,"front":false,"side":true,"back":true}}),
+        serde_json::json!({"kind":"character-sheet", "sourceId":"source", "sourceName":"Original", "generatorName":"MiniMax H3 Image", "prompt":"Red coat", "steps":6, "seed":0, "height":3424, "views":{"closeUp":true,"front":true,"side":true,"back":true}}),
     ] {
         for pending in [true, false] {
             let mut config = image_fixture();
             let mut snapshot: serde_json::Value = serde_json::from_str(include_str!("../../../fixtures/image-generation-snapshot.json")).unwrap();
             snapshot["template"] = template.clone();
             snapshot["usedSeed"] = serde_json::json!(1234);
+            if template["height"] == 3424 {
+                snapshot["scene"]["rootType"] = serde_json::json!("image");
+                snapshot["scene"]["sourceImage"] = serde_json::json!({"relativePath":"media/result.png", "name":"Character sheet", "width":9184, "height":3424});
+            }
             config.assets.push(serde_json::from_value(serde_json::json!({
                 "id":"template-result", "kind":"image", "name":"Template result", "mimeType":"image/png",
                 "width":512, "height":512, "createdAt":config.created_at, "imageDraft":pending,

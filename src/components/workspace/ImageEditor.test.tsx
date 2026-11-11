@@ -162,15 +162,16 @@ it.each([mossImageTemplate(), ...kreaImageTemplates()])("offers $name for new im
 });
 
 it.each([
-  ["extend", true], ["extend", false], ["character-sheet", true], ["character-sheet", false],
-] as const)("shows the existing %s panel only while the selected entry is generating (pending: %s)", (kind, pending) => {
+  ["extend", true, 1024], ["extend", false, 1024], ["character-sheet", true, 1024], ["character-sheet", false, 1024],
+  ["character-sheet", true, 3424], ["character-sheet", false, 3424],
+] as const)("shows the existing %s panel only while the selected entry is generating (pending: %s, height: %s)", (kind, pending, height) => {
   const initial = parseProjectConfig(fixture);
   const source = { id: "source", kind: "image" as const, name: "Original", relativePath: "media/source.png", width: 512, height: 512, mimeType: "image/png", createdAt: initial.createdAt };
   initial.assets = [source];
   const name = kind === "extend" ? "Zoom" : "Character sheet";
   const generation = { ...imageGenerationSnapshot({ ...initial, imageScene: { ...createImageScene("Snowy forest"), steps: 28, seed: -1 } }, "Compiled prompt", "removed-generator"), usedSeed: 1234,
     template: { sourceId: source.id, sourceName: source.name, generatorName: "Recorded generator", prompt: "Snowy forest", steps: 28, seed: -1,
-      ...(kind === "extend" ? { kind, bounds: { x: -64, y: -32, width: 768, height: 640 } } : { kind, height: 1024 }) } };
+      ...(kind === "extend" ? { kind, bounds: { x: -64, y: -32, width: 768, height: 640 } } : { kind, height }) } };
   let saved = createTemplateImageDraft(initial, "template-result", `${name} result`, generation, { width: 512, height: 512 });
   if (!pending) {
     const result = { ...source, id: "template-result", name: `${name} result`, relativePath: "media/result.png" };
@@ -192,7 +193,10 @@ it.each([
       expect(panel.getByLabelText("Zoom y")).toHaveValue(-32);
       expect(panel.getByLabelText("Zoom width")).toHaveValue(768);
       expect(panel.getByLabelText("Zoom height")).toHaveValue(640);
-    } else expect(comboValue(panel.getByLabelText("Character sheet resolution"))).toBe("1024");
+    } else {
+      expect(comboValue(panel.getByLabelText("Character sheet resolution"))).toBe(String(height));
+      expect(panel.getByText(/Sheet size:/)).toHaveTextContent(height === 3424 ? "9184 × 3424 px" : "2752 × 1024 px");
+    }
     expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(screen.getByRole("progressbar", { name: "Image generation progress" })).toBeInTheDocument();
     fireEvent.contextMenu(screen.getByRole("button", { name: `View ${name} result` }));

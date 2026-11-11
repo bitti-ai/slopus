@@ -3,6 +3,14 @@ use crate::project::paths::ProjectRoot;
 use crate::rendered;
 use image::{ImageEncoder, RgbaImage};
 
+const MAX_VIEW_EDGE: u32 = 8192;
+const MAX_VIEW_PIXELS: u64 = 20 * 1024 * 1024;
+
+fn valid_view_size(width: u32, height: u32) -> bool {
+    width > 0 && height > 0 && width <= MAX_VIEW_EDGE && height <= MAX_VIEW_EDGE
+        && u64::from(width) * u64::from(height) <= MAX_VIEW_PIXELS
+}
+
 fn cache_directory(sheet_id: &str) -> Result<String, String> {
     Ok(format!(
         "cache/character-sheets/{}",
@@ -37,10 +45,7 @@ fn write_view(
     pixels: &[u8],
 ) -> Result<(), String> {
     if index >= 4
-        || width == 0
-        || width > 2048
-        || height == 0
-        || height > 8192
+        || !valid_view_size(width, height)
         || pixels.len() != width as usize * height as usize * 4
     {
         return Err("Invalid character sheet view dimensions or pixels.".into());
@@ -74,7 +79,7 @@ pub(crate) fn combine_character_sheet(
     for index in indices {
         let path = root.existing(&format!("{directory}/{index}.png"))?;
         let (width, height) = image::image_dimensions(&path).map_err(|error| error.to_string())?;
-        if width == 0 || width > 2048 || height == 0 || height > 8192 {
+        if !valid_view_size(width, height) {
             return Err("Invalid character sheet view dimensions.".into());
         }
         if !views.is_empty() && common_height != height {
@@ -82,6 +87,9 @@ pub(crate) fn combine_character_sheet(
         }
         common_height = height;
         total_width += width;
+        if total_width > 16_384 || u64::from(total_width) * u64::from(common_height) > 4 * MAX_VIEW_PIXELS {
+            return Err("Combined character sheet exceeds the supported image size.".into());
+        }
         views.push((path, width));
     }
     let mut sheet = RgbaImage::new(total_width, common_height);
@@ -201,11 +209,28 @@ mod tests {
     }
 
     #[test]
+    fn character_sheet_saves_scaled_h3_views_above_20_mp_combined() {
+        let folder = project_folder();
+        let path = folder.path().to_string_lossy().into_owned();
+        for (index, width) in [3424, 1920, 1920, 1920].into_iter().enumerate() {
+            assert!(valid_view_size(width, 3424));
+            write_view(&path, "h3-sheet", index, width, 3424,
+                &[index as u8, 80, 120, 255].repeat(width as usize * 3424)).unwrap();
+        }
+        let saved = combine_character_sheet(path.clone(), "h3-sheet".into(), None).unwrap();
+        assert_eq!((saved.width, saved.height), (9184, 3424));
+        assert_eq!(image::image_dimensions(folder.path().join(saved.relative_path)).unwrap(), (9184, 3424));
+        assert!(!valid_view_size(4608, 4608));
+        assert!(!valid_view_size(8193, 32));
+        discard_character_sheet_views(path, "h3-sheet".into()).unwrap();
+    }
+
+    #[test]
     fn character_sheet_rejects_missing_mismatched_and_oversized_views() {
         let folder = project_folder();
         let path = folder.path().to_string_lossy().into_owned();
         assert!(write_view(&path, "sheet", 4, 1, 1, &[0; 4]).is_err());
-        assert!(write_view(&path, "sheet", 0, 2049, 1, &[0; 4]).is_err());
+        assert!(write_view(&path, "sheet", 0, 8193, 1, &[0; 4]).is_err());
         write_view(&path, "sheet", 0, 1, 1, &[0; 4]).unwrap();
         assert!(combine_character_sheet(path.clone(), "sheet".into(), None).is_err());
         for index in 1..4 {

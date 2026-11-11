@@ -517,7 +517,7 @@ export class WorkQueue {
     config.imageScene = { ...(config.imageScene ?? createImageScene()),
       steps: generationStepsWithLoras(options?.steps ?? current.imageScene?.steps ?? template.defaultSteps, config),
       seed: options?.seed ?? current.imageScene?.seed ?? -1 };
-    const dimensions = characterSheetDimensions(imageSettings(config).resolution, options?.height);
+    const dimensions = characterSheetDimensions(imageSettings(config).resolution, options?.height, template.modelType);
     const indices = characterSheetViewIndices(options);
     const order = CHARACTER_SHEET_ORDER.filter((index) => indices.includes(index));
     const firstView = order[0];
