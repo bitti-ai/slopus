@@ -56,6 +56,33 @@ it("executes an optional-prompt extension at the changed resolution without chan
     expect.objectContaining({ prompt: "", bounds: { x: -104, y: -74, width: 608, height: 448 } }));
 });
 
+it("snaps typed H3 Image Zoom sizes even when they round back to the current box", () => {
+  vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
+  vi.spyOn(settings, "templateUsable").mockReturnValue(true);
+  const generator = settings.createGeneratorTemplate("H3 Image", "h3_image");
+  settings.saveGeneratorTemplateSettings({ templates: [generator], defaultTemplateId: generator.id });
+  settings.saveActiveGeneratorId("image", generator.id);
+  const config = parseProjectConfig(fixture);
+  config.assets = [source]; config.imageScene!.outputAssetId = source.id;
+  const execute = vi.fn();
+  render(<ImageEditor config={config} folderPath="D:/Images" onChange={vi.fn()} onGenerate={vi.fn()} onCancel={vi.fn()} onGenerateExtend={execute} />);
+  fireEvent.click(screen.getByRole("button", { name: "Template" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Zoom" }));
+  for (const [field, value, aligned] of [["width", 609, 608], ["height", 449, 448], ["width", 625, 640]] as const) {
+    const input = screen.getByLabelText(`Zoom ${field}`);
+    fireEvent.change(input, { target: { value: String(value) } });
+    fireEvent.blur(input);
+    expect(input).toHaveValue(aligned);
+    expect(input).toBeValid();
+    expect(screen.getByRole("button", { name: "Move Zoom box" })).toHaveAttribute(field, String(aligned));
+  }
+  expect(screen.getByRole("button", { name: "Execute" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Execute" }));
+  expect(execute).toHaveBeenCalledWith(expect.objectContaining({ modelType: "h3_image" }), source.id,
+    expect.objectContaining({ bounds: { x: -104, y: -74, width: 640, height: 448 } }));
+});
+
 it("moves, resizes, redraws and cancels box drags in original pixel coordinates", () => {
   vi.spyOn(persistence, "readMediaFileUrl").mockResolvedValue(null);
   let latest: ExtendBounds = { x: -96, y: -64, width: 576, height: 448 };

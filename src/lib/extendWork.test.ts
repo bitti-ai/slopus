@@ -120,6 +120,22 @@ it.each([false, true])("rejects images without saved pixels (draft: %s)", (image
   expect(enqueueSlopfabGeneration).not.toHaveBeenCalled();
 });
 
+it("prepares and generates an H3 Image crop above the legacy Zoom output limit", async () => {
+  const { queue, session } = setup();
+  session.update((config) => ({ ...config, imageSettings: { resolution: "2048p", aspectRatio: "16:9" } }));
+  const bounds = { x: 32, y: 32, width: 64, height: 64 };
+  const saved = { ...result, width: 4544, height: 4544 };
+  vi.mocked(invoke).mockImplementation(async (command) => command === "save_extended_image" ? saved : undefined);
+  queue.enqueueExtendImage(session, { ...template, modelType: "h3_image" }, "source", { ...options(), bounds });
+  const request = await submitted();
+  expect(request).toMatchObject({ canvasWidth: 4544, canvasHeight: 4544, steps: 6,
+    imageEdit: { edits: [expect.objectContaining({ width: 4544, height: 4544, strength: 1, invertMask: false })] } });
+  expect(invoke).toHaveBeenCalledWith("prepare_extend_image", { folderPath: "C:/Extend", jobId: request.jobId, sourceId: "source", bounds, output: { width: 4544, height: 4544 } });
+  emit("framesReady", request.jobId);
+  await waitFor(() => expect(queue.getSnapshot()[0].status).toBe("completed"));
+  expect(session.getSnapshot().config.assets.at(-1)).toMatchObject(saved);
+});
+
 it("passes prompt reference images and refmods to the extension", async () => {
   const { queue, session } = setup();
   session.update((config) => ({ ...config, references: [{ id: "trees", name: "Trees", kind: "image", description: "Tall pines", relativePath: "references/trees.png", intendedUse: [], createdAt: config.createdAt,

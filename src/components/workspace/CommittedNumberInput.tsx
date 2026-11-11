@@ -3,11 +3,13 @@ import { useEffect, useState, type InputHTMLAttributes } from "react";
 /** A controlled number field that does not erase an in-progress keyboard edit.
  *  Empty strings, a lone minus sign, and values below a minimum are legitimate
  *  intermediate text; the parent only receives complete, valid numbers. */
-export function CommittedNumberInput({ value, minimum, maximum, integer = false, onCommit, onChange: _onChange, onBlur: _onBlur, onKeyDown: _onKeyDown, ...input }: {
+export function CommittedNumberInput({ value, minimum, maximum, integer = false, normalizeValue, onCommit, onChange: _onChange, onBlur: _onBlur, onKeyDown: _onKeyDown, ...input }: {
   value: number;
   minimum: number;
   maximum: number;
   integer?: boolean;
+  /** Keep the field in sync when a valid value snaps to a model-specific grid. */
+  normalizeValue?: (value: number) => number;
   onCommit: (value: number) => void;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "min" | "max">) {
   const [draft, setDraft] = useState(String(value));
@@ -27,7 +29,8 @@ export function CommittedNumberInput({ value, minimum, maximum, integer = false,
       setDraft(String(value));
       return;
     }
-    const normalized = Math.max(minimum, Math.min(maximum, integer ? Math.round(parsed) : parsed));
+    const clamped = Math.max(minimum, Math.min(maximum, integer ? Math.round(parsed) : parsed));
+    const normalized = normalizeValue ? normalizeValue(clamped) : clamped;
     setDraft(String(normalized));
     onCommit(normalized);
   };
@@ -42,7 +45,11 @@ export function CommittedNumberInput({ value, minimum, maximum, integer = false,
       const next = event.currentTarget.value;
       setDraft(next);
       const parsed = valid(next);
-      if (parsed !== null) onCommit(parsed);
+      if (parsed !== null) {
+        const normalized = normalizeValue ? normalizeValue(parsed) : parsed;
+        if (normalizeValue) setDraft(String(normalized));
+        onCommit(normalized);
+      }
     }}
     onBlur={finish}
     onKeyDown={(event) => {

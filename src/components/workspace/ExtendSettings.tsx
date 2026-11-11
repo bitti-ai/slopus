@@ -41,6 +41,8 @@ export function ExtendSettings({ config, source, options, onChange, onResolution
         {(["x", "y", "width", "height"] as const).map((field) => <PropRow key={field} label={field === "x" ? "X" : field === "y" ? "Y" : field === "width" ? "Width" : "Height"} htmlFor={`extend-${field}`}
           tooltip={field === "x" || field === "y" ? "Drag the box or its handles, or drag outside it to draw a new box." : "Sizes use 32-pixel increments. The source is resized to fit the box at the selected generation resolution."}>
           <SliderNumberInput id={`extend-${field}`} aria-label={`Zoom ${field}`} integer step={field === "x" || field === "y" ? 1 : EXTEND_GRID} minimum={field === "x" || field === "y" ? -8192 : EXTEND_GRID} maximum={field === "x" || field === "y" ? 8192 : EXTEND_MAX_EDGE} required disabled={busy}
+            normalizeValue={template.modelType === "h3_image" && (field === "width" || field === "height")
+              ? (value) => alignExtendBounds({ ...options.bounds, [field]: value }, field === "width" ? "e" : "s")[field] : undefined}
             value={options.bounds[field]} onCommit={(value) => {
               const bounds = { ...options.bounds, [field]: value };
               onChange({ ...options, bounds: field === "width" || field === "height" ? alignExtendBounds(bounds, field === "width" ? "e" : "s") : { ...bounds, [field]: Math.round(value) } });

@@ -19,6 +19,10 @@ pub(crate) struct ExtendSize {
 // Keep aligned with the largest current preset in src/lib/export.ts (2048p).
 const MAX_GENERATION_EDGE: u32 = 3648;
 const MAX_GENERATION_PIXELS: u64 = 3648 * 2048;
+// The selection workspace stays compact; prepared output can use H3 Image's
+// larger canvas. Keep these limits aligned with src/lib/extendImage.ts.
+const MAX_OUTPUT_EDGE: u32 = 8192;
+const MAX_OUTPUT_PIXELS: u64 = 20 * 1024 * 1024;
 
 fn source_dimensions(width: u32, height: u32) -> ExtendSize {
     let scale = 1.0f64
@@ -54,14 +58,14 @@ fn scaled_layout(
         || output.height == 0
         || output.width % 32 != 0
         || output.height % 32 != 0
-        || output.width > MAX_GENERATION_EDGE
-        || output.height > MAX_GENERATION_EDGE
-        || u64::from(output.width) * u64::from(output.height) > MAX_GENERATION_PIXELS
     {
-        return Err(
-            "Zoom output must be aligned to 32 pixels within the maximum generation resolution."
-                .into(),
-        );
+        return Err("Zoom output dimensions must be positive multiples of 32.".into());
+    }
+    if output.width > MAX_OUTPUT_EDGE
+        || output.height > MAX_OUTPUT_EDGE
+        || u64::from(output.width) * u64::from(output.height) > MAX_OUTPUT_PIXELS
+    {
+        return Err("Zoom output exceeds the maximum canvas size (8192 pixels per edge and 20 MP).".into());
     }
     if bounds.is_contained(workspace.width, workspace.height) {
         return Ok((output, ExtendBounds { x: 0, y: 0, width: output.width, height: output.height }));
@@ -468,6 +472,31 @@ mod tests {
     }
 
     #[test]
+    fn zoom_accepts_h3_image_output_limits_for_crops_and_extensions() {
+        for bounds in [
+            ExtendBounds { x: 32, y: 32, width: 64, height: 32 },
+            ExtendBounds { x: -64, y: -32, width: 256, height: 160 },
+        ] {
+            for output in [
+                ExtendSize { width: 6080, height: 3424 },
+                ExtendSize { width: 4544, height: 4544 },
+                ExtendSize { width: 8192, height: 2560 },
+            ] {
+                let (_, mapped) = scaled_layout(128, 96, bounds, output).unwrap();
+                assert_eq!((mapped.width, mapped.height), (output.width, output.height));
+            }
+            for output in [
+                ExtendSize { width: 4608, height: 4608 },
+                ExtendSize { width: 8224, height: 32 },
+            ] {
+                assert!(scaled_layout(128, 96, bounds, output).err().unwrap().contains("maximum canvas size"));
+            }
+            assert!(scaled_layout(128, 96, bounds, ExtendSize { width: 6081, height: 3424 })
+                .err().unwrap().contains("multiples of 32"));
+        }
+    }
+
+    #[test]
     fn extend_layout_matches_the_scaled_generation_canvas_and_allows_selected_resolution() {
         let bounds = ExtendBounds {
             x: -64,
@@ -510,8 +539,8 @@ mod tests {
             96,
             bounds,
             ExtendSize {
-                width: 3648,
-                height: 3648
+                width: 4608,
+                height: 4608
             }
         )
         .is_err());
