@@ -5,17 +5,30 @@ import { resolveH3Components } from "./h3Components";
 import { compileImagePrompt } from "./imagePrompt";
 import { compileExtendImage } from "./extendImage";
 import { createImageEditScene } from "./imageScene";
-import { createProjectConfig } from "./project";
+import { createProjectConfig, PROJECT_RESOLUTIONS } from "./project";
+import { imageGenerationDimensions, imageGenerationSizeError } from "./imageSettings";
 
 beforeEach(() => localStorage.clear());
 const project = () => createProjectConfig({ name: "Image", generationType: "image", prompt: "A blue teapot", aspectRatio: "1:1", resolution: "416p", targetDurationSeconds: 15 });
 
-it("uses the same preset at four times each dimension for H3 Image Zoom", () => {
+it("keeps every H3 Image preset on the generation grid and within the pixel limit", () => {
+  expect(imageGenerationDimensions("2048p", "16:9", "h3_image")).toEqual({ width: 6080, height: 3424 });
+  for (const resolution of PROJECT_RESOLUTIONS) {
+    for (const aspectRatio of ["16:9", "9:16", "1:1", "4:5"] as const) {
+      const size = imageGenerationDimensions(resolution, aspectRatio, "h3_image");
+      expect(size.width % 32).toBe(0);
+      expect(size.height % 32).toBe(0);
+      expect(imageGenerationSizeError(size, "h3_image")).toBeNull();
+    }
+  }
+});
+
+it("uses the same preset scaled by 1.675 on the generation grid for H3 Image Zoom", () => {
   const config = project();
   const source = { id: "source", name: "Source", kind: "image" as const, mimeType: "image/png", width: 128, height: 128, createdAt: config.createdAt };
   const options = { bounds: { x: -32, y: -32, width: 192, height: 192 }, prompt: "Forest", steps: 6, seed: 0 };
   expect(compileExtendImage(config, source, "canvas.png", options, "minimax-h3").layout.output).toEqual({ width: 416, height: 416 });
-  expect(compileExtendImage(config, source, "canvas.png", options, "h3_image").layout.output).toEqual({ width: 1664, height: 1664 });
+  expect(compileExtendImage(config, source, "canvas.png", options, "h3_image").layout.output).toEqual({ width: 672, height: 672 });
 });
 
 it("adds MiniMax H3 Image once without changing selected or custom generators, and respects removal", () => {

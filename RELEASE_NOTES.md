@@ -11,7 +11,7 @@ Changes since 0.4.0.
 ## Fixes and improvements
 
 - Updated the bundled Slopfab runtime to 0.2.0, including a higher MiniMax H3 Image canvas limit of 20 MP.
-- MiniMax H3 Image resolution presets use four times the width and height. Switching image models keeps the same preset position; sizes above 20 MP are unavailable.
+- MiniMax H3 Image resolution presets scale width and height by 1.675, rounded down to the 32-pixel grid. The largest preset is 6080 × 3424, within the 20 MP limit. Switching image models keeps the same preset position.
 - Fixed Extend rejecting editing drafts that already have a saved source image.
 - YuE2 now defaults to six flow steps with DPM++ 2M. The previous Midpoint solver remains available in music's Advanced settings, and saved generator templates using the old 32-step default upgrade once to six steps.
 - On first launch after updating, each recent project gets a one-time cleanup of orphaned generated media, latents and caches. Other projects receive the cleanup when first opened; files still referenced by the project are preserved.

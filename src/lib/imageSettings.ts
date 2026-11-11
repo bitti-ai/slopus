@@ -5,13 +5,15 @@ export const H3_IMAGE_MAX_PIXELS = 20 * 1024 * 1024;
 
 /** Keep the stored preset as a stable index across image models. */
 export function imageResolutionScale(modelType?: string) {
-  return modelType === "h3_image" ? 4 : 1;
+  return modelType === "h3_image" ? 1.675 : 1;
 }
 
 export function imageGenerationDimensions(resolution: Resolution, aspectRatio: AspectRatio, modelType?: string) {
   const size = outputDimensions(resolution, aspectRatio);
   const scale = imageResolutionScale(modelType);
-  return { width: size.width * scale, height: size.height * scale };
+  if (scale === 1) return size;
+  // Round down to the generation grid to stay within the pixel budget.
+  return { width: Math.floor(size.width * scale / 32) * 32, height: Math.floor(size.height * scale / 32) * 32 };
 }
 
 export function imageGenerationSizeError(size: { width: number; height: number }, modelType?: string) {

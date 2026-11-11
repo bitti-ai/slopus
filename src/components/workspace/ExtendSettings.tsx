@@ -2,7 +2,7 @@ import { SliderNumberInput, GENERATION_STEPS_RANGE } from "./SliderNumberInput";
 import { useMemo } from "react";
 import { alignExtendBounds, compileExtendImage, initialExtendBounds, EXTEND_GRID, EXTEND_MAX_EDGE, type ExtendOptions } from "../../lib/extendImage";
 import { PROJECT_RESOLUTIONS, type ProjectAsset, type ProjectConfig } from "../../lib/project";
-import { imageSettings, imageResolutionScale, imageGenerationDimensions, imageGenerationSizeError } from "../../lib/imageSettings";
+import { imageSettings, imageGenerationDimensions, imageGenerationSizeError } from "../../lib/imageSettings";
 import { ComboBox, InfoBar, ItemHeader, PropRow } from "../ui";
 import { Dismiss16, Sparkle16 } from "../ui/icons";
 import { PromptTextField, type PromptReference } from "./PromptTextField";
@@ -29,8 +29,9 @@ export function ExtendSettings({ config, source, options, onChange, onResolution
       <div className="image-inspector__fields image-template-settings__fields">
         <PropRow label="Resolution" htmlFor="extend-resolution" tooltip="The box sets the aspect ratio. The selected resolution sets the pixel budget; expanding the box makes the source smaller within that output.">
           <ComboBox id="extend-resolution" aria-label="Zoom resolution" value={imageSettings(config).resolution} options={PROJECT_RESOLUTIONS.map((value) => {
-            const error = imageGenerationSizeError(imageGenerationDimensions(value, imageSettings(config).aspectRatio, template.modelType), template.modelType);
-            return { value, label: `${Number.parseInt(value) * imageResolutionScale(template.modelType)}p`, disabled: Boolean(error), description: error ?? undefined };
+            const size = imageGenerationDimensions(value, imageSettings(config).aspectRatio, template.modelType);
+            const error = imageGenerationSizeError(size, template.modelType);
+            return { value, label: `${Math.min(size.width, size.height)}p`, disabled: Boolean(error), description: error ?? undefined };
           })}
             disabled={busy || !onResolutionChange} onChange={(value) => onResolutionChange?.(value)} />
         </PropRow>

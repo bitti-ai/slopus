@@ -36,6 +36,7 @@ function setup(initial = parseProjectConfig(fixture), workItems: WorkItem[] = []
 }
 
 it("keeps the resolution preset when switching to H3 Image and back, including after reopening", () => {
+  vi.spyOn(persistence, "isTauri").mockReturnValue(true);
   const normal = { ...defaultGeneratorTemplate(), id: "normal", name: "Normal image model" };
   const h3 = { ...normal, id: "h3-image", name: "MiniMax H3 Image", modelType: "h3_image", defaultSteps: 6 };
   saveGeneratorTemplateSettings({ templates: [normal, h3], defaultTemplateId: normal.id, catalogVersion: 23 });
@@ -46,8 +47,8 @@ it("keeps the resolution preset when switching to H3 Image and back, including a
   const current = setup(initial);
   expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("544 × 544");
   choose("Generator", "MiniMax H3 Image");
-  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("2176 × 2176");
-  choose("Resolution", "3072 × 3072");
+  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("896 × 896");
+  choose("Resolution", "1280 × 1280");
   expect(current().imageSettings?.resolution).toBe("768p");
   choose("Generator", "Normal image model");
   expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("768 × 768");
@@ -55,17 +56,16 @@ it("keeps the resolution preset when switching to H3 Image and back, including a
   const saved = parseProjectConfig(current());
   cleanup();
   const reopened = setup(saved);
-  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("3072 × 3072");
+  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("1280 × 1280");
   fireEvent.click(screen.getByRole("combobox", { name: "Resolution" }));
-  expect(screen.getByRole("option", { name: /8192 × 8192/ })).toHaveAttribute("aria-disabled", "true");
+  expect(screen.getByRole("option", { name: /3424 × 3424/ })).not.toHaveAttribute("aria-disabled", "true");
   fireEvent.click(screen.getByRole("combobox", { name: "Resolution" }));
   choose("Generator", "Normal image model");
   choose("Resolution", "2048 × 2048");
   choose("Generator", "MiniMax H3 Image");
-  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("8192 × 8192");
+  expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("3424 × 3424");
   expect(reopened().imageSettings?.resolution).toBe("2048p");
-  expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
-  expect(screen.getByRole("status")).toHaveTextContent("20 MP");
+  expect(screen.getByRole("button", { name: "Generate" })).toBeEnabled();
 });
 
 it("updates a low-resolution image preview in the canvas and image card, then removes it on completion", () => {
