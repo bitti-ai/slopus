@@ -1960,9 +1960,11 @@ fn h3_image_plans_six_steps_on_cuda_and_vulkan_with_masked_edits_and_outpainting
         canvas_width: 128, canvas_height: 128, ..Default::default() };
     for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
         for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
-            for mode in ["generate", "mask", "outpaint"] {
+            for mode in ["generate", "references", "mask", "outpaint"] {
                 let mut request = request.clone();
-                if mode != "generate" {
+                if mode == "references" {
+                    request.reference_paths = vec!["reference.png".into(); 16];
+                } else if mode != "generate" {
                     request.image_edit = Some(serde_json::from_value(serde_json::json!({"sourceRelativePath":"source.png", "edits":[{
                         "prompt":"Edit <Picture 1>. Make it blue", "x":32, "y":32, "width":64, "height":64,
                         "invertMask": mode == "outpaint", "feather": 0
@@ -1970,9 +1972,32 @@ fn h3_image_plans_six_steps_on_cuda_and_vulkan_with_masked_edits_and_outpainting
                     request.image_edit_pixels = Some(vec![128; 128 * 128 * 3].into());
                 }
                 let handle = RequestHandle::new(&api).unwrap();
-                configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+                let blank = configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
                 let plan = api.resolve(&handle).unwrap();
                 assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames, plan.num_model_evaluations), (128, 128, 1, 6));
+                assert_eq!(blank.is_some(), mode == "generate");
+                let description = api.describe(&handle).unwrap();
+                let conditioning = match mode {
+                    "generate" => "image editing (1 references)",
+                    "references" => "image editing (16 references)",
+                    _ => "pictures    1\n",
+                };
+                assert!(description.contains(conditioning), "{description}");
+                if let Some(blank) = blank {
+                    let path = blank.to_path_buf();
+                    let bytes = std::fs::read(&path).unwrap();
+                    assert!(bytes.starts_with(b"P6\n64 64\n255\n"));
+                    assert_eq!(&bytes[b"P6\n64 64\n255\n".len()..], &[255; 64 * 64 * 3]);
+                    // Automatic conditioning must match a manually supplied
+                    // blank reference, including the unchanged text prompt.
+                    let mut manual = request.clone();
+                    manual.reference_paths.push(path.to_string_lossy().into_owned());
+                    let manual_handle = RequestHandle::new(&api).unwrap();
+                    assert!(configure_request(&api, &manual_handle, &manual, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap().is_none());
+                    assert_eq!(api.describe(&manual_handle).unwrap(), description);
+                    drop(blank);
+                    assert!(!path.exists());
+                }
             }
         }
     }
@@ -2024,7 +2049,7 @@ fn h3_image_supports_twenty_mipixel_canvases() {
             let request = GenerationRequest { still_image: true, frames: 1, steps: 6, prompt: "A landscape".into(),
                 canvas_width: width, canvas_height: height, ..Default::default() };
             let handle = RequestHandle::new(&api).unwrap();
-            configure_request(&api, &handle, &request, &configuration, platform, RequestPurpose::Plan, &ReferenceVideos::default()).unwrap();
+            let _blank_reference = configure_request(&api, &handle, &request, &configuration, platform, RequestPurpose::Plan, &ReferenceVideos::default()).unwrap();
             if valid {
                 let plan = api.resolve(&handle).unwrap();
                 assert_eq!((plan.canvas_width, plan.canvas_height, plan.aligned_frames, plan.num_model_evaluations), (width, height, 1, 6));

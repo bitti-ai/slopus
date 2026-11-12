@@ -229,7 +229,7 @@ fn run_single_generation(
         }),
     );
     let request = RequestHandle::new(&api)?;
-    configure_request(
+    let _blank_reference = configure_request(
         &api,
         &request,
         &item.request,

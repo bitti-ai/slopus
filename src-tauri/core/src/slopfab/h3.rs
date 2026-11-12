@@ -7,7 +7,9 @@ use super::{
     references::ReferenceVideos,
     types::GenerationRequest,
 };
-use std::path::Path;
+use std::{io::Write, path::Path};
+
+/// Keep the returned temporary reference alive through planning or generation.
 pub(super) fn configure_request(
     api: &ffi::Api,
     handle: &RequestHandle,
@@ -16,12 +18,12 @@ pub(super) fn configure_request(
     platform: ComputePlatform,
     purpose: RequestPurpose,
     references: &ReferenceVideos,
-) -> Result<(), String> {
+) -> Result<Option<tempfile::TempPath>, String> {
     configuration.validate_inputs(request)?;
     if platform == ComputePlatform::Vulkan && configuration.sampling.as_ref().map_err(Clone::clone)?.sampler.as_deref() == Some("ab2") {
         return Err("AB2 sampling requires CUDA. Select a CUDA GPU or worker, or choose another sampler in Settings.".into());
     }
-    if request.music.is_some() { return super::music::configure(api, handle, request, configuration, platform); }
+    if request.music.is_some() { return super::music::configure(api, handle, request, configuration, platform).map(|()| None); }
     if request.single_shot.is_some() && request.keystone_path.is_none() { api.require_end_anchor()?; }
     let source_noise = super::continuation::source_noise(request);
     if source_noise.is_some() { api.require_continuation_source_init()?; }
@@ -229,6 +231,10 @@ pub(super) fn configure_request(
         }
     }
     attach_references(api, handle, request, configuration, references)?;
+    let blank_reference = blank_image_reference(request, configuration)?;
+    if let Some(path) = &blank_reference {
+        api.add_reference(handle, path)?;
+    }
     for refmod in &request.refmods {
         if refmod.path.trim().is_empty()
             || !refmod.strength.is_finite()
@@ -261,7 +267,26 @@ pub(super) fn configure_request(
             }
         }
     }
-    Ok(())
+    Ok(blank_reference)
+}
+
+fn blank_image_reference(
+    request: &GenerationRequest,
+    configuration: &Configuration,
+) -> Result<Option<tempfile::TempPath>, String> {
+    // A blank reference improves H3 Image's text-only results. Preserve the
+    // prompt and use ordinary reference conditioning, never image editing.
+    if configuration.model_type != "h3_image" || !request.still_image
+        || request.image_edit.is_some() || request.reference_count() != 0
+        || !request.refmods.is_empty() {
+        return Ok(None);
+    }
+    let mut file = tempfile::Builder::new().prefix("slopus-h3-reference-").suffix(".ppm")
+        .tempfile().map_err(|error| format!("Could not prepare image reference: {error}"))?;
+    // PPM is supported by the runtime on every platform without external codecs.
+    file.write_all(b"P6\n64 64\n255\n").and_then(|()| file.write_all(&[255; 64 * 64 * 3]))
+        .map_err(|error| format!("Could not write image reference: {error}"))?;
+    Ok(Some(file.into_temp_path()))
 }
 
 pub(super) fn attach_references(
@@ -300,3 +325,32 @@ pub(super) const ANIMATE_PROMPT: &str =
     include_str!("../../../assets/viggle-animate-fixed-prompt.txt");
 // SlopFab rounds up to 17*k + 5 frames but rejects Animate plans over 360.
 pub(super) const ANIMATE_MAX_ALIGNED_FRAMES: i32 = (360 - 5) / 17 * 17 + 5;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blank_reference_skips_other_models_and_existing_conditioning() {
+        let mut configuration = Configuration::from_settings(&Default::default());
+        let request = GenerationRequest { still_image: true, ..Default::default() };
+        for model in ["minimax-h3", "moss", "fibo2", "krea2"] {
+            configuration.model_type = model.into();
+            assert!(blank_image_reference(&request, &configuration).unwrap().is_none());
+        }
+        configuration.model_type = "h3_image".into();
+        for patch in [
+            serde_json::json!({"stillImage": false}),
+            serde_json::json!({"referencePaths": ["image.png"]}),
+            serde_json::json!({"referenceVideoIds": ["video"]}),
+            serde_json::json!({"referenceAudioIds": ["audio"]}),
+            serde_json::json!({"refmods": [{"path": "reference.safetensors", "strength": 1, "copies": 1}]}),
+            serde_json::json!({"imageEdit": {"sourceRelativePath": "source.png", "edits": []}}),
+        ] {
+            let mut value = serde_json::to_value(&request).unwrap();
+            value.as_object_mut().unwrap().extend(patch.as_object().unwrap().clone());
+            let request = serde_json::from_value(value).unwrap();
+            assert!(blank_image_reference(&request, &configuration).unwrap().is_none());
+        }
+    }
+}

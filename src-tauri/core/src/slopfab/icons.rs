@@ -53,7 +53,7 @@ pub(super) fn write_reference_icon(
         ..Default::default()
     };
     let handle = RequestHandle::new(api)?;
-    configure_request(
+    let _blank_reference = configure_request(
         api,
         &handle,
         &request,

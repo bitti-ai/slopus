@@ -35,7 +35,7 @@ pub fn resolve_plan(
     let platform = configuration.platform(detect_platform(&api));
     let handle = RequestHandle::new(&api)?;
     let region = super::image_regions::prepare_first(request)?;
-    configure_request(
+    let _blank_reference = configure_request(
         &api,
         &handle,
         region.as_ref().map_or(request, |region| &region.request),
