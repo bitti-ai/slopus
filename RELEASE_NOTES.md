@@ -1,21 +1,25 @@
-# Slopus — 0.4.1
+# Slopus — 0.4.2
+
+## 0.4.2 fixes and improvements
+
+- MiniMax H3 Image resolution presets now scale width and height by 1.675, rounded down to the 32-pixel grid. The largest preset is 6080 × 3424, within the 20 MP limit. Switching image models keeps the same preset position.
+- MiniMax H3 Image now supports character sheets with its image prompts, reference limits and six-step generation recipe. Presets scale by 1.675 with 32-pixel alignment, up to 3424 pixels high; all four views combine into a 9184 × 3424 sheet that can be saved and reopened.
+- Fixed Zoom rejecting MiniMax H3 Image outputs above the older canvas limit; aligned outputs up to 20 MP are now supported. Typed width and height values snap to multiples of 32 and stay in sync with the box.
+
+## 0.4.1
 
 Changes since 0.4.0.
 
-## What's new
+### What's new
 
 - **Video references:** Create a reference from a generated Scene or Shot using its context menu. Scenes select the whole video; Shots retain the full source with their exact time range selected. Video references now support clips shorter than two seconds.
 - **Song variations:** Duplicate a song into a draft with the same title, lyrics, style and settings. Use Generate's dropdown to queue up to 100 variations with different seeds.
 - **MiniMax H3 Image:** Six-step image generation, image references, masked edits and Zoom on CUDA or Vulkan, with downloadable transformer variants and its dedicated image VAE. Shares the selected text encoder and tokenizer with MiniMax H3 video, reusing existing downloads.
 
-## Fixes and improvements
+### Fixes and improvements
 
-- MiniMax H3 Image character sheet presets scale by 1.675 with 32-pixel alignment, up to 3424 pixels high. Each view stays below 20 MP; all four views combine into a 9184 × 3424 sheet that can be saved and reopened.
-- MiniMax H3 Image Zoom width and height fields now snap typed sizes to multiples of 32, keeping the displayed values in sync with the box.
-- Fixed Zoom rejecting MiniMax H3 Image outputs above the older canvas limit; aligned outputs up to 20 MP are now supported.
-- MiniMax H3 Image now supports character sheets, using its image prompts, reference limits and six-step generation recipe.
 - Updated the bundled Slopfab runtime to 0.2.0, including a higher MiniMax H3 Image canvas limit of 20 MP.
-- MiniMax H3 Image resolution presets scale width and height by 1.675, rounded down to the 32-pixel grid. The largest preset is 6080 × 3424, within the 20 MP limit. Switching image models keeps the same preset position.
+- MiniMax H3 Image resolution presets use four times the width and height. Switching image models keeps the same preset position; sizes above 20 MP are unavailable.
 - Fixed Extend rejecting editing drafts that already have a saved source image.
 - YuE2 now defaults to six flow steps with DPM++ 2M. The previous Midpoint solver remains available in music's Advanced settings, and saved generator templates using the old 32-step default upgrade once to six steps.
 - On first launch after updating, each recent project gets a one-time cleanup of orphaned generated media, latents and caches. Other projects receive the cleanup when first opened; files still referenced by the project are preserved.
