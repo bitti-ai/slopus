@@ -1,10 +1,10 @@
 # Slopus — 0.4.2
 
-## 0.4.2 fixes and improvements
+## 0.4.2 fixes
 
-- MiniMax H3 Image resolution presets now scale width and height by 1.675, rounded down to the 32-pixel grid. The largest preset is 6080 × 3424, within the 20 MP limit. Switching image models keeps the same preset position.
-- MiniMax H3 Image now supports character sheets with its image prompts, reference limits and six-step generation recipe. Presets scale by 1.675 with 32-pixel alignment, up to 3424 pixels high; all four views combine into a 9184 × 3424 sheet that can be saved and reopened.
-- Fixed Zoom rejecting MiniMax H3 Image outputs above the older canvas limit; aligned outputs up to 20 MP are now supported. Typed width and height values snap to multiples of 32 and stay in sync with the box.
+- Image resolution selection fixed for MiniMax H3.
+- Character sheet generation support fixed for MiniMax H3.
+- Zoom generation support fixed for MiniMax H3.
 
 ## 0.4.1
 
