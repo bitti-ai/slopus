@@ -59,7 +59,12 @@ export const HYPERFLOW_LORA: Lora = {
   url: "https://huggingface.co/VideoRebirthAI/hyperflow/resolve/main/minimax_h3_hyperflow_8step_v1.0.safetensors",
   stepOverride: 8,
 };
-const BUNDLED_LORAS = [TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, HYPERFLOW_LORA];
+export const PI_H3_LORAS: Lora[] = [2, 4].map((steps) => ({
+  id: `pi-h3-${steps}step-dwd`, name: `pi-H3 ${steps}-Step DWD`, modelType: "minimax-h3", path: "",
+  url: `https://huggingface.co/Lakonik/pi-H3/resolve/main/pi_h3_${steps}step_dwd_adapter_int8_convrot.safetensors`,
+  stepOverride: steps,
+}));
+const BUNDLED_LORAS = [TAOMATE_LORA, TURBO_LORA, VIGGLE_ANIMATE_LORA, LIGHTX2V_TURBO_LORA, DMAD_LORA, PIKA_FL2VA_LORA, PIKA_REF2VA_LORA, HYPERFLOW_LORA, ...PI_H3_LORAS];
 const KEY = "slopus.loras.v1";
 const EVENT = "slopus:loras-changed";
 export function loadLoras(): Lora[] {
@@ -178,6 +183,8 @@ export function effectiveLoras(selection: TemplateLora[] = [], overrides: Templa
 }
 
 export function loraConflict(loras: Lora[]): string | null {
+  if (loras.some((lora) => /pi[_-]h3.*dwd/i.test(`${lora.id} ${lora.path} ${lora.url ?? ""}`)) && loras.length > 1)
+    return "pi-H3 DWD cannot be stacked with another adapter.";
   if (new Set(loras.flatMap((lora) => lora.samplingPreset ? [lora.samplingPreset] : [])).size > 1)
     return "Active LoRAs require different sampling recipes. Choose either DMAD or Pika H3 Flex.";
   if (loras.some((lora) => lora.id === PIKA_FL2VA_LORA.id) && loras.some((lora) => lora.id === PIKA_REF2VA_LORA.id))

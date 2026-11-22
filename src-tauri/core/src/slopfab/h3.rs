@@ -20,6 +20,9 @@ pub(super) fn configure_request(
     references: &ReferenceVideos,
 ) -> Result<Option<tempfile::TempPath>, String> {
     configuration.validate_inputs(request)?;
+    if platform == ComputePlatform::Vulkan && (configuration.is_pi_h3() || configuration.remake().is_some() || configuration.mode == "h3-hybrid") {
+        api.set_vulkan_portable(handle)?;
+    }
     if platform == ComputePlatform::Vulkan && configuration.sampling.as_ref().map_err(Clone::clone)?.sampler.as_deref() == Some("ab2") {
         return Err("AB2 sampling requires CUDA. Select a CUDA GPU or worker, or choose another sampler in Settings.".into());
     }
@@ -39,6 +42,9 @@ pub(super) fn configure_request(
     }
     if configuration.attention == "sol" && platform == ComputePlatform::Vulkan {
         return Err("Sol attention requires CUDA. Select a CUDA GPU or worker, or choose another attention mode in Settings.".into());
+    }
+    if let Some(mode) = configuration.remake() {
+        api.set_remake(handle, mode, &request.remake_pins, request.remake_keyframe_until.unwrap_or(0.9))?;
     }
     if configuration.animate {
         let videos = references
@@ -79,7 +85,7 @@ pub(super) fn configure_request(
     let video_steps = configuration.generation_steps(request.steps)?;
     // Saved H3 settings count grid points, including terminal zero. The updated
     // runtime counts denoising updates. Image-only families already use updates.
-    let legacy_h3 = configuration.model_type == "minimax-h3";
+    let legacy_h3 = configuration.legacy_steps();
     api.set_steps(handle, if legacy_h3 { video_steps - 1 } else { video_steps })?;
     let preset = configuration.sampling_preset.as_ref().map_err(Clone::clone)?;
     if let Some(preset) = preset {
@@ -296,8 +302,12 @@ pub(super) fn attach_references(
     configuration: &Configuration,
     references: &ReferenceVideos,
 ) -> Result<(), String> {
-    for path in &request.reference_paths {
-        api.add_reference(handle, Path::new(path))?;
+    for (index, path) in request.reference_paths.iter().enumerate() {
+        if Some(index) == request.start_anchor_index { api.set_image_anchor(handle, Path::new(path), true)?; }
+        if Some(index) == request.end_anchor_index { api.set_image_anchor(handle, Path::new(path), false)?; }
+        if Some(index) != request.start_anchor_index && Some(index) != request.end_anchor_index {
+            api.add_reference(handle, Path::new(path))?;
+        }
     }
     if !request.reference_video_ids.is_empty() {
         let videos = references

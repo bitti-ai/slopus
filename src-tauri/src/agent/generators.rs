@@ -313,8 +313,8 @@ pub(crate) fn prepare(
             template["attention"] = json!(attention);
         }
         if let Some(mode) = &patch.mode {
-            if !["prompt", "animate"].contains(&mode.as_str()) {
-                return Err("mode must be prompt or animate.".into());
+            if !["prompt", "animate", "remake-swap", "remake-edit", "pi-h3", "h3-hybrid"].contains(&mode.as_str()) {
+                return Err("Unsupported generator mode.".into());
             }
             template["mode"] = json!(mode);
         }

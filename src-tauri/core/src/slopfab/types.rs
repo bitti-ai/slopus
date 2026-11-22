@@ -95,6 +95,15 @@ pub struct GenerationRequest {
     pub canvas_height: i32,
     #[serde(default)]
     pub reference_paths: Vec<String>,
+    /// Indices into reference_paths keep anchors portable through worker uploads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_anchor_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_anchor_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remake_pins: Vec<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remake_keyframe_until: Option<f32>,
     #[serde(default)]
     pub reference_video_ids: Vec<String>,
     #[serde(default)]

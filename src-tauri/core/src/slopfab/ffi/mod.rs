@@ -20,6 +20,12 @@ pub struct Api {
     path: PathBuf,
 }
 impl Api {
+    pub fn set_remake(&self, r: &RequestHandle, mode: &str, pins: &[i32], until: f32) -> Result<(), String> {
+        self.check(r)?; self.inner.set_remake(r.pointer.as_ptr(), mode, pins, until)
+    }
+    pub fn set_image_anchor(&self, r: &RequestHandle, path: &Path, start: bool) -> Result<(), String> {
+        self.check(r)?; self.inner.set_image_anchor(r.pointer.as_ptr(), path, start)
+    }
     pub fn require_saved_latent_upscale(&self) -> Result<(), String> { self.inner.require_saved_latent_upscale() }
     pub fn load(path: &Path) -> Result<Self, String> {
         let inner = raw::Api::load(path)?;

@@ -469,7 +469,7 @@ export const SCENE_MIN_SECONDS = 0;
 export const DEFAULT_SCENE_SECONDS = 6;
 
 // Keep long-shot readable for saved projects and generation history; new scenes use Bridge instead.
-export const sceneTypeSchema = z.enum(["prompt", "single-shot", "first-last-frame", "continue", "animate", "pose", "character-replace", "extend", "bridge", "backdrop", "long-shot"]);
+export const sceneTypeSchema = z.enum(["prompt", "single-shot", "first-last-frame", "continue", "animate", "remake", "pose", "character-replace", "extend", "bridge", "backdrop", "long-shot"]);
 export type SceneType = z.infer<typeof sceneTypeSchema>;
 export const DEFAULT_CONTINUATION_OVERLAP = 22;
 export const MAX_CONTINUATION_OVERLAP = 362;
@@ -589,6 +589,8 @@ const generationJobBaseSchema = z.object({
   referenceIds: z.array(idSchema).default([]),
   /** An image reference used as the scene's opening frame. It is separate from
    *  subject citations because a frame is composition, not a named subject. */
+  remakePins: z.array(z.number().int().nonnegative()).max(4).nullish(),
+  remakeKeyframeUntil: z.number().finite().min(0).max(1).nullish(),
   startFrameReferenceId: idSchema.nullish(),
   endFrameReferenceId: idSchema.nullish(),
   usePreviousSceneLastFrame: z.boolean().nullish(),
@@ -1068,13 +1070,14 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
     const ids = sceneShots(job).flatMap((shot) => [shot.videoReferenceId, shot.characterReferenceId]);
     return references.filter((reference) => ids.includes(reference.id));
   }
+  if (job.sceneType === "remake") return references.filter((reference) => job.referenceIds.includes(reference.id));
   const start = job.sceneType !== "continue" && references.find((reference) => reference.id === job.startFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
   const end = job.sceneType !== "continue" && references.find((reference) => reference.id === job.endFrameReferenceId && referenceImages(reference).length > 0 && isReferenceUsable(reference));
   const anchors = [start, end].filter((reference, index, all): reference is ProjectReference => Boolean(reference) && all.indexOf(reference) === index)
     .map((reference) => ({ ...reference, kind: "text" as const, video: undefined, relativePath: null, sourcePath: null, intendedUse: [], images: referenceImages(reference).slice(0, 1) }));
   // Animate stores its dedicated motion/frame selections in referenceIds.
   // Other scenes take guidance from their current prompts, never stale bindings.
-  const ids = job.sceneType === "animate" ? job.referenceIds : sceneShots(job).flatMap(shotReferenceIds);
+  const ids = job.sceneType === "animate" || job.sceneType === "remake" ? job.referenceIds : sceneShots(job).flatMap(shotReferenceIds);
   return [...anchors, ...references.filter((reference) => ids.includes(reference.id) && !anchors.some((anchor) => anchor.id === reference.id))];
 }
 
@@ -1259,6 +1262,7 @@ export function sceneGenerationSeed(job: GenerationJob): number {
 }
 
 export interface SceneGenerationInput {
+  generatorMode?: string;
   loraSnapshot?: ReturnType<typeof import("./loras").loraSnapshot>;
   contextSceneId?: string;
   keystoneRelativePath?: string;
@@ -1282,6 +1286,10 @@ export interface SceneGenerationInput {
   canvasWidth: number;
   canvasHeight: number;
   referencePaths: readonly string[];
+  startAnchorIndex?: number;
+  endAnchorIndex?: number;
+  remakePins?: number[];
+  remakeKeyframeUntil?: number;
   referenceVideos?: readonly { name: string; relativePath?: string | null; sourcePath?: string | null; startSeconds: number; durationSeconds?: number; includeAudio: boolean }[];
   referenceAudios?: readonly { name: string; relativePath?: string | null; sourcePath?: string | null; startSeconds: number; durationSeconds: number }[];
   refmods?: readonly { path: string; strength: number; copies: number }[];
@@ -1304,6 +1312,7 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
       .map(([group, values]) => [group, [...values].sort()]),
   }));
   return JSON.stringify({
+    ...(input.generatorMode && input.generatorMode !== "prompt" ? { generatorMode: input.generatorMode } : {}),
     ...(job.sceneType ? { sceneType: job.sceneType } : {}),
     prompt: input.prompt,
     ...(input.loraSnapshot?.length ? { loras: input.loraSnapshot } : {}),
@@ -1322,6 +1331,9 @@ export function sceneGenerationSnapshot(job: GenerationJob, input: SceneGenerati
     canvasWidth: input.canvasWidth,
     canvasHeight: input.canvasHeight,
     referencePaths: input.referencePaths,
+    ...(input.startAnchorIndex != null ? { startAnchorIndex: input.startAnchorIndex } : {}),
+    ...(input.endAnchorIndex != null ? { endAnchorIndex: input.endAnchorIndex } : {}),
+    ...(input.remakePins?.length ? { remakePins: input.remakePins, remakeKeyframeUntil: input.remakeKeyframeUntil ?? 0.9 } : {}),
     ...(input.referenceVideos?.length ? { referenceVideos: input.referenceVideos } : {}),
     ...(input.referenceAudios?.length ? { referenceAudios: input.referenceAudios } : {}),
     ...(input.refmods?.length ? { refmods: input.refmods } : {}),
@@ -1377,6 +1389,13 @@ export function compileGenerationJobSegments(job: GenerationJob, references: Pro
   if (job.sceneType === "pose") return compileScenePromptSegments({
     shots: sceneShots(job), poseVideoReferenceId: job.poseVideoReferenceId, soundscape: job.soundscape, music: job.music,
   }, sceneGenerationReferences(job, references), defaultLook);
+  if (job.sceneType === "remake") {
+    const bound = sceneGenerationReferences(job, references);
+    const segments = compileScenePromptSegments({ shots: sceneShots(job), durationSeconds: sceneDurationSeconds(job), soundscape: job.soundscape, music: job.music }, bound, defaultLook);
+    const marker = segments.findIndex((segment) => segment.value.includes("detailed_description:"));
+    if (marker >= 0) segments.splice(marker, 0, frame("\n\nretention_analysis:\nApply the painted appearance and the changes described below. Retain the source timing and motion from <Video 1>."));
+    return segments;
+  }
   if (job.sceneType === "character-replace") return compileCharacterReplaceSegments(job, references);
   if (job.sceneType === "extend" || job.sceneType === "bridge") return compileScenePromptSegments({
     shots: sceneShots(job), videoTransition: job.sceneType, soundscape: job.soundscape, music: job.music,

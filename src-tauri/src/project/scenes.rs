@@ -100,6 +100,10 @@ pub(crate) struct GenerationJob {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) start_frame_reference_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) remake_pins: Option<Vec<i32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) remake_keyframe_until: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) end_frame_reference_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) use_previous_scene_last_frame: Option<bool>,
@@ -208,6 +212,8 @@ impl GenerationJob {
             generation_snapshot: None,
             reference_ids: Vec::new(),
             start_frame_reference_id: None,
+            remake_pins: None,
+            remake_keyframe_until: None,
             end_frame_reference_id: None,
             use_previous_scene_last_frame: None,
             continuation_scene_id: None,

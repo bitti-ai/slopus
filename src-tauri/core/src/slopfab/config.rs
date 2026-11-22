@@ -34,6 +34,7 @@ pub(super) struct Configuration {
     pub(super) attention: &'static str,
     pub(super) motion_cache: bool,
     pub(super) animate: bool,
+    pub(super) mode: String,
     pub(super) prompt_embedding: Option<PathBuf>,
     pub(super) latent_upscaler: Option<PathBuf>,
     pub(super) preview_vae: Option<PathBuf>,
@@ -95,6 +96,7 @@ impl Configuration {
             dll_path: option("dllPath").unwrap_or_else(default_dll_path),
             vulkan: string_option("inferenceBackend") == Some("vulkan"),
             animate: string_option("generationMode") == Some("animate"),
+            mode: string_option("generationMode").unwrap_or("prompt").to_owned(),
             motion_cache: matches!(
                 slopfab.and_then(|setting| setting.options.get("motionCache")),
                 Some(ProviderOption::Boolean(true))
@@ -145,6 +147,54 @@ impl Configuration {
     }
 
     pub(super) fn validate_inputs(&self, request: &GenerationRequest) -> Result<(), String> {
+        if !["prompt", "animate", "remake-swap", "remake-edit", "pi-h3", "h3-hybrid"].contains(&self.mode.as_str()) {
+            return Err("Unsupported generator mode.".into());
+        }
+        if self.mode != "prompt" && self.model_type != "minimax-h3" {
+            return Err("This generator mode requires MiniMax H3.".into());
+        }
+        for index in [request.start_anchor_index, request.end_anchor_index].into_iter().flatten() {
+            if index >= request.reference_paths.len() { return Err("An image anchor references a missing picture.".into()); }
+        }
+        let anchors = request.start_anchor_index.is_some() || request.end_anchor_index.is_some();
+        if anchors && (self.model_type != "minimax-h3" || request.still_image || request.continuation_relative_path.is_some()
+            || request.continuation_path.is_some() || request.single_shot.is_some() || request.latent_bridge.is_some()
+            || request.video_transition.is_some() || self.animate || self.remake().is_some()) {
+            return Err("First/last image anchors require an H3 video without continuation or Remake.".into());
+        }
+        if self.is_pi_h3() {
+            let loras = self.loras.as_ref().map_err(Clone::clone)?;
+            let active: Vec<_> = loras.iter().filter(|lora| lora.strength != 0.0).collect();
+            if active.len() != 1 || active[0].strength != 1.0 || ![2, 4].contains(&self.generation_steps(request.steps)?) {
+                return Err("pi-H3 requires one DWD adapter at strength 1 and its trained two or four steps.".into());
+            }
+            if request.still_image || request.image_edit.is_some() || request.latent_upscale || request.latent_upscale_source.is_some()
+                || request.latent_bridge.is_some() || request.single_shot.is_some() || request.continuation_relative_path.is_some()
+                || request.continuation_path.is_some() || request.save_latents_path.is_some() || request.generation_effects.is_some()
+                || !request.refmods.is_empty() || !request.reference_video_ids.is_empty() || !request.reference_audio_ids.is_empty()
+                || request.video_transition.is_some() || self.motion_cache || self.preview_vae.is_some()
+                || request.reference_paths.iter().enumerate().any(|(i, _)| Some(i) != request.start_anchor_index && Some(i) != request.end_anchor_index) {
+                return Err("pi-H3 supports text and first/last images without media references, caches, previews or latent features.".into());
+            }
+        }
+        if self.remake().is_some() {
+            if request.still_image || request.reference_video_ids.len() != 1 || !(1..=4).contains(&request.reference_paths.len())
+                || request.continuation_relative_path.is_some() || request.continuation_path.is_some() || request.single_shot.is_some()
+                || request.latent_bridge.is_some() || request.video_transition.is_some() || !request.refmods.is_empty()
+                || !request.reference_audio_ids.is_empty() || self.motion_cache || request.latent_upscale || request.generation_effects.is_some() {
+                return Err("Remake needs one source video and one to four painted images without continuation, effects or caches.".into());
+            }
+            if !(90..=345).contains(&request.frames) { return Err("Remake needs 90 to 345 frames (3.75 to 14.375 seconds).".into()); }
+            if !request.remake_pins.is_empty() && (request.remake_pins.len() != request.reference_paths.len()
+                || request.remake_pins.iter().any(|frame| *frame < 0 || *frame >= request.frames)) {
+                return Err("Supply one Remake pin per painted image, within the scene's frame range.".into());
+            }
+        } else if !request.remake_pins.is_empty() || request.remake_keyframe_until.is_some() {
+            return Err("Timeline pins require a Remake generator.".into());
+        }
+        if request.remake_keyframe_until.is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value)) {
+            return Err("Remake keyframe release must be between zero and one.".into());
+        }
         let sampling = self.sampling.as_ref().map_err(Clone::clone)?;
         let features = crate::models::generator_features(&self.model_type);
         for (label, value, allowed) in [("sampler", &sampling.sampler, &features.samplers), ("scheduler", &sampling.scheduler, &features.schedulers)] {
@@ -329,6 +379,15 @@ impl Configuration {
         self.step_override
             .clone()
             .map(|steps| steps.unwrap_or(fallback))
+    }
+
+    pub(super) fn remake(&self) -> Option<&str> { self.mode.strip_prefix("remake-") }
+    pub(super) fn is_pi_h3(&self) -> bool {
+        self.mode == "pi-h3" || self.loras.as_ref().is_ok_and(|loras| loras.iter().any(|lora|
+            lora.strength != 0.0 && lora.path.to_lowercase().contains("pi_h3_") && lora.path.contains("dwd")))
+    }
+    pub(super) fn legacy_steps(&self) -> bool {
+        self.model_type == "minimax-h3" && !self.is_pi_h3() && self.remake().is_none() && self.mode != "h3-hybrid"
     }
 
     pub(super) fn platform(&self, detected: ComputePlatform) -> ComputePlatform {

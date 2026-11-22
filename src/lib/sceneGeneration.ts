@@ -11,7 +11,7 @@ import {
 } from "./project";
 import type { SlopfabGenerationRequest } from "./runtime";
 import { sceneVideoSettings, videoGuidedScene } from "./videoLibrary";
-import { generationSigmaShifts, templateSupportsVideo, type GeneratorTemplate } from "./settings";
+import { generationSigmaShifts, isRemakeTemplate, templateSupportsVideo, type GeneratorTemplate } from "./settings";
 
 export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig, folderPath: string, defaultGenerationSteps: number, template?: GeneratorTemplate): SlopfabGenerationRequest {
   const guided = videoGuidedScene(job, config);
@@ -25,7 +25,15 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
   const settings = sceneVideoSettings(job, config);
   const canvas = generationDimensions(settings.resolution, settings.aspectRatio);
   const longShot = longShotInputs(job, config);
+  const images = usableReferenceImages(bound);
+  const anchorIndex = (id?: string | null) => {
+    const reference = bound.find((entry) => entry.id === id);
+    const image = reference && usableReferenceImages([reference])[0];
+    const index = image ? images.findIndex((entry) => entry.id === image.id) : -1;
+    return index >= 0 ? index : undefined;
+  };
   return {
+    generatorMode: template?.mode ?? "prompt",
     jobId: job.id,
     loraSnapshot: loraSnapshot(effectiveLoras(template?.loras, job.loraOverrides ?? [], template?.modelType)),
     ...(job.sceneType === "single-shot" && job.contextSceneId ? { contextSceneId: job.contextSceneId,
@@ -40,6 +48,8 @@ export function sceneGenerationRequest(job: GenerationJob, config: ProjectConfig
     // draft-creation time. This is the main prompt shown in the compiled-prompt
     // panel; Single Shot captures its separate ending prompt above.
     prompt: job.sceneType === "animate" ? "" : compileGenerationJobPrompt(inputs.job, bound, settings.defaultLook),
+    ...(job.sceneType === "first-last-frame" ? { startAnchorIndex: anchorIndex(inputs.job.startFrameReferenceId), endAnchorIndex: anchorIndex(inputs.job.endFrameReferenceId) } : {}),
+    ...(job.sceneType === "remake" ? { remakePins: job.remakePins ?? [], remakeKeyframeUntil: job.remakeKeyframeUntil ?? 0.9 } : {}),
     ...(inputs.previousSceneId ? { previousSceneId: inputs.previousSceneId } : {}),
     ...(inputs.continuationRelativePath ? { continuationRelativePath: inputs.continuationRelativePath } : {}),
     ...(inputs.previousSceneId ? { continuationOverlapFrames: inputs.continuationOverlapFrames,
@@ -86,6 +96,18 @@ export function sendBlocker(job: GenerationJob, references: ProjectReference[], 
   }
   const animate = job.sceneType === "animate";
   const characterReplace = job.sceneType === "character-replace";
+  if (job.sceneType === "remake") {
+    const bound = sceneGenerationReferences(job, references);
+    const count = usableReferenceImages(bound).length;
+    const videos = usableVideoReferences(bound);
+    if (videos.length !== 1 || count < 1 || count > 4) return "Choose one source video and one to four painted images.";
+    const frames = Math.round(sceneDurationSeconds(job) * GENERATION_FRAME_RATE);
+    if (frames < 90 || frames > 345) return "Remake needs 3.75 to 14.375 seconds.";
+    const aligned = Math.ceil((frames - 5) / 17) * 17 + 5;
+    if ((videos[0].video?.durationSeconds ?? 0) * GENERATION_FRAME_RATE + 0.01 < aligned) return "The source video must cover the aligned scene duration.";
+    if (job.remakePins?.length && (job.remakePins.length !== count || job.remakePins.some((pin) => !Number.isInteger(pin) || pin < 0 || pin >= frames))) return "Enter one timeline frame per painted image, within the scene duration.";
+    if (usableAudioReferences(bound).length || referenceRefmodInputs("", bound).length) return "Remake uses its source soundtrack and painted images, without sound references or refmods.";
+  }
   if (job.sceneType === "pose") {
     const blocker = poseBlocker(job, references);
     if (blocker) return blocker;
@@ -127,12 +149,21 @@ export function templateSceneBlocker(type: SceneType, template: GeneratorTemplat
   if (!templateSupportsVideo(template)) return "This model supports image generation only. Select a video generator.";
   if (type === "animate" && template.mode !== "animate") return "Select an Animate generator for this scene.";
   if (type !== "animate" && template.mode === "animate") return "Select a MiniMax prompt generator for this scene.";
+  if (type === "remake" && !isRemakeTemplate(template)) return "Select a Remake Swap or Edit generator for this scene.";
+  if (type !== "remake" && isRemakeTemplate(template)) return "Select the Remake scene type for this generator.";
+  if (template.mode === "pi-h3" && type !== "prompt" && type !== "first-last-frame") return "pi-H3 supports Prompt and First & last frame scenes.";
   if ((type === "pose" || type === "character-replace" || type === "extend" || type === "bridge") && /fl2v/i.test(template.paths.transformer)) return `Select a References or Singularity generator for ${type === "pose" ? "Pose" : type === "character-replace" ? "Character Replace" : type === "extend" ? "Extend" : "Bridge"}.`;
   return null;
 }
 
 export function sceneLoraBlocker(job: GenerationJob, template: GeneratorTemplate): string | null {
   const selection = effectiveLoras(template.loras, job.loraOverrides ?? [], template.modelType);
+  if (template.mode === "pi-h3") {
+    const active = selection.filter((entry) => entry.enabled && entry.strength !== 0);
+    if (active.length !== 1 || active[0].strength !== 1) return "pi-H3 needs one DWD adapter at strength 1, without other LoRAs.";
+    if (activeGenerationEffects(job.generationEffects)) return "Disable generation effects for pi-H3.";
+  }
+  if (isRemakeTemplate(template) && activeGenerationEffects(job.generationEffects)) return "Disable generation effects for Remake.";
   return selectionConflict(selection);
 }
 

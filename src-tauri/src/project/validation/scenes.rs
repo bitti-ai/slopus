@@ -10,6 +10,10 @@ fn validate_jobs(jobs: &mut [GenerationJob]) -> Result<(), String> {
     let mut previous_id = None;
     for job in jobs {
         validate_history(job)?;
+        if job.remake_pins.as_ref().is_some_and(|pins| pins.len() > 4 || pins.iter().any(|pin| *pin < 0))
+            || job.remake_keyframe_until.is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value)) {
+            return Err("Invalid Remake timeline pins or keyframe release.".into());
+        }
         if let Some(loras) = &job.lora_overrides {
             let mut ids = BTreeSet::new();
             if loras.len() > 256 || loras.iter().any(|lora| lora.lora_id.trim().is_empty() || !ids.insert(&lora.lora_id)
@@ -40,7 +44,7 @@ fn validate_jobs(jobs: &mut [GenerationJob]) -> Result<(), String> {
         if job.scene_type.as_deref().is_some_and(|value| {
             !matches!(
                 value,
-                "prompt" | "single-shot" | "first-last-frame" | "continue" | "animate" | "pose" | "character-replace" | "extend" | "bridge" | "backdrop" | "long-shot"
+                "prompt" | "single-shot" | "first-last-frame" | "continue" | "animate" | "remake" | "pose" | "character-replace" | "extend" | "bridge" | "backdrop" | "long-shot"
             )
         }) {
             return Err(format!("Scene '{}' has an unsupported scene type.", job.id));

@@ -82,7 +82,9 @@ export const FIBO_MODEL_TYPE = "fibo2";
 export const KREA_MODEL_TYPE = "krea2";
 export const templateSupportsMusic = (template: Pick<GeneratorTemplate, "modelType">): boolean => generatorModel(template.modelType).musicGeneration;
 export const templateSupportsVideo = (template: Pick<GeneratorTemplate, "modelType">): boolean => generatorModel(template.modelType).videoGeneration;
-export const templateSupportsImages = (template: Pick<GeneratorTemplate, "modelType" | "mode">): boolean => generatorModel(template.modelType).imageGeneration && template.mode !== "animate";
+export const templateSupportsImages = (template: Pick<GeneratorTemplate, "modelType" | "mode">): boolean => generatorModel(template.modelType).imageGeneration && !["animate", "remake-swap", "remake-edit", "pi-h3"].includes(template.mode ?? "prompt");
+export const GENERATOR_MODES = ["prompt", "animate", "remake-swap", "remake-edit", "pi-h3", "h3-hybrid"] as const;
+export const isRemakeTemplate = (template?: Pick<GeneratorTemplate, "mode">): boolean => template?.mode === "remake-swap" || template?.mode === "remake-edit";
 
 export const templateSupportsEditing = (template: Pick<GeneratorTemplate, "modelType" | "editingModel" | "mode">): boolean =>
   templateSupportsImages(template) && generatorModel(template.modelType).imageEditing && template.editingModel !== false;
@@ -101,7 +103,7 @@ export interface GeneratorTemplate extends SigmaShifts, SamplingChoices {
   defaultSteps: number;
   attention: AttentionMode;
   motionCache?: boolean;
-  mode?: "prompt" | "animate";
+  mode?: typeof GENERATOR_MODES[number];
   paths: EngineSettings;
   videoVaeId?: string;
   audioVaeId?: string;
@@ -136,11 +138,13 @@ export function templateSamplingOptions(template: Partial<GeneratorTemplate>, ov
     .filter((entry) => entry.enabled && entry.strength !== 0).map((entry) => entry.loraId));
   const adapters = library.filter((entry) => active.has(entry.id));
   const preset = adapters.some((entry) => entry.samplingPreset);
+  const fixed = isRemakeTemplate(template) || template.mode === "pi-h3";
   const omni = template.modelType === MINIMAX_H3_MODEL_TYPE && [template.paths?.transformer ?? "", ...(template.sources?.transformer ?? []).map((source) => source.url)]
     .some((path) => path.includes("fasth3_omniref_8step_pruned_int8_convrot.safetensors"));
-  const samplers: Sampler[] = ["default", ...(preset ? [] : omni || template.mode === "animate" ? ["euler"] : model.samplers) as Sampler[]];
-  const schedulers: Scheduler[] = ["default", ...(!omni && !preset ? model.schedulers : []) as Scheduler[]];
-  const reason = preset ? "The active LoRA recipe controls the sampler and scheduler."
+  const samplers: Sampler[] = ["default", ...(preset ? [] : fixed || omni || template.mode === "animate" ? ["euler"] : model.samplers) as Sampler[]];
+  const schedulers: Scheduler[] = ["default", ...(!fixed && !omni && !preset ? model.schedulers : []) as Scheduler[]];
+  const reason = fixed ? "This generator uses its trained Euler schedule."
+    : preset ? "The active LoRA recipe controls the sampler and scheduler."
     : omni ? "FastH3 Omni requires Euler and its trained schedule."
     : template.mode === "animate" ? "Animate requires Euler. Adapters may also require a fixed schedule."
     : template.modelType === "yue2" ? "Choose the flow sampler in the song's Advanced settings."
@@ -475,10 +479,33 @@ export function viggleAnimateTemplate(): GeneratorTemplate {
   };
 }
 
+export function newH3Templates(): GeneratorTemplate[] {
+  const base = minimaxOriginalTemplate();
+  const hybridRoot = "https://huggingface.co/OliviaRossi/Minimax-H3-Hybrid-DMAD-PDMD/resolve/main/Minimax-H3-Hybrid-DMAD-PDMD_";
+  const hybrid = `${hybridRoot}int8.safetensors`;
+  return [
+    { ...base, id: "h3-hybrid", name: "Hybrid DMAD-PDMD", mode: "h3-hybrid", defaultSteps: 8, attention: "flash2",
+      paths: { ...base.paths, transformer: hybrid }, sources: { ...base.sources, transformer: [
+        { url: hybrid, gpuModel: "", minVramGb: 21 },
+        { url: `${hybridRoot}w6a8_g32.safetensors`, gpuModel: "", minVramGb: 16 },
+      ] } },
+    ...([2, 4] as const).map((steps): GeneratorTemplate => ({ ...base,
+      id: `pi-h3-${steps}step`, name: `pi-H3 ${steps}-Step DWD`, mode: "pi-h3", defaultSteps: steps, attention: "flash2",
+      loras: [{ loraId: `pi-h3-${steps}step-dwd`, enabled: true, strength: 1 }],
+    })),
+    ...(["swap", "edit"] as const).map((mode): GeneratorTemplate => {
+      const transformer = `https://huggingface.co/Viggle/Viggle-Remake/resolve/main/int8/viggle_remake_${mode}_pruned_int8_convrot.safetensors`;
+      return { ...base, id: `viggle-remake-${mode}`, name: `Viggle Remake ${mode === "swap" ? "Swap" : "Edit"}`,
+        mode: `remake-${mode}`, defaultSteps: 6, attention: "flash2", paths: { ...base.paths, transformer },
+        sources: { ...base.sources, transformer: [{ url: transformer, gpuModel: "", minVramGb: 21 }] } };
+    }),
+  ];
+}
+
 const initialTemplateSettings = (paths = EMPTY_ENGINE_SETTINGS): GeneratorTemplateSettings => normalizeTemplateSettings({
-  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates(), ...kreaImageTemplates(), minimaxSingularityV2Template(), minimaxImageTemplate()],
+  templates: [{ id: "default", name: "Default", modelType: MINIMAX_H3_MODEL_TYPE, defaultSteps: DEFAULT_GENERATION_STEPS, attention: "sage2", paths: copyPaths(paths) }, minimaxOriginalTemplate(), minimaxReferencesTemplate(), minimaxFastTemplate(), minimaxSingularityTemplate(), viggleAnimateTemplate(), mossImageTemplate(), fiboImageTemplate(), fiboBaseTemplate(), ...musicTemplates(), ...kreaImageTemplates(), minimaxSingularityV2Template(), minimaxImageTemplate(), ...newH3Templates()],
   defaultTemplateId: "default",
-  catalogVersion: 23,
+  catalogVersion: 24,
 })!;
 
 const normalizeTemplateSettings = (value: unknown, shareComponents = true): GeneratorTemplateSettings | null => {
@@ -538,7 +565,7 @@ const normalizeTemplateSettings = (value: unknown, shareComponents = true): Gene
       ...(isSigmaShift(candidate.audioSigmaShift) ? { audioSigmaShift: candidate.audioSigmaShift } : {}),
       ...(typeof candidate.motionCache === "boolean" ? { motionCache: candidate.motionCache } : {}),
       ...(candidate.additionalSafetensors !== undefined ? { additionalSafetensors } : {}),
-      ...(candidate.mode === "animate" || candidate.mode === "prompt" ? { mode: candidate.mode } : {}),
+      ...(GENERATOR_MODES.includes(candidate.mode as typeof GENERATOR_MODES[number]) ? { mode: candidate.mode as typeof GENERATOR_MODES[number] } : {}),
       ...(candidate.loras !== undefined ? { loras: normalizeTemplateLoras(candidate.loras) } : {}) }];
   });
   if (templates.length === 0) return null;
@@ -549,7 +576,7 @@ const normalizeTemplateSettings = (value: unknown, shareComponents = true): Gene
     ...shared,
     defaultTemplateId: !shareComponents ? requestedDefault : shared.templates.find((template) => template.id === requestedDefault && templateUsable(template))?.id
       ?? shared.templates.find(templateUsable)?.id ?? "",
-    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(record.catalogVersion) ? record.catalogVersion : 0,
+    catalogVersion: typeof record.catalogVersion === "number" && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24].includes(record.catalogVersion) ? record.catalogVersion : 0,
   };
 };
 
@@ -837,6 +864,11 @@ export function loadGeneratorTemplateSettings(): GeneratorTemplateSettings {
           normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 23 }, false)!;
           localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
         }
+        if ((normalized.catalogVersion ?? 0) < 24) {
+          for (const template of newH3Templates()) if (!normalized.templates.some(({ id }) => id === template.id)) normalized.templates.push(template);
+          normalized = normalizeTemplateSettings({ ...normalized, catalogVersion: 24 }, false)!;
+          localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(normalized));
+        }
         const shared = normalizeTemplateSettings(normalized)!;
         if (normalized.templates.some((template) => template.modelType === H3_IMAGE_MODEL_TYPE && !template.sharedTextEncoder)
           || JSON.stringify(normalized.h3Components) !== JSON.stringify(shared.h3Components)) localStorage.setItem(GENERATOR_TEMPLATES_KEY, JSON.stringify(shared));
@@ -987,11 +1019,15 @@ export function engineProviderSetting(settings: EngineSettings, base?: ProviderS
       .map(([role, entries]) => [role, entries!.map(({ url, gpuModel, minVramGb }) => ({ url, gpuModel, minVramGb }))])));
   }
   if (motionCache && mode !== "animate") options.motionCache = true;
-  if (mode === "animate") options.generationMode = "animate";
+  if (mode && mode !== "prompt") options.generationMode = mode;
   if (mode === "animate") {
     const file = additionalSafetensors?.find((entry) => entry.role === "promptEmbedding");
     const path = file?.downloadedPath && !isDownloadUrl(file.downloadedPath) ? file.downloadedPath : remote ? file?.url : undefined;
     if (path) options.promptEmbedding = path;
+  }
+  if (mode === "pi-h3" || isRemakeTemplate({ mode })) {
+    delete options.motionCache;
+    delete options.previewVae;
   }
   const loras = resolveTemplateLoras(effectiveLoras(selection, sceneLoras, shifts.modelType), remote);
   if (loras.length) options.loras = JSON.stringify(loras.map(({ path, strength }) => ({ path, strength })));

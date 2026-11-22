@@ -110,6 +110,10 @@ pub struct Api {
     request_destroy: unsafe extern "C" fn(*mut Request),
     set_prompt: unsafe extern "C" fn(*mut Request, *const c_char) -> i32,
     set_animate: Option<unsafe extern "C" fn(*mut Request, i32, i32) -> i32>,
+    set_remake: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
+    set_remake_pins: Option<unsafe extern "C" fn(*mut Request, *const i32, usize, f32) -> i32>,
+    set_start_anchor: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
+    set_end_anchor: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_prompt_embedding: Option<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>,
     set_resolution: unsafe extern "C" fn(*mut Request, i32, i32) -> i32,
     set_frames: unsafe extern "C" fn(*mut Request, i32) -> i32,
@@ -224,6 +228,10 @@ impl Api {
                     "slopfab_request_set_prompt",
                     unsafe extern "C" fn(*mut Request, *const c_char) -> i32
                 ),
+                set_remake: library.get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(b"slopfab_request_set_remake\0").ok().map(|symbol| *symbol),
+                set_remake_pins: library.get::<unsafe extern "C" fn(*mut Request, *const i32, usize, f32) -> i32>(b"slopfab_request_set_remake_pins\0").ok().map(|symbol| *symbol),
+                set_start_anchor: library.get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(b"slopfab_request_set_start_anchor\0").ok().map(|symbol| *symbol),
+                set_end_anchor: library.get::<unsafe extern "C" fn(*mut Request, *const c_char) -> i32>(b"slopfab_request_set_end_anchor\0").ok().map(|symbol| *symbol),
                 set_animate: library
                     .get::<unsafe extern "C" fn(*mut Request, i32, i32) -> i32>(
                         b"slopfab_request_set_animate\0",
@@ -501,6 +509,22 @@ impl Api {
             .set_animate
             .ok_or("Animate requires slopfab.dll API 1.10 or later. Update the runtime.")?;
         self.error(unsafe { set(r, 1, preserve_audio as i32) })
+    }
+    pub fn set_remake(&self, r: *mut Request, mode: &str, pins: &[i32], until: f32) -> Result<(), String> {
+        let set = self.set_remake.ok_or("Remake requires SlopFab API 1.51 or newer. Update the app and workers.")?;
+        let mode = CString::new(mode).map_err(|_| "Invalid Remake mode.")?;
+        self.error(unsafe { set(r, mode.as_ptr()) })?;
+        if !pins.is_empty() {
+            let set = self.set_remake_pins.ok_or("Remake pins require SlopFab API 1.53 or newer. Update the app and workers.")?;
+            self.error(unsafe { set(r, pins.as_ptr(), pins.len(), until) })?;
+        }
+        Ok(())
+    }
+    pub fn set_image_anchor(&self, r: *mut Request, path: &Path, start: bool) -> Result<(), String> {
+        let set = if start { self.set_start_anchor } else { self.set_end_anchor }
+            .ok_or("Image anchors require SlopFab API 1.54 or newer. Update the app and workers.")?;
+        let path = path_cstring(path)?;
+        self.error(unsafe { set(r, path.as_ptr()) })
     }
     pub fn set_prompt_embedding(&self, r: *mut Request, path: &Path) -> Result<(), String> {
         let set = self

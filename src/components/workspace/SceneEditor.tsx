@@ -3,7 +3,7 @@ import { UsedSeed, UsedGenerator } from "./UsedGeneration";
 import { SceneLoras } from "./SceneLoras";
 import { generatorModel } from "../../lib/generatorModels";
 import { DEFAULT_VIDEO_SIGMA_SHIFT, DEFAULT_AUDIO_SIGMA_SHIFT } from "../../lib/sampling";
-import { generationStepsForTemplate, sigmaShiftOverridesForTemplate, type GeneratorTemplate } from "../../lib/settings";
+import { generationStepsForTemplate, isRemakeTemplate, sigmaShiftOverridesForTemplate, type GeneratorTemplate } from "../../lib/settings";
 import { Audio16, Dismiss12, Image16, ImageAdd16, Text16, Video16 } from "../ui/icons";
 import { BACKDROP_OPTIONS, type BackdropColor } from "../../lib/backdrop";
 import { longShotPosition } from "../../lib/longShot";
@@ -279,6 +279,7 @@ const SCENE_TYPES: { value: SceneType; label: string }[] = [
   { value: "backdrop", label: "Backdrop" },
   { value: "continue", label: "Continue" },
   { value: "animate", label: "Animate" },
+  { value: "remake", label: "Remake" },
   { value: "pose", label: "Pose" },
   { value: "character-replace", label: "Character replace" },
   { value: "extend", label: "Extend" },
@@ -307,6 +308,7 @@ const SCENE_TYPE_DESCRIPTIONS: Record<SceneType, string> = {
   backdrop: "Generate subjects and action against a solid green, blue, black or white background for keying.",
   "long-shot": "Legacy scene type. Use Bridge to connect videos in new scenes.",
   continue: "Continue a previously generated scene from its saved beginning or ending, with adjustable overlap.",
+  remake: "Swap characters or edit a video using one to four painted images. Optional timeline pins guide composition at chosen frames.",
   animate: "Animate a repainted frame using a reference video's motion. Requires an Animate generator; output is limited to 14.375 seconds.",
   pose: "Use a reference video's body poses, movement and timing while prompts and references define the subject and setting.",
   "character-replace": "Replace a character in a video while retaining the action and setting. Open each shot to choose its source video and new character.",
@@ -343,6 +345,8 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
   onShots: (next: SceneShot[]) => void;
 }) {
   const animate = sceneType === "animate";
+  const remake = sceneType === "remake";
+  const fixedRecipe = isRemakeTemplate(template) || template?.mode === "pi-h3";
   const continuing = sceneType === "continue";
   const backdrop = sceneType === "backdrop";
   const longShot = longShotPosition(job, neighborScenes);
@@ -471,7 +475,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
           </PropRow>}
         </>}
         {!characterReplace && <>
-          {animate && <>
+          {(animate || remake) && <>
             <PropRow label="Video" htmlFor={`${id}-animate-video`} tooltip="One driving video and one repainted frame of its scene. Turn on the video’s soundtrack under References to keep it.">
               <ComboBox id={`${id}-animate-video`} aria-label="Reference video for this scene" disabled={disabled}
                 value={videos.find((reference) => job.referenceIds.includes(reference.id))?.id ?? ""}
@@ -481,6 +485,28 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
                   ...(value ? [value] : []),
                 ] })} />
             </PropRow>
+          </>}
+          {remake && <>
+            <PropRow label="Painted images" tooltip="Select up to four painted frames. Their order below is the picture and pin order.">
+              <div>{imageReferences.map((reference) => <label key={reference.id} className="scene-settings__field">
+                <input type="checkbox" checked={job.referenceIds.includes(reference.id)} disabled={disabled}
+                  onChange={(event) => onChange({ referenceIds: event.target.checked ? [...job.referenceIds, reference.id] : job.referenceIds.filter((id) => id !== reference.id), remakePins: undefined })} />
+                {reference.name}
+              </label>)}</div>
+            </PropRow>
+            <PropRow label="Timeline pins" tooltip="Pin every painted image to a zero-based frame in the source video, or leave all unpinned.">
+              <ToggleSwitch aria-label="Enable Remake timeline pins" checked={Boolean(job.remakePins?.length)} disabled={disabled}
+                onChange={(checked) => onChange({ remakePins: checked ? sceneGenerationReferences(job, references).flatMap(referenceImages).map(() => 0) : undefined })} />
+            </PropRow>
+            {job.remakePins?.map((pin, index) => <PropRow key={index} label={`Picture ${index + 1} frame`}>
+              <CommittedNumberInput className="text-field" aria-label={`Remake picture ${index + 1} frame`} minimum={0}
+                maximum={Math.max(0, Math.round(sceneDurationSeconds(job) * 24) - 1)} step={1} integer value={pin} disabled={disabled}
+                onCommit={(value) => onChange({ remakePins: job.remakePins!.map((current, at) => at === index ? value : current) })} />
+            </PropRow>)}
+            {!!job.remakePins?.length && <PropRow label="Keyframe release" tooltip="Keep pinned keyframes while video sigma is at least this value. 0 keeps them throughout; the trained default is 0.9.">
+              <CommittedNumberInput className="text-field" aria-label="Remake keyframe release" minimum={0} maximum={1} step={0.05}
+                value={job.remakeKeyframeUntil ?? 0.9} disabled={disabled} onCommit={(value) => onChange({ remakeKeyframeUntil: value })} />
+            </PropRow>}
           </>}
           {!animate && <PropRow label="Look" htmlFor={`${id}-look`}>
             <ComboBox
@@ -589,10 +615,10 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
           <UsedGenerator id={`${id}-used-generator`} name={usedGeneration.generatorName} onUse={onUseGenerator} />
         </>}
         <PropRow label="Advanced options" htmlFor={`${id}-advanced-options`} tooltip="Show sigma shifts, a separate audio step count and LoRAs.">
-          <ToggleSwitch id={`${id}-advanced-options`} aria-label="Advanced options" checked={job.audioSteps != null} disabled={disabled}
+          <ToggleSwitch id={`${id}-advanced-options`} aria-label="Advanced options" checked={job.audioSteps != null} disabled={disabled || fixedRecipe}
             onChange={(checked) => onChange({ audioSteps: checked ? Math.min(sceneGenerationSteps(job, defaultSteps), MAX_AUDIO_GENERATION_STEPS) : undefined })} />
         </PropRow>
-        {job.audioSteps != null && <>
+        {!fixedRecipe && job.audioSteps != null && <>
           <SceneSigmaShift stream="video" job={job} template={template} disabled={disabled} onChange={onChange} />
           <PropRow label="Audio steps" htmlFor={`${id}-audio-steps`}>
             <SliderNumberInput id={`${id}-audio-steps`} {...GENERATION_STEPS_RANGE}
@@ -603,7 +629,7 @@ export function SceneInspector({ job, shots, references, folderPath = "", scenes
         </>}
       </PropSection>
     </div>
-    <GenerationEffects key={job.id} value={job.generationEffects} finalTone={job.sceneType === "single-shot" && !job.contextSceneId} supported={generatorModel(template?.modelType).generationEffects} disabled={disabled} onChange={(generationEffects) => onChange({ generationEffects })} />
+    <GenerationEffects key={job.id} value={job.generationEffects} finalTone={job.sceneType === "single-shot" && !job.contextSceneId} supported={!fixedRecipe && generatorModel(template?.modelType).generationEffects} disabled={disabled} onChange={(generationEffects) => onChange({ generationEffects })} />
   </section>;
 }
 

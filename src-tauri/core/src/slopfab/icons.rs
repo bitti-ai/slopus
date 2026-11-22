@@ -122,6 +122,7 @@ pub fn generate_reference_icon_batch(
         attention: "sage2",
         motion_cache: false,
         animate: false,
+        mode: "prompt".into(),
         prompt_embedding: None,
         latent_upscaler: None,
         preview_vae: None,

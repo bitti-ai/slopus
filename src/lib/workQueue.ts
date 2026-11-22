@@ -265,7 +265,7 @@ export class WorkQueue {
       ids.push(id);
       let finish!: () => void;
       const done = new Promise<void>((resolve) => { finish = resolve; });
-      const request = structuredClone({ ...submission.request, jobId: id, seed: submission.upscaleSource ? submission.request.seed : imageGenerationSeed(submission.request.seed), loraSnapshot: loraSnapshot(effectiveLoras(chosen.loras, submission.job.loraOverrides ?? [], chosen.modelType)), ...(!submission.upscaleSource ? { steps: generationStepsWithLoras(submission.request.steps, config),
+      const request = structuredClone({ ...submission.request, generatorMode: chosen.mode ?? "prompt", jobId: id, seed: submission.upscaleSource ? submission.request.seed : imageGenerationSeed(submission.request.seed), loraSnapshot: loraSnapshot(effectiveLoras(chosen.loras, submission.job.loraOverrides ?? [], chosen.modelType)), ...(!submission.upscaleSource ? { steps: generationStepsWithLoras(submission.request.steps, config),
         ...generationSigmaShiftsWithLoras(submission.request, config) } : {}) });
       const snapshot = !submission.upscaleSource && (request.seed !== submission.request.seed || request.loraSnapshot.length || submission.request.loraSnapshot?.length)
         ? sceneGenerationSnapshot(captured, request) : submission.snapshot;
@@ -958,7 +958,8 @@ export class WorkQueue {
       if (work.cancelled) { await this.cancelled(work); return; }
       const assetId = generationAssetId(work.sceneId);
       const totalFrames = saved.durationMs ? Math.round(saved.durationMs * GENERATION_FRAME_RATE / 1000) : work.outputFrames ?? work.request.frames;
-      const sceneSegments = work.upscaleSource ? work.upscaleSource.media.sceneSegments : work.request.latentBridge
+      const savesLatents = work.config.providerSettings.slopfab?.options.generationMode !== "pi-h3";
+      const sceneSegments = !savesLatents ? undefined : work.upscaleSource ? work.upscaleSource.media.sceneSegments : work.request.latentBridge
         ? bridgedSceneSegments(work.sceneId, generationLatentPath(work.id), totalFrames, work.request.frames, work.request.latentBridge, work.bridgeSegments)
         : joinedSceneSegments(work.sceneId, generationLatentPath(work.id), totalFrames,
         Math.ceil(work.request.frames / 17) * 17, work.request.previousSceneId ? {
@@ -970,7 +971,7 @@ export class WorkQueue {
       const version = { id: work.id, createdAt: new Date().toISOString(), scene: work.sceneInput!,
         generatorName: work.generatorName,
         media: { ...media, id: assetId, name: work.sceneInput!.title, createdAt: new Date().toISOString() },
-        generationSnapshot: work.snapshot, latentRelativePath: generationLatentPath(work.id),
+        generationSnapshot: work.snapshot, latentRelativePath: savesLatents ? generationLatentPath(work.id) : null,
         ...(work.upscaleSource ? { originalLatentRelativePath: work.upscaleSource.originalLatentRelativePath ?? work.upscaleSource.latentRelativePath,
           upscaleFactor: work.request.latentUpscaleSource!.scale } : {}) };
       work.session.update(sceneResultUpdate(work.sceneId, version, saved.note));

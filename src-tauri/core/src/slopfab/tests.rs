@@ -6,6 +6,99 @@ use crate::settings::{ProviderOption, ProviderSetting};
 use std::collections::BTreeMap;
 
 #[test]
+fn new_h3_step_counts_and_image_anchors_reach_both_backends() {
+    let directory = tempfile::tempdir().unwrap();
+    let image = directory.path().join("anchor.ppm");
+    std::fs::write(&image, b"P6\n1 1\n255\n\xff\x00\x00").unwrap();
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
+    let api = ffi::Api::load(&path).unwrap();
+    for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+        for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+            for (mode, evaluations) in [("prompt", 7), ("h3-hybrid", 8)] {
+                let mut configuration = Configuration::from_settings(&BTreeMap::new());
+                configuration.mode = mode.into();
+                let request = GenerationRequest { prompt: "A red ball".into(), frames: 22, steps: 8, seed: 42,
+                    canvas_width: 128, canvas_height: 128, reference_paths: vec![image.to_string_lossy().into_owned()],
+                    start_anchor_index: Some(0), end_anchor_index: Some(0), ..Default::default() };
+                let handle = RequestHandle::new(&api).unwrap();
+                configure_request(&api, &handle, &request, &configuration, platform, purpose, &ReferenceVideos::default()).unwrap();
+                let description = api.describe(&handle).unwrap();
+                assert_eq!(api.resolve(&handle).unwrap().num_model_evaluations, evaluations, "{description}");
+                assert!(description.contains("anchor"), "{description}");
+            }
+        }
+    }
+}
+
+#[test]
+fn remake_controls_validate_counts_bounds_and_roundtrip_for_workers() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.mode = "remake-swap".into();
+    let mut request = GenerationRequest { prompt: "A robot waves".into(), frames: 90, steps: 12,
+        reference_paths: vec!["painted.png".into()], reference_video_ids: vec!["source".into()],
+        remake_pins: vec![60], remake_keyframe_until: Some(0.9), ..Default::default() };
+    configuration.validate_inputs(&request).unwrap();
+    assert!(!configuration.legacy_steps());
+    let restored: GenerationRequest = serde_json::from_value(serde_json::to_value(&request).unwrap()).unwrap();
+    assert_eq!(restored.remake_pins, vec![60]);
+    assert_eq!(restored.remake_keyframe_until, Some(0.9));
+    request.remake_pins = vec![90];
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("pin"));
+    request.remake_pins = vec![0, 1];
+    assert!(configuration.validate_inputs(&request).is_err());
+    request.remake_pins.clear(); request.remake_keyframe_until = Some(f32::NAN);
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("release"));
+}
+
+#[test]
+fn pi_h3_rejects_stacking_and_reusable_latent_features() {
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.mode = "pi-h3".into();
+    configuration.loras = Ok(vec![LoraAdapter { path: "pi_h3_2step_dwd_adapter_int8_convrot.safetensors".into(), strength: 1.0 }]);
+    let mut request = GenerationRequest { prompt: "A robot waves".into(), frames: 22, steps: 2, ..Default::default() };
+    configuration.validate_inputs(&request).unwrap();
+    assert!(!configuration.legacy_steps());
+    request.save_latents_path = Some("output.safetensors".into());
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("latent"));
+    request.save_latents_path = None;
+    configuration.loras.as_mut().unwrap().push(LoraAdapter { path: "other.safetensors".into(), strength: 1.0 });
+    assert!(configuration.validate_inputs(&request).unwrap_err().contains("one DWD adapter"));
+}
+
+#[test]
+fn remake_pins_and_custom_steps_reach_native_planning() {
+    let directory = tempfile::tempdir().unwrap();
+    let image = directory.path().join("painted.ppm");
+    std::fs::write(&image, b"P6\n1 1\n255\n\xff\x00\x00").unwrap();
+    let references = ReferenceVideos::default();
+    let video = references.create_reference_video(90.0 / 24.0, &BTreeMap::new()).unwrap();
+    references.append_reference_video(&video, &vec![127; 64 * 64 * 4], 64, 64, 0.0).unwrap();
+    let mut configuration = Configuration::from_settings(&BTreeMap::new());
+    configuration.attention = "flash2";
+    let api = ffi::Api::load(&configuration.dll_path).unwrap();
+    for mode in ["swap", "edit"] {
+        configuration.mode = format!("remake-{mode}");
+        configuration.models[0].2 = Some(format!("viggle_remake_{mode}_pruned_int8_convrot.safetensors").into());
+        for steps in [6, 12] {
+            let request = GenerationRequest { prompt: "subject_definitions: <Video 1> source. <Picture 1> robot.\nsummary: A robot waves.\nretention_analysis: Keep motion.\ndetailed_description: [Shot 1] A robot waves.\noverall_soundscape: Silence.\nnon_diegetic_music: N/A".into(),
+                frames: 90, steps, seed: 42, canvas_width: 128, canvas_height: 128,
+                reference_paths: vec![image.to_string_lossy().into_owned()], reference_video_ids: vec![video.clone()],
+                remake_pins: vec![60], remake_keyframe_until: Some(0.9), ..Default::default() };
+            for platform in [ComputePlatform::Cuda13, ComputePlatform::Vulkan] {
+                for purpose in [RequestPurpose::Plan, RequestPurpose::Generate] {
+                    let handle = RequestHandle::new(&api).unwrap();
+                    configure_request(&api, &handle, &request, &configuration, platform, purpose, &references).unwrap();
+                    let description = api.describe(&handle).unwrap();
+                    assert_eq!(api.resolve(&handle).unwrap().num_model_evaluations, steps, "{description}");
+                    assert!(description.contains("Remake"), "{description}");
+                }
+            }
+        }
+    }
+    references.release_reference_videos(&[video]).unwrap();
+}
+
+#[test]
 fn music_plans_on_cuda_and_vulkan_without_video_controls() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/slopfab").join(super::DLL_FILE_NAME);
     let api = ffi::Api::load(&path).unwrap();

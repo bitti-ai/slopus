@@ -37,7 +37,7 @@ pub const SERVICE_TYPE: &str = "_slopus-worker._tcp.local.";
 // v31 matches the two-minute anchored recipe: lock 22 frames without replacing the source tail.
 // v32 sizes local image inference from selection bounds, padded to the 32-pixel grid.
 // v33 routes MiniMax H3 Image with its fixed schedule and image-specific editing.
-pub const PROTOCOL_VERSION: u32 = 33;
+pub const PROTOCOL_VERSION: u32 = 34;
 
 /// Streaming SeedVR2 restoration; model paths are resolved on the worker.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -392,7 +392,7 @@ mod tests {
         let single = restored.single_shot.unwrap();
         assert_eq!(single.ending_prompt, "The subject waves goodbye");
         assert!(single.ending_path.is_none());
-        assert_eq!(PROTOCOL_VERSION, 33);
+        assert_eq!(PROTOCOL_VERSION, 34);
     }
 
     #[test]

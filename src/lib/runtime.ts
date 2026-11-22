@@ -102,6 +102,7 @@ export interface AgentTurnResponse {
 }
 
 export interface SlopfabGenerationRequest {
+  generatorMode?: import("./settings").GeneratorTemplate["mode"];
   loraSnapshot?: ReturnType<typeof import("./loras").loraSnapshot>;
   contextSceneId?: string;
   keystoneRelativePath?: string;
@@ -127,6 +128,10 @@ export interface SlopfabGenerationRequest {
   canvasWidth: number;
   canvasHeight: number;
   referencePaths: string[];
+  startAnchorIndex?: number;
+  endAnchorIndex?: number;
+  remakePins?: number[];
+  remakeKeyframeUntil?: number;
   refmods?: Array<{ path: string; strength: number; copies: number }>;
   referenceVideos?: Array<{ name: string; relativePath?: string | null; sourcePath?: string | null; startSeconds: number; durationSeconds?: number; includeAudio: boolean }>;
   referenceAudios?: Array<{ name: string; relativePath?: string | null; sourcePath?: string | null; startSeconds: number; durationSeconds: number }>;

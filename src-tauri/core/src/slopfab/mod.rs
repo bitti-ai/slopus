@@ -75,3 +75,8 @@ const CANCELLED: i32 = -8;
 
 #[cfg(test)]
 mod tests;
+
+/// DWD pixels cannot be reproduced from a reusable H3 latent archive.
+pub fn supports_saved_latents(settings: &std::collections::BTreeMap<String, crate::settings::ProviderSetting>) -> bool {
+    !config::Configuration::from_settings(settings).is_pi_h3()
+}

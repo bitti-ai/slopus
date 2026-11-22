@@ -611,12 +611,12 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
           onChange={(value) => updateTemplate({ kreaVariant: value === "raw" ? "raw" : "turbo", defaultSteps: value === "raw" ? 52 : 8, videoSigmaShift: undefined })} />
       </SettingsCard>}
       {generatorModel(selectedTemplate.modelType).videoGeneration && <SettingsCard icon={<Video20 />} header="Mode">
-        <ComboBox aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"} onChange={(value) => updateTemplate({ mode: value === "animate" ? "animate" : "prompt" })}
-          options={[{ value: "prompt", label: "Text prompt" }, { value: "animate", label: "Animate (reference video)" }]} />
+        <ComboBox aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"} onChange={(value) => updateTemplate({ mode: value as GeneratorTemplate["mode"] })}
+          options={[{ value: "prompt", label: "Text prompt" }, { value: "animate", label: "Animate (reference video)" }, { value: "remake-swap", label: "Remake Swap" }, { value: "remake-edit", label: "Remake Edit" }, { value: "pi-h3", label: "pi-H3 DWD" }, { value: "h3-hybrid", label: "Hybrid DMAD-PDMD" }]} />
       </SettingsCard>}
       <SettingsCard icon={<Options20 />} header="Editing model" description="Enable image editing and Zoom for weights that support editing.">
         <ToggleSwitch aria-label="Editing model" checked={generatorModel(selectedTemplate.modelType).imageEditing && selectedTemplate.editingModel !== false}
-          disabled={!generatorModel(selectedTemplate.modelType).imageEditing || selectedTemplate.mode === "animate"}
+          disabled={!generatorModel(selectedTemplate.modelType).imageEditing || ["animate", "remake-swap", "remake-edit", "pi-h3"].includes(selectedTemplate.mode ?? "prompt")}
           onChange={(editingModel) => updateTemplate({ editingModel })} />
       </SettingsCard>
       <SettingsCard icon={<Steps20 />} header="Default steps">
@@ -658,7 +658,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
       </SettingsCard>
       {generatorModel(selectedTemplate.modelType).motionCache && <SettingsCard icon={<Flash20 />} header="Enable MotionCache" description={<span id="motion-cache-help">{selectedTemplate.mode === "animate" ? "Unavailable in Animate mode" : nonEuler ? "Requires Euler sampling" : "Reuses similar denoising results to reduce computation. May affect detail and motion."}</span>}>
         <ToggleSwitch aria-label="Enable MotionCache" aria-describedby="motion-cache-help"
-          checked={!nonEuler && selectedTemplate.mode !== "animate" && Boolean(selectedTemplate.motionCache)} disabled={nonEuler || selectedTemplate.mode === "animate"}
+          checked={!nonEuler && !["animate", "remake-swap", "remake-edit", "pi-h3"].includes(selectedTemplate.mode ?? "prompt") && Boolean(selectedTemplate.motionCache)} disabled={nonEuler || ["animate", "remake-swap", "remake-edit", "pi-h3"].includes(selectedTemplate.mode ?? "prompt")}
           onChange={(on) => updateTemplate({ motionCache: on })} />
       </SettingsCard>}
     </SettingsGroup>

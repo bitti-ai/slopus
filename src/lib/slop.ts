@@ -29,7 +29,7 @@ const portableLoraSchema = z.object({
 }).strict();
 export const portableGeneratorSchema = z.object({
   name, modelType: name, sampler: z.enum(SAMPLERS).optional(), scheduler: z.enum(SCHEDULERS).optional(), editingModel: z.boolean().optional(), kreaVariant: z.enum(["turbo", "raw"]).optional(), defaultSteps: steps, attention: z.enum(["exact", "flash2", "sage2", "sol"]),
-  mode: z.enum(["prompt", "animate"]).default("prompt"), motionCache: z.boolean().default(false),
+  mode: z.enum(["prompt", "animate", "remake-swap", "remake-edit", "pi-h3", "h3-hybrid"]).default("prompt"), motionCache: z.boolean().default(false),
   sources: sourcesSchema,
   loras: z.array(portableLoraSchema).max(128).default([]),
   additionalSafetensors: z.array(z.object({ name, url, role: z.literal("promptEmbedding").optional() }).strict()).max(128).default([]),
