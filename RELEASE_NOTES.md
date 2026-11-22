@@ -4,7 +4,7 @@
 
 - Added pi-H3 two-step and four-step DWD generators, including both INT8 ConvRot adapter downloads and first/last-image conditioning. Video pixels are generated directly without a video VAE decoder.
 - Added Hybrid DMAD-PDMD with INT8 and W6A8 downloads and its eight-update default.
-- Added Viggle Remake Swap and Edit generators with source-video and painted-image selection, custom step counts, optional timeline pins, and keyframe release controls.
+- Added Viggle Remake, the newer replacement for Viggle Animate, with Swap and Edit generators, source-video and painted-image selection, custom step counts, optional timeline pins, and keyframe release controls.
 - First & Last Frame scenes now use native image anchors on CUDA and Vulkan.
 - Updated Windows and Linux Slopfab runtimes to API 1.54. LAN workers must be updated to protocol 34.
 

@@ -27,7 +27,8 @@ H3 audio VAE. The integration disables VAE previews and does not create or
 record reusable latent archives. Continuation, Single Shot, latent upscaling,
 generation effects, multimedia references and adapter stacking are rejected.
 
-**Viggle Remake Swap/Edit** use the published merged INT8 transformers without
+**Viggle Remake is the newer replacement for Viggle Animate.** Its
+**Swap/Edit** generators use the published merged INT8 transformers without
 additional LoRAs. Remake scenes select one source video and one to four painted
 images. Prompts retain the normal H3 sections with a retention-analysis section
 inserted before the detailed description. The default is six Euler updates;
