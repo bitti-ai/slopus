@@ -8,7 +8,7 @@ import { longShotBlocker } from "./longShot";
 import { continuationBlocker, continuationSceneId, generationAssetId, sceneGenerationPending, sceneGenerationSnapshot, sceneTypeFor } from "./project";
 import type { ProjectSession } from "./projectSession";
 import { sceneLoraBlocker, sceneGenerationRequest, sendBlocker, templateSceneBlocker } from "./sceneGeneration";
-import { templateWithSceneLoras, generatorPathFields, loadGeneratorTemplateSettings, templateSupportsMusic, templateUsable } from "./settings";
+import { templateWithSceneLoras, generatorPathFields, loadGeneratorTemplateSettings, templateSupportsImages, templateSupportsMusic, templateUsable } from "./settings";
 import { isWorkActive, projectQueueKey, type WorkQueue } from "./workQueue";
 
 export interface SceneGenerateCommand { op: "scene.generate"; scene: string; template: string }
@@ -107,7 +107,7 @@ export async function generateAgentImage(queue: WorkQueue, session: ProjectSessi
   if (!draft) throw new Error(`Editable image draft '${command.image}' was not found.`);
   const template = loadGeneratorTemplateSettings().templates.find((candidate) => candidate.id === command.template);
   if (!template) throw new Error(`Generator template '${command.template}' no longer exists.`);
-  if (template.mode === "animate") throw new Error("Choose a prompt generator for images.");
+  if (!templateSupportsImages(template)) throw new Error("Choose a prompt generator for images.");
   if (!templateUsable(template)) throw new Error(`Generator '${template.name}' needs its weights or LoRAs prepared before generation.`);
   if (queue.getSnapshot().some((item) => item.projectKey === projectQueueKey(session.record) && (item.imageAssetId === draft.id || item.imageDraftId === draft.id) && isWorkActive(item))) {
     throw new Error(`Image '${draft.name}' already has generation in progress. Do not submit it again.`);

@@ -141,9 +141,9 @@ it("seeds all agreed minimums and upgrades old defaults once without losing cust
   const limits = Object.fromEntries(settings.templates.filter(({ modelType, id }) => id !== "default" && ["minimax-h3", "minimax_music3"].includes(modelType))
     .map((template) => [template.id, template.sources!.transformer!.map(({ minVramGb }) => minVramGb)]));
   expect(limits).toEqual({ "minimax-h3-original": [21, 13, 16], "minimax-h3-references": [21, 13, 16],
-    "minimax-h3-fast": [22, 17], "minimax-h3-singularity": [21, 12], "minimax-h3-singularity-v2": [21, 16, 12], "viggle-animate": [21], minimax_music3: [10, 5, 3] });
+    "minimax-h3-fast": [22, 17], "minimax-h3-singularity": [21, 12], "minimax-h3-singularity-v2": [21, 16, 12], "viggle-animate": [21], "h3-hybrid": [21, 16], "pi-h3-2step": [21, 13, 16], "pi-h3-4step": [21, 13, 16], "viggle-remake-swap": [21], "viggle-remake-edit": [21], minimax_music3: [10, 5, 3] });
   expect(Object.fromEntries(settings.h3Components!.templates.map((entry) => [entry.id, entry.sources[0].minVramGb]))).toEqual({
-    "h3-video-vae": 6, "sol-h3-vae": 6, "h3-fast-video-vae": 3, "h3-audio-vae": 1, "h3-text-encoder": 16,
+    "h3-video-vae": 6, "sol-h3-vae": 6, "h3-fast-video-vae": 3, "h3-audio-vae": 1, "h3-text-encoder": 16, "minimax-h3-image-textEncoder": 32,
   });
   const music = settings.templates.find(({ id }) => id === "minimax_music3")!;
   expect(music.sources!.textEncoder![0].minVramGb).toBe(9);
@@ -163,7 +163,7 @@ it("seeds all agreed minimums and upgrades old defaults once without losing cust
   localStorage.setItem("slopus.generator-templates.v1", JSON.stringify({ ...settings, catalogVersion: 17 }));
   const migrated = loadGeneratorTemplateSettings();
   const updated = migrated.templates.find(({ id }) => id === original.id)!;
-  expect(migrated.catalogVersion).toBe(23);
+  expect(migrated.catalogVersion).toBe(24);
   expect(updated.paths.transformer).toBe(original.paths.transformer);
   expect(updated.sources!.transformer!.map(({ minVramGb }) => minVramGb)).toEqual([21, 10, 16, 0]);
   expect(updated.sources!.transformer![0].downloadedPath).toBe(original.paths.transformer);

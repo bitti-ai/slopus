@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { installH3TestDependencies } from "./h3TestUtils";
-import { kreaImageTemplates, mossImageTemplate, fiboImageTemplate, fiboBaseTemplate } from "./settings";
+import { newH3Templates, kreaImageTemplates, mossImageTemplate, fiboImageTemplate, fiboBaseTemplate } from "./settings";
 import { waitFor } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -74,6 +74,23 @@ const finish = async (queue: WorkQueue, id: string) => {
   emit("slopfab-job", { jobId: id, state: "framesReady", detail: "Frames ready" });
   await waitFor(() => expect(queue.getSnapshot().find((item) => item.id === id)?.status).toBe("completed"));
 };
+
+it("saves pi-H3 video without claiming a reusable latent archive or scene segment", async () => {
+  const { queue, first } = setup();
+  const template = newH3Templates().find((entry) => entry.id === "pi-h3-2step")!;
+  saveLoras(loadLoras().map((entry) => ({ ...entry, path: `C:/weights/${entry.id}.safetensors` })));
+  const run = submission(first);
+  run.request.referencePaths = [];
+  const [id] = queue.enqueue(first, [run], template);
+  await waitFor(() => expect(enqueueSlopfabGeneration).toHaveBeenCalledOnce());
+  expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[0][0].steps).toBe(2);
+  expect(vi.mocked(enqueueSlopfabGeneration).mock.calls[0][1].providerSettings.slopfab.options.generationMode).toBe("pi-h3");
+  await finish(queue, id);
+  const job = parseProjectConfig(first.getSnapshot().config).generationJobs[0];
+  expect(job.latentRelativePath).toBeNull();
+  expect(job.generationHistory!.versions[0].latentRelativePath).toBeNull();
+  expect(job.generationHistory!.versions[0].media.sceneSegments).toBeUndefined();
+});
 
 it("records the actual random video seed and generator name without changing the scene's random setting", async () => {
   const { queue, first } = setup();

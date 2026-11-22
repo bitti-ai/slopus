@@ -1,5 +1,64 @@
 # Slopfab compatibility
 
+## H3 updates after 0.2.0 (API 1.54.0)
+
+Windows and Linux runtimes use SlopFab commit
+`65d16af80e60dc3add68ef0e09de5e60f1987d0e`, with CUDA and Vulkan enabled
+and FFmpeg disabled. Linux is built with GCC 11 and CUDA 13.3 inside Ubuntu
+22.04 and passes the glibc 2.35 requirement check. Both builds pass the C API
+and embedded-tokenizer suites. The update also accepts unversioned W4A8 metadata.
+
+The **Hybrid DMAD-PDMD** template offers the upstream download catalog's INT8
+and W6A8_G32 transformers. It uses eight Euler updates and the runtime's
+12/3 video/audio sigma shifts. Its distillation adapters are already fused;
+the template does not add DMAD or PDMD again. Ordinary H3 reference features
+remain available.
+
+**pi-H3 2-Step DWD** and **pi-H3 4-Step DWD** use a standard FL2VA base and
+exactly one strength-1 adapter from [Lakonik/pi-H3](https://huggingface.co/Lakonik/pi-H3):
+
+- [Two-step INT8 ConvRot adapter](https://huggingface.co/Lakonik/pi-H3/resolve/main/pi_h3_2step_dwd_adapter_int8_convrot.safetensors)
+- [Four-step INT8 ConvRot adapter](https://huggingface.co/Lakonik/pi-H3/resolve/main/pi_h3_4step_dwd_adapter_int8_convrot.safetensors)
+
+The adapters supply their trained Euler grids and 12/3 shifts. Prompt and
+First & Last Frame scenes are supported. DWD produces output pixels directly;
+the video VAE is needed only to encode endpoint images. Audio still uses the
+H3 audio VAE. The integration disables VAE previews and does not create or
+record reusable latent archives. Continuation, Single Shot, latent upscaling,
+generation effects, multimedia references and adapter stacking are rejected.
+
+**Viggle Remake Swap/Edit** use the published merged INT8 transformers without
+additional LoRAs. Remake scenes select one source video and one to four painted
+images. Prompts retain the normal H3 sections with a retention-analysis section
+inserted before the detailed description. The default is six Euler updates;
+other counts use the runtime's uniform grid with shifts 12/3. Source audio is
+retained through the audio VAE when enabled on the video reference. Pins are
+zero-based output/source frames, one per picture in the displayed order. The
+default release threshold is video sigma 0.9; zero retains pins throughout.
+The source must cover the aligned 90–345-frame generation window.
+
+First & Last Frame scenes pass image indices through worker uploads, then call
+the native start/end-anchor setters. An image used at both endpoints is uploaded
+once and attached to both roles. These guides influence the generated endpoints;
+they do not copy source pixels into output frames.
+
+New template modes count steps as updates. Existing H3 templates keep their
+legacy grid-point conversion. Catalog migration adds the five templates once,
+preserves customized settings, and respects later removals. Portable `.slop`
+templates preserve the new modes and adapter URLs. Worker protocol 34 prevents
+older workers from silently ignoring anchors, pins or the new step semantics.
+
+Native integration tests cover both backends' endpoint requests, Remake pins
+with six/custom steps, request validation and worker serialization. Frontend
+tests cover downloads, migration, prompt structure, pin persistence and endpoint
+mapping. These checks do not constitute full model-weight rendering validation.
+
+Validation: the production frontend build passes, as do 263 Windows app tests,
+202 Windows core tests and 201 Linux core tests (platform-specific counts differ).
+The focused frontend tests include Remake pin authoring and pi-H3 saving without
+latent archives. A controlled rerun of the broader suite's failing files matches
+the same 16 failures on Slopus 0.4.2; no additional failures remain in those files.
+
 ## MiniMax H3 Image (SlopFab 0.2.0, API 1.52.0)
 
 The bundled Windows and Linux runtimes use SlopFab commit

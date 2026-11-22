@@ -375,7 +375,7 @@ export class WorkQueue {
     if (!template) throw new Error("Choose an available text-prompt generator for album covers in Settings → Generators → Icons.");
     const id = `cover-${crypto.randomUUID()}`;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
-      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras ?? [], "prompt", template.additionalSafetensors ?? [], false, template.sources, template) } });
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras ?? [], template.mode ?? "prompt", template.additionalSafetensors ?? [], false, template.sources, template) } });
     const request: SlopfabGenerationRequest = { jobId: id, prompt: albumCoverPrompt(song, template.modelType), stillImage: true,
       frames: 1, canvasWidth: 1024, canvasHeight: 1024, steps: generationStepsWithLoras(template.defaultSteps, config),
       seed: imageGenerationSeed(-1), guidanceScale: imageCfgScale(template.modelType, undefined, template.kreaVariant), referencePaths: [] };
@@ -436,7 +436,7 @@ export class WorkQueue {
     for (const entry of entries) {
       const imageDraftId = entry.draft.id;
       const config = structuredClone({ ...current, imageScene: { ...current.imageScene!, outputAssetId: imageDraftId }, providerSettings: { ...current.providerSettings,
-        slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
+        slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, template.mode ?? "prompt", template.additionalSafetensors, false, template.sources, template) } });
       let finish!: () => void;
       const done = new Promise<void>((resolve) => { finish = resolve; });
       const request: SlopfabGenerationRequest = { ...(negativePrompt ? { negativePrompt } : {}), ...(guidanceScale !== undefined ? { guidanceScale } : {}), generationEffects: activeGenerationEffects(scene.generationEffects), jobId: entry.id, stillImage: true, frames: 1, prompt: edit ? edit.edits[0].prompt : prompt,
@@ -469,7 +469,7 @@ export class WorkQueue {
     const projectKey = projectQueueKey(session.record);
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === sourceId && isWorkActive(item))) return;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
-      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, template.mode ?? "prompt", template.additionalSafetensors, false, template.sources, template) } });
     const id = `extend-${crypto.randomUUID()}`;
     const sourceRelativePath = `cache/extend-images/${id}/canvas.png`;
     const compiled = compileExtendImage(config, source, sourceRelativePath, options, template.modelType);
@@ -503,14 +503,14 @@ export class WorkQueue {
   enqueueCharacterSheet(session: ProjectSession, template: GeneratorTemplate, sourceId: string, options?: CharacterSheetOptions) {
     if (!isTauri()) throw new Error("Character sheet generation requires the desktop app.");
     if (!generatorModel(template.modelType).characterSheets) throw new Error("Choose a generator that supports image references for character sheets.");
-    if (template.mode === "animate") throw new Error("Choose a prompt generator for the character sheet.");
+    if (!templateSupportsImages(template)) throw new Error("Choose an image generator for the character sheet.");
     const current = session.getSnapshot().config;
     const source = current.assets.find((asset) => asset.id === sourceId && asset.kind === "image");
     if (!source || (!source.relativePath && !source.sourcePath)) throw new Error("Select an image with a saved file first.");
     const projectKey = projectQueueKey(session.record);
     if (this.items.some((item) => item.projectKey === projectKey && item.kind === "image" && item.imageAssetId === sourceId && isWorkActive(item))) return;
     const config = structuredClone({ ...current, providerSettings: { ...current.providerSettings,
-      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, "prompt", template.additionalSafetensors, false, template.sources, template) } });
+      slopfab: engineProviderSetting(template.paths, current.providerSettings.slopfab, template.attention, template.loras, template.mode ?? "prompt", template.additionalSafetensors, false, template.sources, template) } });
     const id = `character-sheet-${crypto.randomUUID()}`;
     const frontRelativePath = `cache/character-sheets/${id}/1.png`;
     const views = compileCharacterSheet(config, source, frontRelativePath, options, template.modelType);

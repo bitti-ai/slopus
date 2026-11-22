@@ -1077,7 +1077,7 @@ export function sceneGenerationReferences(job: GenerationJob, references: Projec
     .map((reference) => ({ ...reference, kind: "text" as const, video: undefined, relativePath: null, sourcePath: null, intendedUse: [], images: referenceImages(reference).slice(0, 1) }));
   // Animate stores its dedicated motion/frame selections in referenceIds.
   // Other scenes take guidance from their current prompts, never stale bindings.
-  const ids = job.sceneType === "animate" || job.sceneType === "remake" ? job.referenceIds : sceneShots(job).flatMap(shotReferenceIds);
+  const ids = job.sceneType === "animate" ? job.referenceIds : sceneShots(job).flatMap(shotReferenceIds);
   return [...anchors, ...references.filter((reference) => ids.includes(reference.id) && !anchors.some((anchor) => anchor.id === reference.id))];
 }
 

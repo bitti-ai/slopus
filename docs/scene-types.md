@@ -12,6 +12,21 @@ The Scene panel saves a type on each scene. Long Shot is retired; use Bridge to 
 
 Select a generated Take and open Generate's arrow to upscale its saved latents 1.5x, 2x or 4x into a new Take. Escape or clicking outside closes the menu. Upscaled Takes can be enlarged again; continuations and bridges always use their original latents.
 
+pi-H3 supports Prompt and First & Last Frame scenes. Choose its two-step or
+four-step DWD template; the adapter determines the step count. Its Takes do not
+have reusable latents, so continuation and latent upscaling are unavailable.
+First & Last Frame uses native image guides on CUDA and Vulkan, including either
+endpoint alone. A video VAE is needed to encode these images.
+
+For **Remake**, select a Viggle Remake Swap or Edit generator, one source video,
+and one to four painted images in the Scene panel. Describe the finished video
+and the changes you want. Enable **Timeline pins** to anchor each picture to a
+zero-based frame; leave it off for appearance references alone. **Keyframe
+release** defaults to 0.9 and follows video sigma, so custom step counts retain
+the same release rule. The source must cover the aligned scene length, between
+3.75 and 14.375 seconds. Enable its soundtrack in References to retain audio
+through the audio VAE. Pins guide composition without copying image pixels.
+
 - **Prompt** is the default for ordinary video scenes. It supports shot descriptions, speech, Look, sound, music and references cited in prompts, without start- or last-frame selectors. Stored frame anchors and continuation links are inactive.
 - **Single Shot** keeps its main prompt in the Shot panel and an optional **Ending prompt** in the Scene panel, both with reference support. It generates an ending first, then anchors the full shot to it; a blank ending prompt uses the main prompt. **Starting video** accepts any generated scene. Its final latents anchor only the beginning; the middle starts from fresh noise and is guided toward the generated ending. The former Continuation strength is ignored. Use matching original latent resolutions, at least two seconds, and updated workers. Generate all handles dependency order.
 - **First & Last Frame** adds optional start- and last-frame anchors. Prompts follow the [MiniMax base guide](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md): no frames uses T2VA, first only I2VA, last only L2VA, and both FL2VA. Ending anchors target the final shot at the generated duration, including frame alignment. Additional subject/audio/video references retain their full-reference sections. Older scenes without a type retain this type when they have frame selections; otherwise they use Prompt. Switching types retains saved frame selections for later use.

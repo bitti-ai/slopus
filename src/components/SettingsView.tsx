@@ -611,7 +611,8 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
           onChange={(value) => updateTemplate({ kreaVariant: value === "raw" ? "raw" : "turbo", defaultSteps: value === "raw" ? 52 : 8, videoSigmaShift: undefined })} />
       </SettingsCard>}
       {generatorModel(selectedTemplate.modelType).videoGeneration && <SettingsCard icon={<Video20 />} header="Mode">
-        <ComboBox aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"} onChange={(value) => updateTemplate({ mode: value as GeneratorTemplate["mode"] })}
+        <ComboBox aria-label="Generator mode" value={selectedTemplate.mode ?? "prompt"} onChange={(value) => updateTemplate({ mode: value as GeneratorTemplate["mode"],
+          ...(["pi-h3", "remake-swap", "remake-edit"].includes(value) ? { motionCache: false, videoSigmaShift: undefined, audioSigmaShift: undefined, sampler: undefined, scheduler: undefined } : {}) })}
           options={[{ value: "prompt", label: "Text prompt" }, { value: "animate", label: "Animate (reference video)" }, { value: "remake-swap", label: "Remake Swap" }, { value: "remake-edit", label: "Remake Edit" }, { value: "pi-h3", label: "pi-H3 DWD" }, { value: "h3-hybrid", label: "Hybrid DMAD-PDMD" }]} />
       </SettingsCard>}
       <SettingsCard icon={<Options20 />} header="Editing model" description="Enable image editing and Zoom for weights that support editing.">
@@ -638,7 +639,7 @@ export function SettingsView({ onClose, updates, initialTab = "engine", titleBar
           options={samplingOptions.schedulers.map((value) => ({ value, label: SCHEDULER_LABELS[value] }))}
           onChange={(value) => updateTemplate({ scheduler: value as Scheduler })} />
       </SettingsCard>
-      {(["videoSigmaShift", "audioSigmaShift"] as const).filter((key) => generatorModel(selectedTemplate.modelType).sigmaShifts && (generatorModel(selectedTemplate.modelType).videoGeneration || key !== "audioSigmaShift")).map((key) => {
+      {(["videoSigmaShift", "audioSigmaShift"] as const).filter((key) => !["pi-h3", "remake-swap", "remake-edit"].includes(selectedTemplate.mode ?? "prompt") && generatorModel(selectedTemplate.modelType).sigmaShifts && (generatorModel(selectedTemplate.modelType).videoGeneration || key !== "audioSigmaShift")).map((key) => {
         const label = `${key === "videoSigmaShift" ? !generatorModel(selectedTemplate.modelType).videoGeneration ? "Image" : "Video" : "Audio"} sigma shift`;
         const fallback = selectedTemplate.modelType === KREA_MODEL_TYPE ? Math.exp(1.15) : selectedTemplate.modelType === MOSS_MODEL_TYPE ? 5 : key === "audioSigmaShift" ? DEFAULT_AUDIO_SIGMA_SHIFT : selectedTemplate.mode === "animate" ? 3 : DEFAULT_VIDEO_SIGMA_SHIFT;
         return <SettingsCard key={key} icon={<Steps20 />} header={label} description="Default for this generator. Scene values and active LoRA overrides take priority. Leave blank for the model default.">

@@ -159,6 +159,8 @@ export function effectiveTemplateSampling(template: Partial<GeneratorTemplate>, 
 }
 
 export function generatorPathFields(template: Pick<GeneratorTemplate, "mode"> & { modelType?: string }): EnginePathField[] {
+  if (template.mode === "pi-h3") return ENGINE_PATH_FIELDS.map((field) => field.id === "videoVae"
+    ? { ...field, required: false, hint: "Only needed to encode first/last images. pi-H3 produces video pixels directly." } : field);
   if (template.modelType === "yue2" || template.modelType === "minimax_music3") return ENGINE_PATH_FIELDS.filter(({ id }) =>
     id === "transformer" || template.modelType === "minimax_music3" && (id === "textEncoder" || id === "audioVae")).map((field) =>
     field.id === "transformer" ? { ...field, hint: "The main model that generates music from your style and lyrics." } : field);
@@ -222,7 +224,7 @@ function workerWeight(value: string, sources: WeightSource[] | undefined): strin
 }
 
 export function templateNeedsDownload(template: GeneratorTemplate): boolean {
-  return generatorPathFields(template).some(({ id }) => isDownloadUrl(template.paths[id])
+  return generatorPathFields(template).filter(({ id }) => template.mode !== "pi-h3" || id !== "videoVae").some(({ id }) => isDownloadUrl(template.paths[id])
     || (template.modelType === H3_IMAGE_MODEL_TYPE && id === "textEncoder" && !template.paths[id].trim())
     || (template.modelType === MINIMAX_H3_MODEL_TYPE && (id === "videoVae" && template.videoVaeId !== undefined || id === "audioVae" && template.audioVaeId !== undefined || id === "textEncoder" && template.videoVaeId !== undefined) && !template.paths[id].trim())
     || (!template.paths[id].trim() && (template.sources?.[id]?.length ?? 0) > 0))

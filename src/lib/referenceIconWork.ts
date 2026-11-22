@@ -260,7 +260,7 @@ export class ReferenceIconWork {
       task.prompt = referenceIconPrompt(reference, template.modelType);
       const config = task.session.getSnapshot().config;
       const runtimeConfig = { ...config, providerSettings: { ...config.providerSettings,
-        slopfab: engineProviderSetting(template.paths, config.providerSettings.slopfab, template.attention, template.loras ?? [], "prompt", template.additionalSafetensors ?? [], template.motionCache ?? false, template.sources, template),
+        slopfab: engineProviderSetting(template.paths, config.providerSettings.slopfab, template.attention, template.loras ?? [], template.mode ?? "prompt", template.additionalSafetensors ?? [], template.motionCache ?? false, template.sources, template),
       } };
       const steps = generationStepsWithLoras(template.defaultSteps, runtimeConfig);
       if (this.item) { this.item = { ...this.item, settings: { ...this.item.settings, steps } }; this.publish(); }

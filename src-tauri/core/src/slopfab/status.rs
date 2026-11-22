@@ -12,6 +12,7 @@ fn model_statuses(configuration: &Configuration, available: impl Fn(&Path) -> bo
             _ => crate::models::generator_features(&configuration.model_type).video_generation || *id != 4,
         })
         .filter(|(id, _, _)| !configuration.animate || (*id != 1 && *id != 2))
+        .filter(|(id, _, _)| !configuration.is_pi_h3() || *id != 3)
         .map(|(_, id, path)| ModelStatus {
             id,
             configured: path.is_some(),
